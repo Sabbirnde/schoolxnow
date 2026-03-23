@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,30 +41,70 @@ const SchoolAdminManagement = () => {
     school_id: '',
   });
 
+  // Move useThrottledFetch to top level (outside useEffect)
+  const [throttledFetch] = useThrottledFetch(
+    () => fetchSchoolAdmins(),
+    1000
+  );
+
   useEffect(() => {
     fetchSchoolAdmins();
-    
-    // Set up real-time subscription for user_profiles changes
-    const channel = supabase
-      .channel('school_admins_updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_profiles'
-        },
-        (payload) => {
-          console.log('School admin profile change detected:', payload);
-          fetchSchoolAdmins();
-        }
-      )
-      .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+    // Split narrow subscriptions for school_admin profile changes
+    let updateChannel: any = null;
+    let insertChannel: any = null;
+
+    try {
+      // Channel for profile updates (changes to existing school admins)
+      updateChannel = supabase
+        .channel('school_admins_profile_updates')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_profiles',
+            filter: 'role=eq.school_admin',
+          },
+          (payload: any) => {
+            const nextRole = payload?.new?.role;
+            
+            // Guard: only refetch if the row is a school_admin
+            if (nextRole === 'school_admin') {
+              console.log('[SchoolAdmins] Profile update detected:', payload.new?.id);
+              throttledFetch();
+            }
+          }
+        )
+        .subscribe();
+
+      // Channel for new school admin insertions (promotions or new admins from auth trigger)
+      insertChannel = supabase
+        .channel('school_admins_profile_inserts')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'user_profiles',
+            filter: 'role=eq.school_admin',
+          },
+          (payload: any) => {
+            console.log('[SchoolAdmins] New school admin inserted:', payload.new?.id);
+            throttledFetch();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        if (updateChannel) supabase.removeChannel(updateChannel);
+        if (insertChannel) supabase.removeChannel(insertChannel);
+      };
+    } catch (error) {
+      console.error('[SchoolAdmins] Error setting up subscriptions:', error);
+      return () => {};
+    }
+  }, [throttledFetch]);
 
   const fetchSchoolAdmins = async () => {
     try {
@@ -159,7 +200,7 @@ const SchoolAdminManagement = () => {
     }
   };
 
-  const openEditDialog = async (admin: SchoolAdmin) => {
+  const openEditDialog = (admin: SchoolAdmin) => {
     setSelectedAdmin(admin);
     setFormData({
       full_name: admin.full_name,

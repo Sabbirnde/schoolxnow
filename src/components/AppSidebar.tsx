@@ -1,7 +1,6 @@
 import { 
   Home,
   Users,
-  GraduationCap,
   BookOpen,
   Calendar,
   FileText,
@@ -25,6 +24,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useModuleAccess } from "@/hooks/useModuleAccess";
 
 interface AppSidebarProps {
   activeModule: string;
@@ -33,6 +33,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
   const { profile, loading, signOut } = useAuth();
+  const { getAccessibleModules } = useModuleAccess();
 
   // Show loading state while auth is initializing
   if (loading) {
@@ -56,153 +57,34 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
     );
   }
 
-  // Define menu items based on user role
-  const getMenuItems = () => {
-    const commonItems = [
-      {
-        title: "Dashboard",
-        url: "#",
-        icon: Home,
-        module: "dashboard"
-      }
-    ];
-
-    if (profile?.role === 'super_admin') {
-      return [
-        ...commonItems,
-        {
-          title: "Schools",
-          url: "#", 
-          icon: School,
-          module: "schools"
-        },
-        {
-          title: "School Admins",
-          url: "#", 
-          icon: Users,
-          module: "users"
-        },
-        {
-          title: "Analytics",
-          url: "#",
-          icon: BarChart3,
-          module: "analytics"
-        }
-      ];
-    }
-
-    if (profile?.role === 'school_admin') {
-      return [
-        ...commonItems,
-        {
-          title: "Students",
-          url: "#",
-          icon: Users,
-          module: "students"
-        },
-        {
-          title: "Teachers",
-          url: "#",
-          icon: Users,
-          module: "users"
-        },
-        {
-          title: "Classes",
-          url: "#",
-          icon: BookOpen,
-          module: "classes"
-        },
-        {
-          title: "Subjects",
-          url: "#",
-          icon: ClipboardList,
-          module: "subjects"
-        },
-        {
-          title: "Class Assignment",
-          url: "#",
-          icon: ArrowRightLeft,
-          module: "class-assignment"
-        },
-        {
-          title: "Attendance",
-          url: "#",
-          icon: UserCheck,
-          module: "attendance"
-        },
-        {
-          title: "Exams",
-          url: "#",
-          icon: FileText,
-          module: "exams"
-        },
-        {
-          title: "Timetable",
-          url: "#",
-          icon: Calendar,
-          module: "timetable"
-        },
-        {
-          title: "Reports",
-          url: "#",
-          icon: BarChart3,
-          module: "reports"
-        }
-      ];
-    }
-
-    if (profile?.role === 'teacher') {
-      return [
-        ...commonItems,
-        {
-          title: "My Students",
-          url: "#",
-          icon: Users,
-          module: "students"
-        },
-        {
-          title: "My Subjects",
-          url: "#",
-          icon: BookOpen,
-          module: "subjects"
-        },
-        {
-          title: "Attendance",
-          url: "#",
-          icon: UserCheck,
-          module: "attendance"
-        },
-        {
-          title: "Enter Exam Marks",
-          url: "#",
-          icon: Award,
-          module: "exam-marks"
-        },
-        {
-          title: "My Classes",
-          url: "#",
-          icon: BookOpen,
-          module: "classes"
-        },
-        {
-          title: "Timetable",
-          url: "#",
-          icon: Calendar,
-          module: "timetable"
-        },
-        {
-          title: "Assignments",
-          url: "#",
-          icon: FileText,
-          module: "assignments"
-        }
-      ];
-    }
-
-    return commonItems;
+  const iconByModule: Record<string, any> = {
+    dashboard: Home,
+    schools: School,
+    users: Users,
+    students: Users,
+    classes: BookOpen,
+    subjects: ClipboardList,
+    "class-assignment": ArrowRightLeft,
+    attendance: UserCheck,
+    exams: FileText,
+    "exam-marks": Award,
+    timetable: Calendar,
+    reports: BarChart3,
+    settings: Settings,
   };
 
-  const menuItems = getMenuItems();
+  const categoryOrder = ["admin", "management", "operations", "reporting"] as const;
+  const accessibleModules = getAccessibleModules();
+
+  const orderedModules = [...accessibleModules].sort((a, b) => {
+    const categoryDiff =
+      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+    if (categoryDiff !== 0) return categoryDiff;
+    return a.title.localeCompare(b.title);
+  });
+
+  const settingsModule = orderedModules.find((module) => module.id === "settings");
+  const mainModules = orderedModules.filter((module) => module.id !== "settings");
 
   return (
     <Sidebar className="border-r">
@@ -221,38 +103,43 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+              {mainModules.map((module) => {
+                const Icon = iconByModule[module.id] || Home;
+
+                return (
+                <SidebarMenuItem key={module.id}>
                   <SidebarMenuButton
-                    onClick={() => setActiveModule(item.module)}
-                    isActive={activeModule === item.module}
+                    onClick={() => setActiveModule(module.id)}
+                    isActive={activeModule === module.id}
                     className="w-full justify-start h-10 px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.title}</span>
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{module.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
+              )})}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
+        {settingsModule && (
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  onClick={() => setActiveModule("settings")}
+                  onClick={() => setActiveModule(settingsModule.id)}
                   isActive={activeModule === "settings"}
                   className="h-10 px-3 text-sm"
                 >
                   <Settings className="h-4 w-4" />
-                  <span>Settings</span>
+                  <span>{settingsModule.title}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
         {/* User Profile Section */}
         {profile && (

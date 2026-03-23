@@ -6,10 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { useToast } from "@/hooks/use-toast";
+import { useThrottledFetch } from "@/hooks/useThrottledFetch";
 import { AdvancedFilter, FilterField, FilterValue } from "@/components/AdvancedFilter";
 import { useAdvancedFilter } from "@/hooks/useAdvancedFilter";
 import { 
@@ -18,7 +22,8 @@ import {
   Trash2,
   BookOpen,
   Users,
-  Loader2
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 
 interface Class {
@@ -51,13 +56,16 @@ const CLASS_LEVELS = [
 
 export function ClassManagement() {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const { toast } = useToast();
+  const auditLog = useAuditLog('CLASS');
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [advancedFilters, setAdvancedFilters] = useState<FilterValue[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const filterFields: FilterField[] = [
     { key: 'name', label: 'Class Name', type: 'text', placeholder: 'Enter class name...' },
@@ -70,7 +78,7 @@ export function ClassManagement() {
     ]},
   ];
 
-  const isAdmin = profile?.role === 'school_admin' || profile?.role === 'super_admin';
+  const isAdmin = canFull('classes.manage');
 
   const form = useForm<{
     name: string;
@@ -88,32 +96,64 @@ export function ClassManagement() {
     }
   });
 
+  // Move useThrottledFetch to top level (outside useEffect)
+  const [throttledFetch] = useThrottledFetch(
+    () => fetchClasses(),
+    1000
+  );
+
   useEffect(() => {
     if (profile?.school_id) {
       fetchClasses();
     }
 
-    // Set up real-time subscription for classes
-    const channel = supabase
-      .channel('classes_updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'classes'
-        },
-        (payload) => {
-          console.log('Class change detected:', payload);
-          if (profile?.school_id) {
-            fetchClasses();
+    // Set up narrow real-time subscriptions for classes (INSERT/UPDATE only, no DELETE)
+    let insertChannel: any = null;
+    let updateChannel: any = null;
+
+    try {
+      insertChannel = supabase
+        .channel('classes_inserts')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'classes'
+          },
+          (payload) => {
+            console.log('[ClassManagement] Class inserted:', payload.new?.id);
+            if (profile?.school_id) {
+              throttledFetch();
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
+
+      updateChannel = supabase
+        .channel('classes_updates')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'classes'
+          },
+          (payload) => {
+            console.log('[ClassManagement] Class updated:', payload.new?.id);
+            if (profile?.school_id) {
+              throttledFetch();
+            }
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('[ClassManagement] Error setting up subscriptions:', error);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (insertChannel) supabase.removeChannel(insertChannel);
+      if (updateChannel) supabase.removeChannel(updateChannel);
     };
   }, [profile]);
 
@@ -168,6 +208,27 @@ export function ClassManagement() {
     }
 
     try {
+      setValidationError(null);
+
+      // Check for duplicate class name + section combination
+      const existingClass = classes.find(
+        c => c.name.toLowerCase() === values.name.toLowerCase() && 
+             c.section === values.section &&
+             c.class_level === values.class_level &&
+             c.is_active
+      );
+
+      if (existingClass) {
+        const errorMsg = `A class named "${values.name}" Section ${values.section} already exists in this class level.`;
+        setValidationError(errorMsg);
+        toast({
+          title: "Duplicate Class",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .insert({
@@ -176,6 +237,12 @@ export function ClassManagement() {
         });
 
       if (error) throw error;
+
+      await auditLog.logAction('CREATE', 'new', {
+        entityName: `${values.name} - Section ${values.section}`,
+        class_level: values.class_level,
+        capacity: values.capacity,
+      });
 
       toast({
         title: "Success",
@@ -187,9 +254,18 @@ export function ClassManagement() {
       fetchClasses();
     } catch (error: any) {
       console.error('Error adding class:', error);
+      
+      await auditLog.logFailedAction('new', {
+        entityName: `${values.name} - Section ${values.section}`,
+        action: 'CREATE',
+        error: error.message || 'Unknown error',
+      });
+
       const message = error?.code === '42501'
         ? "You don't have permission to add classes. Please contact your school admin."
-        : "Failed to add class";
+        : error?.message || "Failed to add class";
+      
+      setValidationError(message);
       toast({
         title: "Error",
         description: message,
@@ -202,12 +278,44 @@ export function ClassManagement() {
     if (!editingClass) return;
 
     try {
+      setValidationError(null);
+
+      // Check for duplicate class name + section combination (excluding self)
+      const existingClass = classes.find(
+        c => c.id !== editingClass.id &&
+             c.name.toLowerCase() === values.name.toLowerCase() && 
+             c.section === values.section &&
+             c.class_level === values.class_level &&
+             c.is_active
+      );
+
+      if (existingClass) {
+        const errorMsg = `A class named "${values.name}" Section ${values.section} already exists in this class level.`;
+        setValidationError(errorMsg);
+        toast({
+          title: "Duplicate Class",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .update(values)
         .eq('id', editingClass.id);
 
       if (error) throw error;
+
+      await auditLog.logAction('UPDATE', editingClass.id, {
+        entityName: `${values.name} - Section ${values.section}`,
+        changes: {
+          name: values.name,
+          section: values.section,
+          class_level: values.class_level,
+          capacity: values.capacity,
+        },
+      });
 
       toast({
         title: "Success",
@@ -219,9 +327,18 @@ export function ClassManagement() {
       fetchClasses();
     } catch (error: any) {
       console.error('Error updating class:', error);
+      
+      await auditLog.logFailedAction(editingClass.id, {
+        entityName: `${values.name} - Section ${values.section}`,
+        action: 'UPDATE',
+        error: error.message || 'Unknown error',
+      });
+
+      const message = error?.message || "Failed to update class";
+      setValidationError(message);
       toast({
         title: "Error",
-        description: "Failed to update class",
+        description: message,
         variant: "destructive",
       });
     }
@@ -229,12 +346,42 @@ export function ClassManagement() {
 
   const handleDeleteClass = async (classId: string) => {
     try {
+      setValidationError(null);
+
+      const classToDelete = classes.find(c => c.id === classId);
+      if (!classToDelete) return;
+
+      // Check if class has enrolled students
+      if ((classToDelete.student_count || 0) > 0) {
+        const errorMsg = `Cannot deactivate class "${classToDelete.name}" - Section ${classToDelete.section}. It has ${classToDelete.student_count} enrolled student(s). Please transfer or remove all students first.`;
+        setValidationError(errorMsg);
+        toast({
+          title: "Cannot Deactivate Class",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        
+        await auditLog.logFailedAction(classId, {
+          entityName: `${classToDelete.name} - Section ${classToDelete.section}`,
+          action: 'DELETE',
+          error: `Class has ${classToDelete.student_count} enrolled students`,
+        });
+        
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .update({ is_active: false })
         .eq('id', classId);
 
       if (error) throw error;
+
+      await auditLog.logAction('DELETE', classId, {
+        entityName: `${classToDelete.name} - Section ${classToDelete.section}`,
+        action: 'DEACTIVATE',
+        reason: 'No enrolled students',
+      });
 
       toast({
         title: "Success",
@@ -244,9 +391,21 @@ export function ClassManagement() {
       fetchClasses();
     } catch (error: any) {
       console.error('Error deactivating class:', error);
+      
+      const classToDelete = classes.find(c => c.id === classId);
+      if (classToDelete) {
+        await auditLog.logFailedAction(classId, {
+          entityName: `${classToDelete.name} - Section ${classToDelete.section}`,
+          action: 'DELETE',
+          error: error.message || 'Unknown error',
+        });
+      }
+
+      const message = error?.message || "Failed to deactivate class";
+      setValidationError(message);
       toast({
         title: "Error",
-        description: "Failed to deactivate class",
+        description: message,
         variant: "destructive",
       });
     }
@@ -314,7 +473,7 @@ export function ClassManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -328,7 +487,7 @@ export function ClassManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
@@ -344,7 +503,7 @@ export function ClassManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -362,7 +521,7 @@ export function ClassManagement() {
       </div>
 
       {/* Search */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardContent className="p-4">
           <AdvancedFilter
             fields={filterFields}
@@ -374,14 +533,14 @@ export function ClassManagement() {
       </Card>
 
       {/* Classes List */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Classes ({filteredClasses.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {filteredClasses.map((classItem) => (
-              <div key={classItem.id} className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow duration-200">
+              <div key={classItem.id} className="border border-border rounded-lg p-4 hover:shadow-sm transition-shadow duration-200">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-gradient-accent rounded-lg flex items-center justify-center">
@@ -436,6 +595,7 @@ export function ClassManagement() {
           setIsAddDialogOpen(false);
           setEditingClass(null);
           form.reset();
+          setValidationError(null);
         }
       }}>
         <DialogContent>
@@ -443,6 +603,12 @@ export function ClassManagement() {
             <DialogTitle>{editingClass ? 'Edit Class' : 'Add New Class'}</DialogTitle>
             <DialogDescription>Fill in class details and submit to save.</DialogDescription>
           </DialogHeader>
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(editingClass ? handleEditClass : handleAddClass)} className="space-y-4">
               <FormField
@@ -540,6 +706,7 @@ export function ClassManagement() {
                     setIsAddDialogOpen(false);
                     setEditingClass(null);
                     form.reset();
+                    setValidationError(null);
                   }}
                 >
                   Cancel

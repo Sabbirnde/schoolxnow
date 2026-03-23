@@ -8,13 +8,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useThrottledFetch } from "@/hooks/useThrottledFetch";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { AdvancedFilter, FilterField, FilterValue } from "@/components/AdvancedFilter";
 import { useAdvancedFilter } from "@/hooks/useAdvancedFilter";
 import { DataGridSkeleton } from "@/components/ui/skeleton-loader";
+import {
+  checkStudentIDDuplicate,
+  validateRequiredFields,
+  validateEmail,
+  validatePhone,
+  ValidationError,
+} from "@/lib/audit-log";
+import { AlertCircle } from "lucide-react";
 import { 
   Plus, 
   Download, 
@@ -55,6 +66,7 @@ interface Class {
 export function StudentManagement() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const auditLog = useAuditLog({ entityType: 'student' });
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +74,8 @@ export function StudentManagement() {
   const [advancedFilters, setAdvancedFilters] = useState<FilterValue[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [validationError, setValidationError] = useState<ValidationError | null>(null);
+  const [isFormSubmitting, setIsFormSubmitting] = useState(false);
 
   const filterFields: FilterField[] = [
     { key: 'full_name', label: 'Student Name', type: 'text', placeholder: 'Enter name...' },
@@ -163,53 +177,95 @@ export function StudentManagement() {
     }
   }, [profile?.school_id, toast]);
 
-  
+  // Move useThrottledFetch to top level (outside useEffect)
+  const [throttledFetch] = useThrottledFetch(
+    () => fetchData(),
+    1000
+  );
 
   useEffect(() => {
     if (profile?.school_id) {
       fetchData();
     }
 
-    // Set up real-time subscriptions for students and classes
-    const studentsChannel = supabase
-      .channel('students_updates')
+    // Set up narrow real-time subscriptions for students (INSERT/UPDATE only)
+    const studentsInsertChannel = supabase
+      .channel('students_inserts')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'students'
         },
         (payload) => {
-          console.log('Student change detected:', payload);
+          console.log('[StudentManagement] Student inserted:', payload.new?.id);
           if (profile?.school_id) {
-            fetchData();
+            throttledFetch();
           }
         }
       )
       .subscribe();
 
-    const classesChannel = supabase
-      .channel('students_classes_updates')
+    const studentsUpdateChannel = supabase
+      .channel('students_updates')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'students'
+        },
+        (payload) => {
+          console.log('[StudentManagement] Student updated:', payload.new?.id);
+          if (profile?.school_id) {
+            throttledFetch();
+          }
+        }
+      )
+      .subscribe();
+
+    const classesInsertChannel = supabase
+      .channel('students_classes_inserts')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
           schema: 'public',
           table: 'classes'
         },
         (payload) => {
-          console.log('Class change detected in students view:', payload);
+          console.log('[StudentManagement] Class inserted:', payload.new?.id);
           if (profile?.school_id) {
-            fetchData();
+            throttledFetch();
+          }
+        }
+      )
+      .subscribe();
+
+    const classesUpdateChannel = supabase
+      .channel('students_classes_updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'classes'
+        },
+        (payload) => {
+          console.log('[StudentManagement] Class updated:', payload.new?.id);
+          if (profile?.school_id) {
+            throttledFetch();
           }
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(studentsChannel);
-      supabase.removeChannel(classesChannel);
+      supabase.removeChannel(studentsInsertChannel);
+      supabase.removeChannel(studentsUpdateChannel);
+      supabase.removeChannel(classesInsertChannel);
+      supabase.removeChannel(classesUpdateChannel);
     };
   }, [profile, fetchData]);
 
@@ -223,7 +279,9 @@ export function StudentManagement() {
       return;
     }
 
-    // Validate required fields
+    setValidationError(null);
+    setIsFormSubmitting(true);
+
     try {
       // Validate form data against schema
       const validationResult = studentSchema.safeParse(values);
@@ -231,14 +289,64 @@ export function StudentManagement() {
       if (!validationResult.success) {
         const errors = validationResult.error.errors;
         const firstError = errors[0];
+        const fieldName = firstError.path[0] || 'Unknown field';
+        
+        setValidationError({
+          field: String(fieldName),
+          message: firstError.message || "Please check all required fields",
+          code: 'SCHEMA_VALIDATION_ERROR'
+        });
         
         toast({
           title: "Validation Error",
-          description: firstError.message || "Please check all required fields",
+          description: `${fieldName}: ${firstError.message || "Invalid value"}`,
           variant: "destructive",
         });
         return;
       }
+
+      // Additional field validations
+      if (values.guardian_email) {
+        const emailError = validateEmail(values.guardian_email);
+        if (emailError) {
+          setValidationError(emailError);
+          toast({
+            title: "Invalid Email",
+            description: emailError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      if (values.guardian_phone) {
+        const phoneError = validatePhone(values.guardian_phone);
+        if (phoneError) {
+          setValidationError(phoneError);
+          toast({
+            title: "Invalid Phone Number",
+            description: phoneError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      // Check for duplicate student ID
+      const duplicateError = await checkStudentIDDuplicate(
+        profile.school_id,
+        values.student_id
+      );
+      if (duplicateError) {
+        setValidationError(duplicateError);
+        toast({
+          title: "Duplicate Student ID",
+          description: duplicateError.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Generate admission date as current date
       const admissionDate = new Date().toISOString().split('T')[0];
 
@@ -275,35 +383,53 @@ export function StudentManagement() {
           details: error.details,
           hint: error.hint
         });
-        throw error;
+        
+        // Log failed audit event
+        await auditLog.logFailedAction('CREATE', values.student_id, error.message);
+        
+        let errorMessage = error.message || "Failed to add student";
+        if (error.code === '23505') {
+          errorMessage = "A student with this ID already exists in the system.";
+        }
+        
+        throw new Error(errorMessage);
       }
 
       console.log('Successfully added student:', data);
 
+      // Log successful audit event
+      await auditLog.logAction('CREATE', data.id, {
+        entityName: values.full_name,
+        metadata: { student_id: values.student_id },
+      });
+
       toast({
         title: "Success",
-        description: "Student added successfully",
+        description: `Student "${values.full_name}" added successfully with ID ${values.student_id}`,
       });
 
       setIsAddDialogOpen(false);
       form.reset();
+      setValidationError(null);
       fetchData();
     } catch (error: unknown) {
       console.error('Error adding student:', error);
       
-      if (error instanceof Error) {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to add student",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to add student",
-          variant: "destructive",
-        });
-      }
+      const errorMessage = error instanceof Error ? error.message : "Failed to add student";
+      
+      toast({
+        title: "Error Adding Student",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      
+      setValidationError({
+        field: 'form',
+        message: errorMessage,
+        code: 'FORM_SUBMISSION_ERROR'
+      });
+    } finally {
+      setIsFormSubmitting(false);
     }
   };
 
@@ -317,52 +443,149 @@ export function StudentManagement() {
       return;
     }
 
+    setValidationError(null);
+    setIsFormSubmitting(true);
+
     try {
+      // Additional field validations
+      if (values.guardian_email) {
+        const emailError = validateEmail(values.guardian_email);
+        if (emailError) {
+          setValidationError(emailError);
+          toast({
+            title: "Invalid Email",
+            description: emailError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      if (values.guardian_phone) {
+        const phoneError = validatePhone(values.guardian_phone);
+        if (phoneError) {
+          setValidationError(phoneError);
+          toast({
+            title: "Invalid Phone Number",
+            description: phoneError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      // Check for duplicate student ID (excluding current student)
+      if (values.student_id !== editingStudent.student_id) {
+        const duplicateError = await checkStudentIDDuplicate(
+          profile?.school_id!,
+          values.student_id,
+          editingStudent.id
+        );
+        if (duplicateError) {
+          setValidationError(duplicateError);
+          toast({
+            title: "Duplicate Student ID",
+            description: duplicateError.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       const { error } = await (supabase as any)
         .from('students')
         .update(values)
         .eq('id', editingStudent.id);
 
-      if (error) throw error;
+      if (error) {
+        await auditLog.logFailedAction('UPDATE', editingStudent.id, error.message);
+        
+        let errorMessage = error.message || "Failed to update student";
+        if (error.code === '23505') {
+          errorMessage = "A student with this ID already exists in the system.";
+        }
+        
+        throw new Error(errorMessage);
+      }
+
+      // Log successful audit event
+      await auditLog.logAction('UPDATE', editingStudent.id, {
+        entityName: values.full_name,
+      });
 
       toast({
         title: "Success",
-        description: "Student updated successfully",
+        description: `Student "${values.full_name}" updated successfully`,
       });
 
       setEditingStudent(null);
       form.reset();
+      setValidationError(null);
       fetchData();
     } catch (error: unknown) {
-      console.error('Error updating student:', error);
+      console.error('Error editing student:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : "Failed to update student";
+      
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update student",
+        title: "Error Updating Student",
+        description: errorMessage,
         variant: "destructive",
       });
+      
+      setValidationError({
+        field: 'form',
+        message: errorMessage,
+        code: 'FORM_SUBMISSION_ERROR'
+      });
+    } finally {
+      setIsFormSubmitting(false);
     }
   };
 
   const handleDeleteStudent = async (studentId: string) => {
     try {
+      const student = students.find(s => s.id === studentId);
+      
+      if (!student) {
+        toast({
+          title: "Error",
+          description: "Student not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { error } = await (supabase as any)
         .from('students')
         .delete()
         .eq('id', studentId);
 
-      if (error) throw error;
+      if (error) {
+        await auditLog.logFailedAction('DELETE', studentId, error.message);
+        throw error;
+      }
+
+      // Log successful audit event
+      await auditLog.logAction('DELETE', studentId, {
+        entityName: student?.full_name,
+        reason: 'Deleted by user',
+      });
 
       toast({
         title: "Success",
-        description: "Student deleted successfully",
+        description: `Student "${student.full_name}" deleted successfully`,
       });
 
       fetchData();
     } catch (error: unknown) {
       console.error('Error deleting student:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete student";
+      
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete student",
+        title: "Error Deleting Student",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -380,6 +603,69 @@ export function StudentManagement() {
     searchTerm,
     ['full_name', 'student_id', 'guardian_phone', 'guardian_email']
   );
+
+  const handleExportStudents = () => {
+    if (filteredStudents.length === 0) {
+      toast({
+        title: "No Data to Export",
+        description: "There are no students matching the current filters. Please adjust your filters or search criteria.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const csvHeaders = [
+      'Student Name',
+      'Student ID',
+      'Gender',
+      'Date of Birth',
+      'Status',
+      'Class',
+      'Section',
+      'Guardian Phone',
+      'Guardian Email',
+      'Address',
+      'Admission Date'
+    ];
+
+    const escapeCsvValue = (value: string | null | undefined) => {
+      const safeValue = value ?? '';
+      const escaped = safeValue.replace(/"/g, '""');
+      return `"${escaped}"`;
+    };
+
+    const csvRows = filteredStudents.map((student) => [
+      escapeCsvValue(student.full_name),
+      escapeCsvValue(student.student_id),
+      escapeCsvValue(student.gender),
+      escapeCsvValue(student.date_of_birth),
+      escapeCsvValue(student.status),
+      escapeCsvValue(student.classes?.name || ''),
+      escapeCsvValue(student.classes?.section || ''),
+      escapeCsvValue(student.guardian_phone),
+      escapeCsvValue(student.guardian_email),
+      escapeCsvValue(student.address),
+      escapeCsvValue(student.admission_date),
+    ]);
+
+    const csvContent = [csvHeaders.map(escapeCsvValue).join(','), ...csvRows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([`\ufeff${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const datePart = new Date().toISOString().split('T')[0];
+
+    link.href = url;
+    link.download = `students-export-${datePart}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Export Successful",
+      description: `${filteredStudents.length} student${filteredStudents.length !== 1 ? 's' : ''} exported successfully.`,
+    });
+  };
 
   const openEditDialog = (student: Student) => {
     setEditingStudent(student);
@@ -421,7 +707,7 @@ export function StudentManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -435,7 +721,7 @@ export function StudentManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 bg-success/10 rounded-lg flex items-center justify-center">
@@ -449,7 +735,7 @@ export function StudentManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 bg-warning/10 rounded-lg flex items-center justify-center">
@@ -470,7 +756,7 @@ export function StudentManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-3 md:p-4">
             <div className="flex items-center gap-2 md:gap-3">
               <div className="w-8 h-8 md:w-10 md:h-10 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -486,7 +772,7 @@ export function StudentManagement() {
       </div>
 
       {/* Search and Filters */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardContent className="p-3 md:p-4">
           <div className="flex flex-col sm:flex-row gap-3 md:gap-4 items-start sm:items-center">
             <div className="flex-1 w-full">
@@ -497,7 +783,12 @@ export function StudentManagement() {
                 searchPlaceholder="Search students by name, ID, phone, or email..."
               />
             </div>
-            <Button variant="outline" size="sm" className="w-full sm:w-auto touch-target">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full sm:w-auto touch-target"
+              onClick={handleExportStudents}
+            >
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
@@ -506,7 +797,7 @@ export function StudentManagement() {
       </Card>
 
       {/* Students List */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardHeader className="p-3 md:p-6">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg md:text-xl">Students List ({filteredStudents.length})</CardTitle>
@@ -524,7 +815,7 @@ export function StudentManagement() {
           <ScrollArea className="h-[600px] px-3 md:px-6">
             <div className="space-y-3 md:space-y-4 py-3 md:py-4">
               {filteredStudents.map((student) => (
-              <div key={student.id} className="border border-border rounded-lg p-3 md:p-4 hover:shadow-soft transition-shadow duration-200">
+              <div key={student.id} className="border border-border rounded-lg p-3 md:p-4 hover:shadow-sm transition-shadow duration-200">
                 <div className="flex flex-col gap-3">
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-accent rounded-full flex items-center justify-center flex-shrink-0">
@@ -605,6 +896,14 @@ export function StudentManagement() {
           <DialogHeader>
             <DialogTitle>{editingStudent ? 'Edit Student' : 'Add New Student'}</DialogTitle>
           </DialogHeader>
+          
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{validationError.message}</AlertDescription>
+            </Alert>
+          )}
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(editingStudent ? handleEditStudent : handleAddStudent)} className="space-y-4">
               <ScrollArea className="h-[500px] pr-4">
@@ -814,12 +1113,27 @@ export function StudentManagement() {
                     setIsAddDialogOpen(false);
                     setEditingStudent(null);
                     form.reset();
+                    setValidationError(null);
                   }}
+                  disabled={isFormSubmitting}
                 >
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-gradient-primary hover:opacity-90">
-                  {editingStudent ? 'Update' : 'Add'} Student
+                <Button 
+                  type="submit" 
+                  className="bg-gradient-primary hover:opacity-90"
+                  disabled={isFormSubmitting}
+                >
+                  {isFormSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      {editingStudent ? 'Updating...' : 'Adding...'}
+                    </>
+                  ) : (
+                    <>
+                      {editingStudent ? 'Update' : 'Add'} Student
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

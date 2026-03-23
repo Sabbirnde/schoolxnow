@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ErrorTelemetryProvider } from './contexts/ErrorTelemetryContext';
 import { queryClient } from './lib/query-client';
 import './index.css';
 
@@ -47,21 +48,25 @@ if (!rootElement) {
   
   // Use the fallback element
   createRoot(fallbackRoot).render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorTelemetryProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorTelemetryProvider>
   );
 } else {
   // Normal initialization
   console.log("✅ Found root element, mounting React app...");
   createRoot(rootElement).render(
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorTelemetryProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorTelemetryProvider>
   );
 }
 

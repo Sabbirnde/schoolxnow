@@ -1,18 +1,20 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { FileText, Plus, Calendar as CalendarIcon, GraduationCap, BarChart3, Award, Edit, Trash2 } from "lucide-react";
+import { FileText, Plus, Calendar as CalendarIcon, GraduationCap, BarChart3, Award, Edit, Trash2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useForm } from "react-hook-form";
@@ -83,6 +85,7 @@ const gradeSchema = z.object({
 
 export function ExamManagement() {
   const { profile } = useAuth();
+  const auditLog = useAuditLog('EXAM');
   const [exams, setExams] = useState<Exam[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -92,6 +95,7 @@ export function ExamManagement() {
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("exams");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const examForm = useForm<ExamFormData>({
     resolver: zodResolver(examSchema),
@@ -227,7 +231,26 @@ export function ExamManagement() {
 
   const createExam = async (data: ExamFormData) => {
     setLoading(true);
+    setValidationError(null);
     try {
+      // Validate that pass_marks <= total_marks
+      if (data.pass_marks > data.total_marks) {
+        const errorMsg = "Pass marks cannot be greater than total marks";
+        setValidationError(errorMsg);
+        toast.error(errorMsg);
+        setLoading(false);
+        return;
+      }
+
+      // Validate exam date is in future
+      if (data.exam_date < new Date()) {
+        const errorMsg = "Exam date cannot be in the past";
+        setValidationError(errorMsg);
+        toast.error(errorMsg);
+        setLoading(false);
+        return;
+      }
+
       const { error } = await supabase
         .from('exams')
         .insert({
@@ -243,13 +266,26 @@ export function ExamManagement() {
 
       if (error) throw error;
 
+      await auditLog.logAction('CREATE', 'new', {
+        entityName: data.name,
+        class_level: data.class_level,
+        exam_date: format(data.exam_date, 'yyyy-MM-dd'),
+        total_marks: data.total_marks,
+        pass_marks: data.pass_marks,
+      });
+
       toast.success('Exam created successfully');
       setDialogOpen(false);
       examForm.reset();
       loadExams();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating exam:', error);
-      toast.error('Failed to create exam');
+      await auditLog.logFailedAction('new', {
+        entityName: data.name,
+        action: 'CREATE',
+        error: error.message || 'Unknown error',
+      });
+      toast.error(error.message || 'Failed to create exam');
     } finally {
       setLoading(false);
     }
@@ -261,6 +297,19 @@ export function ExamManagement() {
     try {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
+
+      // Validate obtainedMarks <= total_marks
+      if (obtainedMarks > exam.total_marks) {
+        const errorMsg = `Obtained marks cannot exceed total marks (${exam.total_marks})`;
+        toast.error(errorMsg);
+        return;
+      }
+
+      if (obtainedMarks < 0) {
+        const errorMsg = "Obtained marks cannot be negative";
+        toast.error(errorMsg);
+        return;
+      }
 
       // Calculate grade
       const percentage = (obtainedMarks / exam.total_marks) * 100;
@@ -274,6 +323,7 @@ export function ExamManagement() {
 
       // Check if result already exists
       const existingResult = examResults.find(r => r.student_id === studentId);
+      const student = students.find(s => s.id === studentId);
 
       if (existingResult) {
         // Update existing result
@@ -286,9 +336,19 @@ export function ExamManagement() {
           .eq('id', existingResult.id);
 
         if (error) throw error;
+
+        await auditLog.logAction('UPDATE_RESULT', existingResult.id, {
+          studentId: student?.student_id,
+          studentName: student?.full_name,
+          examName: exam.name,
+          marksObtained: obtainedMarks,
+          totalMarks: exam.total_marks,
+          grade: grade,
+          actionType: 'Result Updated',
+        });
       } else {
         // Create new result
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('exam_results')
           .insert({
             school_id: profile?.school_id,
@@ -298,16 +358,42 @@ export function ExamManagement() {
             obtained_marks: obtainedMarks,
             total_marks: exam.total_marks,
             grade: grade,
-          } as any);
+          } as any)
+          .select();
 
         if (error) throw error;
+
+        const newResultId = data?.[0]?.id || 'new';
+        await auditLog.logAction('UPDATE_RESULT', newResultId, {
+          studentId: student?.student_id,
+          studentName: student?.full_name,
+          examName: exam.name,
+          marksObtained: obtainedMarks,
+          totalMarks: exam.total_marks,
+          grade: grade,
+          actionType: 'Result Created',
+        });
       }
 
       toast.success('Result updated successfully');
       loadExamResults();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating exam result:', error);
-      toast.error('Failed to update result');
+      const student = students.find(s => s.id === studentId);
+      const exam = exams.find(e => e.id === selectedExam);
+      
+      if (student && exam) {
+        await auditLog.logFailedAction(selectedExam, {
+          studentId: student.student_id,
+          studentName: student.full_name,
+          examName: exam.name,
+          marksObtained: obtainedMarks,
+          action: 'UPDATE_RESULT',
+          error: error.message || 'Unknown error',
+        });
+      }
+      
+      toast.error(error.message || 'Failed to update result');
     }
   };
 
@@ -374,7 +460,12 @@ export function ExamManagement() {
                     Create and manage exams for different classes
                   </CardDescription>
                 </div>
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={(open) => {
+                  setDialogOpen(open);
+                  if (!open) {
+                    setValidationError(null);
+                  }
+                }}>
                   <DialogTrigger asChild>
                     <Button className="w-full sm:w-auto touch-target">
                       <Plus className="h-4 w-4 mr-2" />
@@ -388,6 +479,12 @@ export function ExamManagement() {
                         Set up a new exam for your students
                       </DialogDescription>
                     </DialogHeader>
+                    {validationError && (
+                      <Alert variant="destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription>{validationError}</AlertDescription>
+                      </Alert>
+                    )}
                     <Form {...examForm}>
                       <form onSubmit={examForm.handleSubmit(createExam)} className="space-y-3 md:space-y-4">
                         <FormField

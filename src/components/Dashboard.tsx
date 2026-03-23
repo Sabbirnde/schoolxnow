@@ -76,7 +76,7 @@ export function Dashboard() {
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title} className="shadow-soft hover:shadow-medium transition-shadow duration-200">
+            <Card key={stat.title} className="shadow-sm hover:shadow-md transition-shadow duration-200">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">
                   {stat.title}
@@ -103,7 +103,7 @@ export function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Activities */}
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-primary" />
@@ -133,7 +133,7 @@ export function Dashboard() {
         </Card>
 
         {/* Upcoming Events */}
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-accent" />
@@ -166,7 +166,7 @@ export function Dashboard() {
       </div>
 
       {/* Quick Actions */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>
         </CardHeader>

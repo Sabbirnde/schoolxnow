@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ExamMarksEntry } from '@/components/ExamMarksEntry';
 import { QuickAttendanceSheet } from '@/components/QuickAttendanceSheet';
 import { ClassPerformanceAnalytics } from '@/components/ClassPerformanceAnalytics';
+import { PendingAssignmentCard } from '@/components/PendingAssignmentCard';
 import { 
   Users, 
   GraduationCap, 
@@ -102,7 +103,7 @@ const SwipeableClassCard = ({ classItem, onSwipe, getClassStatusIcon, onTakeAtte
 
       {/* Main Card Content */}
       <div 
-        className={`relative bg-gradient-to-r from-card/80 to-card backdrop-blur-sm border border-border/50 rounded-xl shadow-soft transition-all duration-300 hover:shadow-elegant ${
+        className={`relative bg-gradient-to-r from-card/80 to-card backdrop-blur-sm border border-border/50 rounded-xl shadow-sm transition-all duration-300 hover:shadow-elegant ${
           isSwipingLeft ? '-translate-x-2 shadow-lg' : isSwipingRight ? 'translate-x-2 shadow-lg' : ''
         }`}
         onTouchStart={handleTouchStart}
@@ -202,6 +203,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
   
   // Mobile interaction states
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [statusCheckRefreshing, setStatusCheckRefreshing] = useState(false);
   const [showFab, setShowFab] = useState(false);
   const [examMarksDialogOpen, setExamMarksDialogOpen] = useState(false);
   const [quickAttendanceOpen, setQuickAttendanceOpen] = useState(false);
@@ -214,44 +216,44 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
 
   // Show pending approval screen if teacher is not approved yet
   if (profile?.approval_status === 'pending' || !profile?.school_id) {
+    const handleRefreshStatus = async () => {
+      setStatusCheckRefreshing(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (data) {
+            // Re-fetch profile which triggers re-render if status changed
+            window.location.reload();
+          }
+        }
+      } catch (error) {
+        console.error('Error checking status:', error);
+        toast({
+          title: 'Error',
+          description: 'Could not check status. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setStatusCheckRefreshing(false);
+      }
+    };
+
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-3 md:p-6">
-        <div className="text-center max-w-md w-full">
-          <div className="mb-4 md:mb-6">
-            <AlertCircle className="h-12 w-12 md:h-16 md:w-16 text-warning mx-auto mb-3 md:mb-4" />
-            <h1 className="text-xl md:text-2xl font-bold text-foreground mb-2">Application Under Review</h1>
-            <p className="text-sm md:text-base text-muted-foreground px-2">
-              Your teacher application is currently being reviewed by the school administration. 
-              You will receive access to the dashboard once your application is approved.
-            </p>
-          </div>
-          
-          <Card className="p-4 md:p-6">
-            <div className="space-y-3 md:space-y-4">
-              <div>
-                <p className="text-xs md:text-sm font-medium text-muted-foreground">Application Status</p>
-                <Badge variant="outline" className="mt-1 bg-warning/10 text-warning border-warning/20">
-                  Pending Approval
-                </Badge>
-              </div>
-              
-              <div>
-                <p className="text-xs md:text-sm font-medium text-muted-foreground">Applicant Name</p>
-                <p className="mt-1 text-sm md:text-base">{profile?.full_name}</p>
-              </div>
-              
-              <div>
-                <p className="text-xs md:text-sm font-medium text-muted-foreground">Application Date</p>
-                <p className="mt-1 text-sm md:text-base">{new Date(profile?.created_at || '').toLocaleDateString()}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <div className="mt-4 md:mt-6 text-xs md:text-sm text-muted-foreground">
-            <p>Need assistance? Contact the school administration.</p>
-          </div>
-        </div>
-      </div>
+      <PendingAssignmentCard
+        type="teacher"
+        fullName={profile?.full_name || 'User'}
+        applicationDate={profile?.created_at || new Date().toISOString()}
+        approvalStatus={profile?.approval_status || 'pending'}
+        applicationId={profile?.user_id}
+        onRefresh={handleRefreshStatus}
+        isRefreshing={statusCheckRefreshing}
+      />
     );
   }
 
@@ -691,7 +693,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
       {/* Statistics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         <Card 
-          className="group relative overflow-hidden border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-primary/5 via-card to-primary/3 cursor-pointer"
+          className="group relative overflow-hidden border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-primary/5 via-card to-primary/3 cursor-pointer"
           onClick={() => setActiveModule?.('classes')}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -713,7 +715,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
         </Card>
 
         <Card 
-          className="group relative overflow-hidden border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-accent/5 via-card to-accent/3 cursor-pointer"
+          className="group relative overflow-hidden border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-accent/5 via-card to-accent/3 cursor-pointer"
           onClick={() => setActiveModule?.('students')}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-accent/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -735,7 +737,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
         </Card>
 
         <Card 
-          className="group relative overflow-hidden border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-green-500/5 via-card to-green-500/3 cursor-pointer"
+          className="group relative overflow-hidden border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-green-500/5 via-card to-green-500/3 cursor-pointer"
           onClick={() => setActiveModule?.('subjects')}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -757,7 +759,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
         </Card>
 
         <Card 
-          className="group relative overflow-hidden border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3 cursor-pointer"
+          className="group relative overflow-hidden border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3 cursor-pointer"
           onClick={() => setActiveModule?.('attendance')}
         >
           <div className="absolute inset-0 bg-gradient-to-br from-orange-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -780,7 +782,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
       </div>
 
       {/* Today's Tasks Overview */}
-      <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3">
+      <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3">
         <CardHeader className="border-b border-border/50 bg-gradient-to-r from-orange-500/5 to-orange-500/10 p-3 md:p-6">
           <CardTitle className="flex items-center gap-2 md:gap-3 text-sm md:text-lg">
             <div className="p-1.5 md:p-2 bg-orange-500/10 rounded-full">
@@ -863,7 +865,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
         {/* Today's Schedule */}
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-primary/5">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-primary/5">
           <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-accent/5 p-3 md:p-6">
             <CardTitle className="flex items-center gap-2 md:gap-3 text-sm md:text-lg">
               <div className="p-1.5 md:p-2 bg-primary/10 rounded-full">
@@ -916,7 +918,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
         <div className="space-y-4 md:space-y-6">
           {/* Recent Students */}
           {recentStudents.length > 0 && (
-            <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-blue-500/5">
+            <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-blue-500/5">
               <CardHeader className="border-b border-border/50 bg-gradient-to-r from-blue-500/5 to-blue-500/10 p-3 md:p-4">
                 <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                   <div className="p-1.5 bg-blue-500/10 rounded-full">
@@ -961,7 +963,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
 
           {/* Upcoming Deadlines */}
           {upcomingDeadlines.length > 0 && (
-            <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-red-500/5">
+            <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-red-500/5">
               <CardHeader className="border-b border-border/50 bg-gradient-to-r from-red-500/5 to-red-500/10 p-3 md:p-4">
                 <CardTitle className="flex items-center gap-2 text-sm md:text-base">
                   <div className="p-1.5 bg-red-500/10 rounded-full">
@@ -1006,7 +1008,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
           )}
 
           {/* Quick Actions */}
-          <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-accent/5">
+          <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-accent/5">
             <CardHeader className="border-b border-border/50 bg-gradient-to-r from-accent/5 to-primary/5 p-3 md:p-6">
               <CardTitle className="flex items-center gap-2 md:gap-3 text-sm md:text-lg">
                 <div className="p-1.5 md:p-2 bg-accent/10 rounded-full">
@@ -1021,7 +1023,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               <div className="grid grid-cols-2 gap-2.5 md:gap-4">
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-primary/5 hover:border-primary/30 border-border/50 bg-gradient-to-br from-card to-primary/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-primary/5 hover:border-primary/30 border-border/50 bg-gradient-to-br from-card to-primary/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('attendance')}
               >
                 <div className="p-2 md:p-3 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors duration-300">
@@ -1031,7 +1033,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </Button>
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-accent/5 hover:border-accent/30 border-border/50 bg-gradient-to-br from-card to-accent/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-accent/5 hover:border-accent/30 border-border/50 bg-gradient-to-br from-card to-accent/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('exams')}
               >
                 <div className="p-2 md:p-3 bg-accent/10 rounded-full group-hover:bg-accent/20 transition-colors duration-300">
@@ -1041,7 +1043,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </Button>
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-green-500/5 hover:border-green-500/30 border-border/50 bg-gradient-to-br from-card to-green-500/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-green-500/5 hover:border-green-500/30 border-border/50 bg-gradient-to-br from-card to-green-500/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('exam-marks')}
               >
                 <div className="p-2 md:p-3 bg-green-500/10 rounded-full group-hover:bg-green-500/20 transition-colors duration-300">
@@ -1051,7 +1053,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </Button>
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-blue-500/5 hover:border-blue-500/30 border-border/50 bg-gradient-to-br from-card to-blue-500/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-blue-500/5 hover:border-blue-500/30 border-border/50 bg-gradient-to-br from-card to-blue-500/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('students')}
               >
                 <div className="p-2 md:p-3 bg-blue-500/10 rounded-full group-hover:bg-blue-500/20 transition-colors duration-300">
@@ -1061,7 +1063,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </Button>
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-purple-500/5 hover:border-purple-500/30 border-border/50 bg-gradient-to-br from-card to-purple-500/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-purple-500/5 hover:border-purple-500/30 border-border/50 bg-gradient-to-br from-card to-purple-500/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('classes')}
               >
                 <div className="p-2 md:p-3 bg-purple-500/10 rounded-full group-hover:bg-purple-500/20 transition-colors duration-300">
@@ -1071,7 +1073,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </Button>
               <Button 
                 variant="outline" 
-                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-orange-500/5 hover:border-orange-500/30 border-border/50 bg-gradient-to-br from-card to-orange-500/5 shadow-soft hover:shadow-elegant transition-all duration-300"
+                className="group h-auto p-3 md:p-5 flex flex-col items-center gap-1.5 md:gap-3 touch-target hover:bg-orange-500/5 hover:border-orange-500/30 border-border/50 bg-gradient-to-br from-card to-orange-500/5 shadow-sm hover:shadow-elegant transition-all duration-300"
                 onClick={() => setActiveModule?.('timetable')}
               >
                 <div className="p-2 md:p-3 bg-orange-500/10 rounded-full group-hover:bg-orange-500/20 transition-colors duration-300">
@@ -1086,7 +1088,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
       </div>
 
       {/* Performance Analytics */}
-      <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-indigo-500/5">
+      <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-indigo-500/5">
         <CardHeader className="border-b border-border/50 bg-gradient-to-r from-indigo-500/5 to-purple-500/5 p-3 md:p-6">
           <CardTitle className="flex items-center gap-2 md:gap-3 text-sm md:text-lg">
             <div className="p-1.5 md:p-2 bg-indigo-500/10 rounded-full">
@@ -1107,7 +1109,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
 
       {/* Teacher Profile */}
       {teacherInfo && (
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-primary/3">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-card via-card/95 to-primary/3">
           <CardHeader className="border-b border-border/50 bg-gradient-to-r from-primary/3 to-accent/3">
             <CardTitle className="flex items-center gap-3 text-base md:text-lg">
               <div className="p-2 bg-primary/10 rounded-full">

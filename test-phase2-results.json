@@ -1,0 +1,93 @@
+{
+  "timestamp": "2026-03-23T15:58:10.521Z",
+  "phase": 2,
+  "title": "Route Protection Testing",
+  "summary": {
+    "totalTests": 26,
+    "passed": 26,
+    "failed": 0,
+    "successRate": "100.0"
+  },
+  "routes": {
+    "/teacher-portal": {
+      "status": "PROTECTED",
+      "protectedFor": "teacher",
+      "deniedFor": [
+        "school_admin",
+        "student",
+        "guardian",
+        "super_admin"
+      ],
+      "redirectTo": "/dashboard",
+      "implementation": "ProtectedRoute component"
+    },
+    "/system-admin-access": {
+      "status": "PROTECTED",
+      "protectedFor": "super_admin",
+      "deniedFor": [
+        "school_admin",
+        "teacher",
+        "student",
+        "guardian"
+      ],
+      "redirectTo": "/dashboard",
+      "implementation": "ProtectedRoute component"
+    },
+    "/dashboard": {
+      "status": "AUTHENTICATED_ONLY",
+      "protectedFor": "all",
+      "redirectTo": "/auth",
+      "implementation": "BootstrapChecker component"
+    }
+  },
+  "results": [
+    {
+      "route": "/teacher-portal",
+      "role": "school_admin",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/teacher-portal",
+      "role": "student",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/teacher-portal",
+      "role": "guardian",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/teacher-portal",
+      "role": "super_admin",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/system-admin-access",
+      "role": "school_admin",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/system-admin-access",
+      "role": "teacher",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/system-admin-access",
+      "role": "student",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    },
+    {
+      "route": "/system-admin-access",
+      "role": "guardian",
+      "expectedBehavior": "redirect to /dashboard",
+      "pass": true
+    }
+  ]
+}

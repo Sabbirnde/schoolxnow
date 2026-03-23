@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +31,7 @@ interface School {
 
 const SchoolManagement = () => {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const { toast } = useToast();
   const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +64,10 @@ const SchoolManagement = () => {
   });
 
   useEffect(() => {
-    if (profile?.role === 'super_admin') {
+    if (canFull('schools.view')) {
       fetchSchools();
     }
-  }, [profile]);
+  }, [profile, canFull]);
 
   const fetchSchools = async () => {
     try {

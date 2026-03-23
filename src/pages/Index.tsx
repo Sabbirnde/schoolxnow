@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useModuleAccess } from "@/hooks/useModuleAccess";
 import { Layout } from "@/components/Layout";
 import { Dashboard } from "@/components/Dashboard";
+import { AccessDeniedFallback, ModuleLoadingSkeleton } from "@/components/AccessDeniedFallback";
 import { StudentManagement } from "@/components/StudentManagement";
 import { ClassManagement } from "@/components/ClassManagement";
 import { SubjectManagement } from "@/components/SubjectManagement";
@@ -19,11 +21,40 @@ import SchoolAdminDashboard from "@/components/SchoolAdminDashboard";
 import TeacherDashboard from "@/components/TeacherDashboard";
 import { ExamMarksEntry } from "@/components/ExamMarksEntry";
 import { ReportsAnalytics } from "@/components/ReportsAnalytics";
+import SchoolAdminReportsDashboard from "@/components/SchoolAdminReportsDashboard";
+import AcademicReports from "@/components/AcademicReports";
+import TeacherPerformanceReports from "@/components/TeacherPerformanceReports";
 import { ClassAssignment } from "@/components/ClassAssignment";
 
 const Index = () => {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, profileState } = useAuth();
+  const { canAccessModule } = useModuleAccess();
   const [activeModule, setActiveModule] = useState('dashboard');
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [deniedModule, setDeniedModule] = useState<string | null>(null);
+
+  // Handle module access validation
+  const handleSetActiveModule = useCallback(
+    (moduleId: string) => {
+      const accessCheck = canAccessModule(moduleId);
+
+      if (!accessCheck.canAccess) {
+        console.warn(
+          `[Module Access] Denied for module '${moduleId}':`,
+          accessCheck.reason
+        );
+        setAccessDenied(true);
+        setDeniedModule(moduleId);
+        return;
+      }
+
+      // Access granted, clear any previous denied state
+      setAccessDenied(false);
+      setDeniedModule(null);
+      setActiveModule(moduleId);
+    },
+    [canAccessModule]
+  );
 
   // Redirect to landing page if not logged in
   if (!loading && !user) {
@@ -32,10 +63,25 @@ const Index = () => {
 
   // Show loading spinner while checking auth
   if (loading) {
+    return <ModuleLoadingSkeleton />;
+  }
+
+  // Keep route in loading state only while profile resolution is in progress.
+  if (user && (profileState?.status === 'idle' || profileState?.status === 'loading')) {
+    return <ModuleLoadingSkeleton />;
+  }
+
+  // Show access denied screen if denied and not already on dashboard
+  if (accessDenied && deniedModule) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
-      </div>
+      <AccessDeniedFallback
+        moduleId={deniedModule}
+        onBackToDashboard={() => {
+          setAccessDenied(false);
+          setDeniedModule(null);
+          setActiveModule('dashboard');
+        }}
+      />
     );
   }
 
@@ -46,6 +92,7 @@ const Index = () => {
         case 'students': return <StudentManagement />;
         case 'schools': return <SchoolManagement />;
         case 'users': return <SchoolAdminManagement />; // Super admin manages school admins
+        case 'reports': return <SchoolAdminReportsDashboard />;
         case 'settings': return <Settings />;
         case 'dashboard':
         default: return <SuperAdminDashboard />;
@@ -61,11 +108,12 @@ const Index = () => {
         case 'exams': return <ExamManagement />;
         case 'timetable': return <TimetableManagement />;
         case 'users': return <TeacherManagement />; // School admin manages teachers
-        case 'reports': return <ReportsAnalytics />;
+        case 'reports': return <SchoolAdminReportsDashboard />;
+        case 'teacher-reports': return <TeacherPerformanceReports />;
         case 'class-assignment': return <ClassAssignment />;
         case 'settings': return <Settings />;
         case 'dashboard':
-        default: return <SchoolAdminDashboard />;
+        default: return <SchoolAdminDashboard setActiveModule={handleSetActiveModule} />;
       }
     }
     
@@ -104,7 +152,7 @@ const Index = () => {
   };
 
   return (
-    <Layout activeModule={activeModule} setActiveModule={setActiveModule}>
+    <Layout activeModule={activeModule} setActiveModule={handleSetActiveModule}>
       {renderContent()}
     </Layout>
   );

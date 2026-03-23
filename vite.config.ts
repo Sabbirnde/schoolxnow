@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  optimizeDeps: {
+    rolldownOptions: {
+      commonjsOptions: { transformMixedEsModules: true },
+    },
+  },
   plugins: [
     react(),
     mode === 'development' && componentTagger(),

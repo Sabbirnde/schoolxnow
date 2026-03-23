@@ -5,12 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSchoolStats } from "@/hooks/useSchoolStats";
 import { useToast } from "@/hooks/use-toast";
+import { PendingAssignmentCard } from "@/components/PendingAssignmentCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardSkeleton } from "@/components/ui/skeleton-loader";
 import { TeacherApplicationsManager } from "@/components/TeacherApplicationsManager";
 import { AttendanceManagement } from "@/components/AttendanceManagement";
 import { ExamManagement } from "@/components/ExamManagement";
+import { EnhancedActivityFeed } from "@/components/SchoolAdmin/EnhancedActivityFeed";
+import { TodaysTasksOverview } from "@/components/SchoolAdmin/TodaysTasksOverview";
+import { StatsCardWithTrends } from "@/components/SchoolAdmin/StatsCardWithTrends";
+import { StatsDetailModal } from "@/components/SchoolAdmin/StatsDetailModal";
 import { 
   Users, 
   GraduationCap, 
@@ -37,8 +43,13 @@ interface SchoolStats {
   recentAdmissions: number;
 }
 
-const SchoolAdminDashboard = () => {
+interface SchoolAdminDashboardProps {
+  setActiveModule?: (moduleId: string) => void;
+}
+
+const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) => {
   const { profile } = useAuth();
+  const fetchSchoolStats = useSchoolStats();
   const [stats, setStats] = useState<SchoolStats>({
     totalStudents: 0,
     activeStudents: 0,
@@ -50,56 +61,22 @@ const SchoolAdminDashboard = () => {
   const [schoolInfo, setSchoolInfo] = useState<any>(null);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [filterType, setFilterType] = useState<string | null>(null);
+  
+  // Modal state for stats drill-down
+  const [statsModalOpen, setStatsModalOpen] = useState(false);
+  const [selectedStatType, setSelectedStatType] = useState<string | null>(null);
+  const [statsModalData, setStatsModalData] = useState<any[]>([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  
   const { toast } = useToast();
-
-  // Show pending assignment screen if school admin is not assigned to a school yet
-  if (profile?.approval_status === 'pending' || !profile?.school_id) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6">
-        <div className="text-center max-w-md">
-          <div className="mb-6">
-            <School className="h-16 w-16 text-blue-500 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-foreground mb-2">School Assignment Pending</h1>
-            <p className="text-muted-foreground">
-              Your school administrator account is awaiting school assignment. 
-              Please contact the system administrator to assign you to a school.
-            </p>
-          </div>
-          
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Account Status</p>
-                <Badge variant="outline" className="mt-1 bg-blue-100 text-blue-800">
-                  {profile?.approval_status === 'pending' ? 'Pending Approval' : 'School Assignment Required'}
-                </Badge>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Administrator Name</p>
-                <p className="mt-1">{profile?.full_name}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Account Created</p>
-                <p className="mt-1">{new Date(profile?.created_at || '').toLocaleDateString()}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <div className="mt-6 text-sm text-muted-foreground">
-            <p>Once assigned to a school, you'll have full access to the dashboard.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   useEffect(() => {
     if (profile?.school_id) {
       fetchDashboardData();
     }
-  }, [profile]);
+  }, [profile?.school_id]);
 
   const fetchDashboardData = async () => {
     if (!profile?.school_id) {
@@ -120,57 +97,9 @@ const SchoolAdminDashboard = () => {
       if (schoolError) throw schoolError;
       setSchoolInfo(school);
 
-      // Fetch students count
-      const { count: totalStudents } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id);
-
-      const { count: activeStudents } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id)
-        .eq('status', 'active');
-
-      // Fetch teachers count
-      const { count: totalTeachers } = await supabase
-        .from('teachers')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true);
-
-      // Fetch classes count
-      const { count: totalClasses } = await supabase
-        .from('classes')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true);
-
-      // Fetch subjects count
-      const { count: totalSubjects } = await supabase
-        .from('subjects')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true);
-
-      // Fetch recent admissions (last 30 days)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
-      const { count: recentAdmissions } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true })
-        .eq('school_id', profile.school_id)
-        .gte('admission_date', thirtyDaysAgo.toISOString().split('T')[0]);
-
-      setStats({
-        totalStudents: totalStudents || 0,
-        activeStudents: activeStudents || 0,
-        totalTeachers: totalTeachers || 0,
-        totalClasses: totalClasses || 0,
-        totalSubjects: totalSubjects || 0,
-        recentAdmissions: recentAdmissions || 0,
-      });
+      // Fetch all dashboard stats using consolidated RPC function
+      const statsData = await fetchSchoolStats(profile.school_id);
+      setStats(statsData);
 
       // Fetch recent activities (recent students)
       const { data: recentStudents, error: studentsError } = await supabase
@@ -207,6 +136,138 @@ const SchoolAdminDashboard = () => {
         return type;
     }
   };
+
+  // Handle stat card click to open drill-down modal
+  const handleStatClick = async (statType: string) => {
+    setSelectedStatType(statType);
+    setStatsLoading(true);
+    
+    try {
+      if (!profile?.school_id) throw new Error('School ID not found');
+
+      let data: any[] = [];
+
+      switch (statType) {
+        case 'totalStudents':
+          const { data: allStudents } = await supabase
+            .from('students')
+            .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
+            .eq('school_id', profile.school_id)
+            .order('admission_date', { ascending: false });
+          data = allStudents || [];
+          break;
+
+        case 'activeStudents':
+          const { data: active } = await supabase
+            .from('students')
+            .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
+            .eq('school_id', profile.school_id)
+            .eq('status', 'active')
+            .order('admission_date', { ascending: false });
+          data = active || [];
+          break;
+
+        case 'totalTeachers':
+          const { data: teachers } = await supabase
+            .from('teachers')
+            .select('id, full_name, email, phone, is_active, created_at')
+            .eq('school_id', profile.school_id)
+            .order('created_at', { ascending: false });
+          data = teachers || [];
+          break;
+
+        case 'totalClasses':
+          const { data: classes } = await supabase
+            .from('classes')
+            .select('id, name, section, is_active, created_at')
+            .eq('school_id', profile.school_id)
+            .order('name', { ascending: true });
+          data = classes || [];
+          break;
+
+        case 'totalSubjects':
+          const { data: subjects } = await supabase
+            .from('subjects')
+            .select('id, name, is_active, created_at')
+            .eq('school_id', profile.school_id)
+            .order('name', { ascending: true });
+          data = subjects || [];
+          break;
+
+        case 'recentAdmissions':
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          const { data: recent } = await supabase
+            .from('students')
+            .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
+            .eq('school_id', profile.school_id)
+            .eq('status', 'active')
+            .gte('admission_date', thirtyDaysAgo.toISOString())
+            .order('admission_date', { ascending: false });
+          data = recent || [];
+          break;
+      }
+
+      setStatsModalData(data);
+      setStatsModalOpen(true);
+    } catch (error: any) {
+      console.error('Error fetching drill-down data:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load detailed data',
+        variant: 'destructive',
+      });
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  if (!profile) {
+    return <DashboardSkeleton />;
+  }
+
+  // Show pending assignment screen if school admin is not assigned to a school yet
+  if (profile.approval_status === 'pending' || !profile.school_id) {
+    const handleRefreshStatus = async () => {
+      setIsRefreshing(true);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+          
+          if (data) {
+            // Re-fetch profile which triggers re-render if status changed
+            window.location.reload();
+          }
+        }
+      } catch (error) {
+        console.error('Error checking status:', error);
+        toast({
+          title: 'Error',
+          description: 'Could not check status. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsRefreshing(false);
+      }
+    };
+
+    return (
+      <PendingAssignmentCard
+        type="school_admin"
+        fullName={profile?.full_name || 'User'}
+        applicationDate={profile?.created_at || new Date().toISOString()}
+        approvalStatus={profile?.approval_status || 'pending'}
+        applicationId={profile?.user_id}
+        onRefresh={handleRefreshStatus}
+        isRefreshing={isRefreshing}
+      />
+    );
+  }
 
   if (loading) {
     return <DashboardSkeleton />;
@@ -267,98 +328,63 @@ const SchoolAdminDashboard = () => {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* Statistics Cards */}
+          {/* Today's Tasks Overview */}
+          <TodaysTasksOverview onNavigate={setActiveModule} />
+
+          {/* Statistics Cards with Trends and Drill-Down */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {/* Total Students Card */}
-            <Card className="relative overflow-hidden border-primary/20 hover:shadow-elegant transition-all duration-300 group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Students</CardTitle>
-                <div className="p-2 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
-                  <GraduationCap className="h-5 w-5 text-primary" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-primary mb-1">{stats.totalStudents}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Activity className="h-3 w-3" />
-                  <span>{stats.activeStudents} active students</span>
-                </div>
-              </CardContent>
-            </Card>
+            <StatsCardWithTrends
+              title="Total Students"
+              value={stats.totalStudents}
+              icon={<GraduationCap className="h-5 w-5 text-primary" />}
+              color="text-primary"
+              secondaryValue={{
+                label: "Active",
+                value: stats.activeStudents,
+              }}
+              onClick={() => handleStatClick('totalStudents')}
+            />
 
-            {/* Teachers Card */}
-            <Card className="relative overflow-hidden border-accent/20 hover:shadow-elegant transition-all duration-300 group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent/20 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Teaching Staff</CardTitle>
-                <div className="p-2 bg-accent/10 rounded-lg group-hover:scale-110 transition-transform">
-                  <Users className="h-5 w-5 text-accent" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-accent mb-1">{stats.totalTeachers}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Award className="h-3 w-3" />
-                  <span>Active teachers</span>
-                </div>
-              </CardContent>
-            </Card>
+            <StatsCardWithTrends
+              title="Teaching Staff"
+              value={stats.totalTeachers}
+              icon={<Users className="h-5 w-5 text-accent" />}
+              color="text-accent"
+              description="Active teachers"
+              onClick={() => handleStatClick('totalTeachers')}
+            />
 
-            {/* Classes Card */}
-            <Card className="relative overflow-hidden hover:shadow-elegant transition-all duration-300 group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Classes</CardTitle>
-                <div className="p-2 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
-                  <BookOpen className="h-5 w-5 text-primary" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-1">{stats.totalClasses}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active classes
-                </p>
-              </CardContent>
-            </Card>
+            <StatsCardWithTrends
+              title="Classes"
+              value={stats.totalClasses}
+              icon={<BookOpen className="h-5 w-5 text-primary" />}
+              color="text-primary"
+              description="Active classes"
+              onClick={() => handleStatClick('totalClasses')}
+            />
 
-            {/* Subjects Card */}
-            <Card className="relative overflow-hidden hover:shadow-elegant transition-all duration-300 group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent/10 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Subjects</CardTitle>
-                <div className="p-2 bg-accent/10 rounded-lg group-hover:scale-110 transition-transform">
-                  <ClipboardList className="h-5 w-5 text-accent" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold mb-1">{stats.totalSubjects}</div>
-                <p className="text-xs text-muted-foreground">
-                  Curriculum subjects
-                </p>
-              </CardContent>
-            </Card>
+            <StatsCardWithTrends
+              title="Subjects"
+              value={stats.totalSubjects}
+              icon={<ClipboardList className="h-5 w-5 text-accent" />}
+              color="text-accent"
+              description="Curriculum subjects"
+              onClick={() => handleStatClick('totalSubjects')}
+            />
 
-            {/* Recent Admissions Card */}
-            <Card className="relative overflow-hidden border-primary/20 hover:shadow-elegant transition-all duration-300 group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/20 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Recent Admissions</CardTitle>
-                <div className="p-2 bg-primary/10 rounded-lg group-hover:scale-110 transition-transform">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-primary mb-1">{stats.recentAdmissions}</div>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  <span>Last 30 days</span>
-                </div>
-              </CardContent>
-            </Card>
+            <StatsCardWithTrends
+              title="Recent Admissions"
+              value={stats.recentAdmissions}
+              icon={<TrendingUp className="h-5 w-5 text-primary" />}
+              color="text-primary"
+              description="Last 30 days"
+              onClick={() => handleStatClick('recentAdmissions')}
+            />
 
-            {/* Reports Card */}
-            <Card className="relative overflow-hidden hover:shadow-elegant transition-all duration-300 group">
+            <Card 
+              onClick={() => setActiveModule?.('reports')}
+              className="relative overflow-hidden hover:shadow-elegant transition-all duration-300 group cursor-pointer"
+            >
               <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-accent/10 to-transparent rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500" />
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Analytics</CardTitle>
@@ -367,7 +393,7 @@ const SchoolAdminDashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <Button variant="outline" className="w-full hover:bg-accent/5 hover:border-accent/30">
+                <Button onClick={(e) => { e.stopPropagation(); setActiveModule?.('reports'); }} variant="outline" className="w-full hover:bg-accent/5 hover:border-accent/30">
                   <FileText className="w-4 h-4 mr-2" />
                   View Reports
                 </Button>
@@ -375,93 +401,8 @@ const SchoolAdminDashboard = () => {
             </Card>
           </div>
 
-          {/* Recent Activities */}
-          <Card className="border-primary/10 shadow-sm">
-            <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-              <CardTitle className="flex items-center gap-2">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Calendar className="h-5 w-5 text-primary" />
-                </div>
-                Recent Student Admissions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {recentActivities.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <div className="p-4 bg-muted/30 rounded-full w-fit mx-auto mb-4">
-                    <GraduationCap className="h-12 w-12 opacity-50" />
-                  </div>
-                  <p className="text-lg font-medium mb-1">No Recent Admissions</p>
-                  <p className="text-sm">New student admissions will appear here</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {recentActivities.map((student, index) => (
-                    <div 
-                      key={index} 
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-transparent rounded-lg border border-border/50 hover:border-primary/30 transition-all duration-200 group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-full group-hover:bg-primary/20 transition-colors">
-                          <GraduationCap className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">{student.full_name}</p>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Clock className="h-3 w-3" />
-                            <span>Admitted on {new Date(student.admission_date).toLocaleDateString()}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="bg-background/50">
-                        {student.classes?.name || 'No Class Assigned'}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Button 
-              variant="outline" 
-              className="h-auto p-6 flex flex-col items-center gap-3 hover:bg-primary/5 hover:border-primary/30 transition-all duration-200 group"
-            >
-              <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
-                <UserPlus className="h-6 w-6 text-primary" />
-              </div>
-              <span className="font-medium">Add New Student</span>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto p-6 flex flex-col items-center gap-3 hover:bg-accent/5 hover:border-accent/30 transition-all duration-200 group"
-            >
-              <div className="p-3 bg-accent/10 rounded-xl group-hover:bg-accent/20 transition-colors">
-                <Users className="h-6 w-6 text-accent" />
-              </div>
-              <span className="font-medium">Manage Teachers</span>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto p-6 flex flex-col items-center gap-3 hover:bg-primary/5 hover:border-primary/30 transition-all duration-200 group"
-            >
-              <div className="p-3 bg-primary/10 rounded-xl group-hover:bg-primary/20 transition-colors">
-                <BookOpen className="h-6 w-6 text-primary" />
-              </div>
-              <span className="font-medium">Manage Classes</span>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto p-6 flex flex-col items-center gap-3 hover:bg-accent/5 hover:border-accent/30 transition-all duration-200 group"
-            >
-              <div className="p-3 bg-accent/10 rounded-xl group-hover:bg-accent/20 transition-colors">
-                <BarChart3 className="h-6 w-6 text-accent" />
-              </div>
-              <span className="font-medium">View Reports</span>
-            </Button>
-          </div>
+          {/* Enhanced Activity Feed */}
+          <EnhancedActivityFeed />
         </TabsContent>
 
         <TabsContent value="attendance">
@@ -476,6 +417,14 @@ const SchoolAdminDashboard = () => {
           <TeacherApplicationsManager />
         </TabsContent>
       </Tabs>
+
+      {/* Stats Detail Modal */}
+      <StatsDetailModal
+        isOpen={statsModalOpen}
+        onClose={() => setStatsModalOpen(false)}
+        statType={selectedStatType}
+        data={statsModalData}
+      />
     </div>
   );
 };

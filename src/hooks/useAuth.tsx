@@ -1,6 +1,7 @@
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useRef, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 
 interface UserProfile {
   id: string;
@@ -18,13 +19,25 @@ interface UserProfile {
   approval_status: string | null;
 }
 
+type ProfileStateStatus = 'idle' | 'loading' | 'ready' | 'missing' | 'error';
+
+interface ProfileState {
+  status: ProfileStateStatus;
+  userId: string | null;
+  error: string | null;
+  updatedAt: string;
+}
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
+  profileState: ProfileState;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string, role?: string, schoolId?: string) => Promise<{ error: any }>;
+  signInWithOtp: (email: string, options?: { redirectTo?: string }) => Promise<{ error: any }>;
+  verifyOtp: (email: string, token: string, type: 'email' | 'sms') => Promise<{ error: any }>;
   signOut: () => Promise<{ error: any }>;
 }
 
@@ -35,8 +48,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileState, setProfileState] = useState<ProfileState>({
+    status: 'idle',
+    userId: null,
+    error: null,
+    updatedAt: new Date().toISOString(),
+  });
+  const currentUserIdRef = useRef<string | null>(null);
+  const profileFetchSeqRef = useRef(0);
 
-  const fetchProfile = async (userId: string) => {
+  const transitionProfileState = useCallback((status: ProfileStateStatus, userId: string | null, error: string | null = null) => {
+    setProfileState({
+      status,
+      userId,
+      error,
+      updatedAt: new Date().toISOString(),
+    });
+  }, []);
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    // Prevent fetch if user has been cleared (logout)
+    if (!userId) return;
+
+    const fetchSeq = ++profileFetchSeqRef.current;
+    transitionProfileState('loading', userId, null);
+
     try {
       // Fetch user profile
       const { data: profileData, error: profileError } = await supabase
@@ -47,6 +83,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (profileError) {
         console.error('Error fetching profile:', profileError);
+        if (fetchSeq === profileFetchSeqRef.current && currentUserIdRef.current === userId) {
+          setProfile(null);
+          transitionProfileState('error', userId, profileError.message || 'Failed to fetch profile');
+        }
         return;
       }
 
@@ -59,20 +99,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (roleError) {
         console.error('Error fetching role:', roleError);
+      }
+
+      // Use user_roles first, then fallback to role from user_profiles.
+      if (fetchSeq !== profileFetchSeqRef.current || currentUserIdRef.current !== userId) {
         return;
       }
-      
-      // Combine profile data with role
-      if (profileData && roleData) {
+
+      if (profileData) {
+        const resolvedRole = roleData?.role ?? profileData.role;
         setProfile({
           ...profileData,
-          role: roleData.role
+          role: resolvedRole,
         });
+        transitionProfileState('ready', userId, null);
+      } else {
+        setProfile(null);
+        transitionProfileState('missing', userId, null);
       }
     } catch (error) {
       console.error('Error in fetchProfile:', error);
+      if (fetchSeq === profileFetchSeqRef.current && currentUserIdRef.current === userId) {
+        setProfile(null);
+        transitionProfileState(
+          'error',
+          userId,
+          error instanceof Error ? error.message : 'Unknown profile fetch error'
+        );
+      }
     }
-  };
+  }, [transitionProfileState]);
+
+  // Create throttled version for realtime-triggered fetches (1 second window)
+  const [throttledFetchProfile] = useThrottledFetch(
+    (userId: string) => fetchProfile(userId),
+    1000
+  );
 
   useEffect(() => {
     // Set up auth state listener with improved error handling
@@ -86,29 +148,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setUser(null);
           setProfile(null);
+          currentUserIdRef.current = null;
+          profileFetchSeqRef.current += 1;
+          transitionProfileState('idle', null, null);
           setLoading(false);
           return;
         }
 
         // Handle signed out or token expired
         if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+          console.log('User signed out, clearing all auth state');
           setSession(null);
           setUser(null);
           setProfile(null);
+          currentUserIdRef.current = null;
+          profileFetchSeqRef.current += 1;
+          transitionProfileState('idle', null, null);
           setLoading(false);
           return;
         }
 
         setSession(session);
         setUser(session?.user ?? null);
+        currentUserIdRef.current = session?.user?.id ?? null;
         
         if (session?.user) {
-          // Defer profile fetch to avoid potential auth state conflicts
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
+          transitionProfileState('loading', session.user.id, null);
+          fetchProfile(session.user.id);
         } else {
           setProfile(null);
+          transitionProfileState('idle', null, null);
         }
         
         setLoading(false);
@@ -132,11 +201,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         setSession(session);
         setUser(session?.user ?? null);
+        currentUserIdRef.current = session?.user?.id ?? null;
         
         if (session?.user) {
-          setTimeout(() => {
-            fetchProfile(session.user.id);
-          }, 0);
+          transitionProfileState('loading', session.user.id, null);
+          fetchProfile(session.user.id);
+        } else {
+          setProfile(null);
+          transitionProfileState('idle', null, null);
         }
       } catch (error) {
         console.error('Session initialization error:', error);
@@ -144,6 +216,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setUser(null);
         setProfile(null);
+        currentUserIdRef.current = null;
+        profileFetchSeqRef.current += 1;
+        transitionProfileState('error', null, error instanceof Error ? error.message : 'Session initialization failed');
       } finally {
         setLoading(false);
       }
@@ -151,78 +226,103 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initializeSession();
 
-    // Set up real-time subscriptions for profile and role changes
-    let profileSubscription: any = null;
+    // Set up separate narrow real-time subscriptions for profile and role changes
+    let profileChannel: any = null;
+    let roleChannel: any = null;
     
-    const setupProfileSubscription = (userId: string) => {
+    const setupRealtimeSubscriptions = (userId: string) => {
       try {
-        // Create a channel with proper error handling
-        const channel = supabase.channel('profile-and-role-changes');
-        
-        // Add profile changes listener
-        channel.on(
+        // Separate channel for profile updates only (narrowed to UPDATE events)
+        profileChannel = supabase.channel(`auth-profile-changes:${userId}`);
+        profileChannel.on(
           'postgres_changes',
           {
             event: 'UPDATE',
             schema: 'public',
             table: 'user_profiles',
-            filter: `user_id=eq.${userId}`
+            filter: `user_id=eq.${userId}`,
           },
           (payload) => {
-            console.log('User profile change detected:', payload);
-            // Refetch profile to get updated role
-            fetchProfile(userId);
+            console.log('[Auth] Profile update detected:', payload.new?.id);
+            if (currentUserIdRef.current === userId) {
+              throttledFetchProfile(userId);
+            }
           }
         );
         
-        // Add role changes listener
-        channel.on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'user_roles',
-            filter: `user_id=eq.${userId}`
-          },
-          (payload) => {
-            console.log('User role change detected:', payload);
-            // Refetch profile to get updated role
-            fetchProfile(userId);
-          }
-        );
-        
-        // Subscribe with error handling
-        channel.subscribe((status) => {
+        profileChannel.subscribe((status) => {
           if (status !== 'SUBSCRIBED') {
-            console.warn('Profile subscription status:', status);
-          } else {
-            console.log('Successfully subscribed to profile changes');
+            console.warn('[Auth] Profile channel status:', status);
           }
         });
+
+        // Separate narrow channel for role changes (INSERT/UPDATE only, no DELETE)
+        roleChannel = supabase.channel(`auth-role-changes:${userId}`);
+        roleChannel.on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'user_roles',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            console.log('[Auth] Role inserted:', payload.new?.role);
+            if (currentUserIdRef.current === userId) {
+              throttledFetchProfile(userId);
+            }
+          }
+        );
         
-        profileSubscription = channel;
+        roleChannel.on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'user_roles',
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            console.log('[Auth] Role updated:', payload.new?.role);
+            if (currentUserIdRef.current === userId) {
+              throttledFetchProfile(userId);
+            }
+          }
+        );
+        
+        roleChannel.subscribe((status) => {
+          if (status !== 'SUBSCRIBED') {
+            console.warn('[Auth] Role channel status:', status);
+          }
+        });
       } catch (error) {
-        console.error('Error setting up profile subscription:', error);
+        console.error('[Auth] Error setting up realtime subscriptions:', error);
       }
     };
 
     if (user?.id) {
-      setupProfileSubscription(user.id);
+      setupRealtimeSubscriptions(user.id);
     }
 
     return () => {
       subscription.unsubscribe();
-      if (profileSubscription) {
-        supabase.removeChannel(profileSubscription);
+      if (profileChannel) {
+        supabase.removeChannel(profileChannel);
+      }
+      if (roleChannel) {
+        supabase.removeChannel(roleChannel);
       }
     };
-  }, [user?.id]);
+  }, [user?.id, fetchProfile, transitionProfileState]);
 
   const signIn = async (email: string, password: string) => {
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedPassword = password;
+
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: normalizedEmail,
+        password: normalizedPassword,
       });
       
       if (error) {
@@ -232,6 +332,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         if (error.message?.includes('Invalid login credentials')) {
           return { error: { ...error, message: 'Invalid email or password. Please check your credentials.' } };
+        }
+        if (error.message?.toLowerCase().includes('email not confirmed')) {
+          return { error: { ...error, message: 'Email not confirmed. Please verify your email before logging in.' } };
         }
       }
       
@@ -244,19 +347,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string, role?: string, schoolId?: string) => {
     const redirectUrl = `${window.location.origin}/`;
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedFullName = fullName.trim();
     
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
-          full_name: fullName,
+          full_name: normalizedFullName,
           role: role || 'teacher',
           school_id: schoolId || null,
         },
       },
     });
+
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
+
+      if (msg.includes('already registered') || msg.includes('already been registered')) {
+        return { error: { ...error, message: 'This email is already registered. Please sign in or reset your password.' } };
+      }
+
+      if (msg.includes('database error saving new user')) {
+        return {
+          error: {
+            ...error,
+            message: 'Account creation is temporarily unavailable due to a server profile setup issue. Please ask admin to run the latest Supabase migration and try again.'
+          }
+        };
+      }
+
+      if (msg.includes('password')) {
+        return { error: { ...error, message: error.message } };
+      }
+    }
     
     // If signup is successful and user is immediately confirmed (no email verification required)
     if (data.user && !error && role === 'super_admin') {
@@ -300,6 +426,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
+      currentUserIdRef.current = null;
+      profileFetchSeqRef.current += 1;
+      transitionProfileState('idle', null, null);
       
       if (error && !error.message?.includes('refresh')) {
         console.error('Sign out error:', error);
@@ -313,7 +442,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setSession(null);
       setProfile(null);
+      currentUserIdRef.current = null;
+      profileFetchSeqRef.current += 1;
+      transitionProfileState('idle', null, null);
       return { error: null }; // Don't block user from "signing out" locally
+    }
+  };
+
+  const signInWithOtp = async (email: string, options?: { redirectTo?: string }) => {
+    try {
+      const redirectUrl = options?.redirectTo || `${window.location.origin}/teacher-portal`;
+      
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: redirectUrl,
+          shouldCreateUser: false, // Only allow existing users
+        },
+      });
+      
+      if (error) {
+        console.error('OTP sign in error:', error);
+        return { error };
+      }
+      
+      console.log('OTP sent to:', email);
+      return { error: null };
+    } catch (error: any) {
+      console.error('Sign in with OTP error:', error);
+      return { error };
+    }
+  };
+
+  const verifyOtp = async (email: string, token: string, type: 'email' | 'sms' = 'email') => {
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type,
+      });
+      
+      if (error) {
+        console.error('OTP verification error:', error);
+        return { error };
+      }
+      
+      console.log('OTP verified for:', email);
+      return { error: null };
+    } catch (error: any) {
+      console.error('OTP verification error:', error);
+      return { error };
     }
   };
 
@@ -321,9 +499,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     session,
     profile,
+    profileState,
     loading,
     signIn,
     signUp,
+    signInWithOtp,
+    verifyOtp,
     signOut,
   };
 

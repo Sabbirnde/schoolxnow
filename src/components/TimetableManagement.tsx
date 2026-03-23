@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +60,7 @@ const timeSlots = [
 
 export function TimetableManagement() {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const [timetableEntries, setTimetableEntries] = useState<TimetableEntry[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -91,7 +93,7 @@ export function TimetableManagement() {
 
       // For teachers, get their teacher record first
       let teacherRecord = null;
-      if (profile?.role === 'teacher') {
+      if (!canFull('timetable.manage')) {
         const { data: teacherData, error: teacherError } = await supabase
           .from('teachers')
           .select('id')
@@ -111,7 +113,7 @@ export function TimetableManagement() {
         .eq('school_id', profile.school_id);
 
       // Role-based filtering: Teachers only see their own schedule
-      if (profile?.role === 'teacher' && teacherRecord) {
+      if (!canFull('timetable.manage') && teacherRecord) {
         timetableQuery = timetableQuery.eq('teacher_id', teacherRecord.id);
       }
 
@@ -354,7 +356,7 @@ export function TimetableManagement() {
                         {day.slice(0, 3)}
                       </div>
                       {entry ? (
-                        <Card className="shadow-soft bg-card/80 backdrop-blur-sm border-l-4 border-l-primary">
+                        <Card className="shadow-sm bg-card/80 backdrop-blur-sm border-l-4 border-l-primary">
                           <CardContent className="p-2">
                             <div className="space-y-1">
                               <div className="font-medium text-xs truncate text-foreground">{entry.subject_name}</div>
@@ -431,7 +433,7 @@ export function TimetableManagement() {
                       return (
                         <TableCell key={`${day}-${timeSlot}`} className="p-1 lg:p-2 align-top">
                           {entry ? (
-                            <Card className="w-full shadow-soft hover:shadow-md transition-shadow bg-card/80 backdrop-blur-sm border-l-4 border-l-primary">
+                            <Card className="w-full shadow-sm hover:shadow-md transition-shadow bg-card/80 backdrop-blur-sm border-l-4 border-l-primary">
                               <CardContent className="p-1.5 lg:p-3">
                                 <div className="space-y-1">
                                   <div className="font-medium text-xs lg:text-sm truncate text-foreground leading-tight">
@@ -444,7 +446,7 @@ export function TimetableManagement() {
                                     {entry.teacher_name}
                                   </div>
                                   {entry.room_number && (
-                                    <div className="text-[10px] lg:text-xs text-muted-foreground flex items-center gap-1 hidden lg:flex">
+                                    <div className="text-[10px] lg:text-xs text-muted-foreground hidden lg:flex items-center gap-1">
                                       <MapPin className="h-2 w-2 lg:h-3 lg:w-3" />
                                       {entry.room_number}
                                     </div>
@@ -502,7 +504,7 @@ export function TimetableManagement() {
           </div>
         ) : (
           filteredEntries.map(entry => (
-            <Card key={entry.id} className="shadow-soft hover:shadow-md transition-all duration-200 bg-card/80 backdrop-blur-sm">
+            <Card key={entry.id} className="shadow-sm hover:shadow-md transition-all duration-200 bg-card/80 backdrop-blur-sm">
               <CardContent className="p-3 lg:p-4">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -584,22 +586,22 @@ export function TimetableManagement() {
         <div>
           <div className="flex items-center gap-2 mb-2">
             <h1 className="text-xl lg:text-3xl font-bold text-foreground">
-              {profile?.role === 'teacher' ? 'My Schedule' : 'Timetable Management'}
+              {!canFull('timetable.manage') ? 'My Schedule' : 'Timetable Management'}
             </h1>
-            {profile?.role === 'teacher' && (
+            {!canFull('timetable.manage') && (
               <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
                 Personal View
               </Badge>
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            {profile?.role === 'teacher' 
+            {!canFull('timetable.manage') 
               ? 'View your teaching schedule and class assignments'
               : 'Manage class schedules and timetables with intelligent conflict detection'}
           </p>
           
           {/* Quick Stats for Teacher */}
-          {profile?.role === 'teacher' && timetableEntries.length > 0 && (
+          {!canFull('timetable.manage') && timetableEntries.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
               <div className="bg-primary/5 border border-primary/20 rounded-lg p-2">
                 <div className="text-xs text-muted-foreground">Total Classes</div>
@@ -631,7 +633,7 @@ export function TimetableManagement() {
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button 
-                className="w-full sm:w-auto touch-target bg-primary hover:bg-primary/90 text-primary-foreground shadow-soft"
+                className="w-full sm:w-auto touch-target bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
                 onClick={() => {
                   setEditingEntry(null);
                   setFormData({
@@ -910,7 +912,7 @@ export function TimetableManagement() {
           <TabsList className="w-full grid grid-cols-3 h-auto p-1 bg-muted/50 rounded-lg">
             <TabsTrigger 
               value="weekly" 
-              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
             >
               <Calendar className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
               <span className="hidden sm:inline">Weekly</span>
@@ -918,7 +920,7 @@ export function TimetableManagement() {
             </TabsTrigger>
             <TabsTrigger 
               value="teacher" 
-              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
             >
               <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
               <span className="hidden sm:inline">Teacher</span>
@@ -926,7 +928,7 @@ export function TimetableManagement() {
             </TabsTrigger>
             <TabsTrigger 
               value="class" 
-              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+              className="text-xs sm:text-sm py-2.5 px-3 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
             >
               <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
               Class
@@ -958,7 +960,7 @@ export function TimetableManagement() {
         </div>
 
         <TabsContent value="weekly" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm border-0 shadow-lg">
+          <Card className="shadow-lg bg-card/80 backdrop-blur-sm border-0">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Calendar className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -975,7 +977,7 @@ export function TimetableManagement() {
         </TabsContent>
 
         <TabsContent value="teacher" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm border-0 shadow-lg">
+          <Card className="shadow-lg bg-card/80 backdrop-blur-sm border-0">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-lg">
                 <Users className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -999,7 +1001,7 @@ export function TimetableManagement() {
         </TabsContent>
 
         <TabsContent value="class" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm border-0 shadow-lg">
+          <Card className="shadow-lg bg-card/80 backdrop-blur-sm border-0">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-lg">
                 <Clock className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />

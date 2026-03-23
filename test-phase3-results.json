@@ -1,0 +1,252 @@
+{
+  "timestamp": "2026-03-23T19:53:33.492Z",
+  "phase": 3,
+  "title": "Module Configuration & Access Control Testing",
+  "summary": {
+    "totalTests": 47,
+    "passed": 47,
+    "failed": 0,
+    "successRate": "100.0"
+  },
+  "modules": {
+    "total": 13,
+    "list": [
+      {
+        "id": "dashboard",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "admin"
+      },
+      {
+        "id": "schools",
+        "allowedRoles": [
+          "super_admin"
+        ],
+        "deniedRoles": [
+          "school_admin",
+          "teacher",
+          "student",
+          "guardian"
+        ],
+        "category": "admin"
+      },
+      {
+        "id": "users",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin"
+        ],
+        "deniedRoles": [
+          "teacher",
+          "student",
+          "guardian"
+        ],
+        "category": "admin"
+      },
+      {
+        "id": "settings",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin"
+        ],
+        "deniedRoles": [
+          "teacher",
+          "student",
+          "guardian"
+        ],
+        "category": "admin"
+      },
+      {
+        "id": "students",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "management"
+      },
+      {
+        "id": "classes",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "management"
+      },
+      {
+        "id": "subjects",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "management"
+      },
+      {
+        "id": "attendance",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "operations"
+      },
+      {
+        "id": "exams",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "operations"
+      },
+      {
+        "id": "exam-marks",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "operations"
+      },
+      {
+        "id": "timetable",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "operations"
+      },
+      {
+        "id": "class-assignment",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin"
+        ],
+        "deniedRoles": [
+          "teacher",
+          "student",
+          "guardian"
+        ],
+        "category": "management"
+      },
+      {
+        "id": "reports",
+        "allowedRoles": [
+          "school_admin",
+          "super_admin",
+          "teacher"
+        ],
+        "deniedRoles": [
+          "student",
+          "guardian"
+        ],
+        "category": "reporting"
+      }
+    ]
+  },
+  "categories": {
+    "admin": [
+      "dashboard",
+      "schools",
+      "users",
+      "settings"
+    ],
+    "management": [
+      "students",
+      "classes",
+      "subjects",
+      "class-assignment"
+    ],
+    "operations": [
+      "attendance",
+      "exams",
+      "exam-marks",
+      "timetable"
+    ],
+    "reporting": [
+      "reports"
+    ]
+  },
+  "roleAccess": {
+    "super_admin": [
+      "dashboard",
+      "schools",
+      "users",
+      "settings",
+      "students",
+      "classes",
+      "subjects",
+      "attendance",
+      "exams",
+      "exam-marks",
+      "timetable",
+      "class-assignment",
+      "reports"
+    ],
+    "school_admin": [
+      "dashboard",
+      "users",
+      "settings",
+      "students",
+      "classes",
+      "subjects",
+      "attendance",
+      "exams",
+      "exam-marks",
+      "timetable",
+      "class-assignment",
+      "reports"
+    ],
+    "teacher": [
+      "dashboard",
+      "students",
+      "classes",
+      "subjects",
+      "attendance",
+      "exams",
+      "exam-marks",
+      "timetable",
+      "reports"
+    ],
+    "student": [],
+    "guardian": []
+  }
+}

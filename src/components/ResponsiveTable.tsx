@@ -35,7 +35,7 @@ export function ResponsiveTable<T extends { id: string }>({
   };
 
   return (
-    <Card className={cn("shadow-soft", className)}>
+    <Card className={cn("shadow-sm", className)}>
       {title && (
         <CardHeader className="p-3 md:p-6">
           <CardTitle className="text-lg md:text-xl">{title}</CardTitle>

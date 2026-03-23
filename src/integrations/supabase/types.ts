@@ -127,6 +127,48 @@ export type Database = {
         }
         Relationships: []
       }
+      system_settings: {
+        Row: {
+          academic_year_end: string
+          academic_year_start: string
+          allow_registrations: boolean
+          config_key: string
+          created_at: string
+          default_school_type: string
+          id: string
+          maintenance_mode: boolean
+          max_students_per_class: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          academic_year_end?: string
+          academic_year_start?: string
+          allow_registrations?: boolean
+          config_key?: string
+          created_at?: string
+          default_school_type?: string
+          id?: string
+          maintenance_mode?: boolean
+          max_students_per_class?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          academic_year_end?: string
+          academic_year_start?: string
+          allow_registrations?: boolean
+          config_key?: string
+          created_at?: string
+          default_school_type?: string
+          id?: string
+          maintenance_mode?: boolean
+          max_students_per_class?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       classes: {
         Row: {
           capacity: number | null

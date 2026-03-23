@@ -153,7 +153,7 @@ export default function SchoolSettings() {
         <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 h-auto p-1 bg-muted/50 rounded-lg">
           <TabsTrigger 
             value="school" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <School className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">School Info</span>
@@ -161,7 +161,7 @@ export default function SchoolSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="academic" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <GraduationCap className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Academic</span>
@@ -169,7 +169,7 @@ export default function SchoolSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="system" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Settings className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">System</span>
@@ -177,7 +177,7 @@ export default function SchoolSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="notifications" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Notifications</span>
@@ -186,7 +186,7 @@ export default function SchoolSettings() {
         </TabsList>
 
         <TabsContent value="school" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <School className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -307,7 +307,7 @@ export default function SchoolSettings() {
         </TabsContent>
 
         <TabsContent value="academic" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <GraduationCap className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -392,7 +392,7 @@ export default function SchoolSettings() {
         </TabsContent>
 
         <TabsContent value="system" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Settings className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -438,7 +438,7 @@ export default function SchoolSettings() {
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Bell className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />

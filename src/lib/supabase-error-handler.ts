@@ -2,6 +2,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 import SecureConfig from './secure-config';
+import { errorTelemetry } from './error-telemetry';
 
 /**
  * Error types for better categorization
@@ -177,11 +178,46 @@ export function logSupabaseError(
     console.groupEnd();
   }
 
-  // Log to external service in production (implement as needed)
+  // Send to error telemetry in production
   if (!isDev) {
-    // TODO: Send to error tracking service (e.g., Sentry, LogRocket)
-    // IMPORTANT: Use sanitizedError and sanitizedContext to avoid exposing credentials
-    // sendErrorToTrackingService({ operation, error: sanitizedError, errorType, context: sanitizedContext });
+    // Determine severity based on error type
+    const severity = getSeverityForErrorType(errorType);
+
+    // Capture in telemetry service (sanitized)
+    errorTelemetry.captureError(sanitizedError.message || 'Supabase operation failed', {
+      error: sanitizedError,
+      errorType: errorType.toString(),
+      operation,
+      severity,
+      context: {
+        ...sanitizedContext,
+        errorCode: sanitizedError.code,
+      },
+      tags: {
+        service: 'supabase',
+        operation: operation,
+        errorType: errorType.toString(),
+      },
+    });
+  }
+}
+
+/**
+ * Determines severity level for error type
+ */
+function getSeverityForErrorType(errorType: SupabaseErrorType): 'low' | 'medium' | 'high' | 'critical' {
+  switch (errorType) {
+    case SupabaseErrorType.AUTHENTICATION:
+    case SupabaseErrorType.AUTHORIZATION:
+      return 'high';
+    case SupabaseErrorType.NETWORK:
+      return 'medium';
+    case SupabaseErrorType.DATABASE:
+      return 'high';
+    case SupabaseErrorType.VALIDATION:
+      return 'low';
+    default:
+      return 'medium';
   }
 }
 

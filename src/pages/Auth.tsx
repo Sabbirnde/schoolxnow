@@ -11,11 +11,18 @@ import { supabase } from "@/integrations/supabase/client";
 import logo from "@/assets/logo.png";
 
 const Auth = () => {
-  const { user, signIn } = useAuth();
+  const { user, signIn, signUp } = useAuth();
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [showSignup, setShowSignup] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [signupForm, setSignupForm] = useState({
+    fullName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
   const { toast } = useToast();
 
   // Redirect to home if already logged in
@@ -56,6 +63,61 @@ const Auth = () => {
       }
     } catch (err) {
       console.error('Unexpected login error:', err);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!signupForm.fullName || !signupForm.email || !signupForm.password || !signupForm.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (signupForm.password !== signupForm.confirmPassword) {
+      toast({
+        title: "Error",
+        description: "Passwords do not match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error } = await signUp(
+        signupForm.email,
+        signupForm.password,
+        signupForm.fullName,
+        "teacher"
+      );
+
+      if (error) {
+        toast({
+          title: "Signup Failed",
+          description: error.message || "Could not create account. Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Account Created",
+          description: "Your account was created. If email verification is enabled, please verify your email before logging in.",
+        });
+        setShowSignup(false);
+        setSignupForm({ fullName: "", email: "", password: "", confirmPassword: "" });
+      }
+    } catch {
       toast({
         title: "Error",
         description: "An unexpected error occurred. Please try again.",
@@ -192,6 +254,96 @@ const Auth = () => {
                 </form>
               </CardContent>
             </div>
+          ) : showSignup ? (
+            // Signup Form
+            <div>
+              <CardHeader className="space-y-2 p-4 sm:p-6">
+                <CardTitle className="text-xl sm:text-2xl">Create Account</CardTitle>
+                <CardDescription className="text-sm sm:text-base">
+                  Register a new account to access your dashboard
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name" className="text-sm">Full Name</Label>
+                    <Input
+                      id="signup-name"
+                      type="text"
+                      placeholder="Enter your full name"
+                      value={signupForm.fullName}
+                      onChange={(e) => setSignupForm({ ...signupForm, fullName: e.target.value })}
+                      disabled={loading}
+                      required
+                      className="h-11 text-base"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email" className="text-sm">Email</Label>
+                    <Input
+                      id="signup-email"
+                      type="email"
+                      placeholder="Enter your email"
+                      value={signupForm.email}
+                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                      disabled={loading}
+                      required
+                      className="h-11 text-base"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password" className="text-sm">Password</Label>
+                    <Input
+                      id="signup-password"
+                      type="password"
+                      placeholder="Create a password"
+                      value={signupForm.password}
+                      onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                      disabled={loading}
+                      required
+                      className="h-11 text-base"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-confirm-password" className="text-sm">Confirm Password</Label>
+                    <Input
+                      id="signup-confirm-password"
+                      type="password"
+                      placeholder="Confirm your password"
+                      value={signupForm.confirmPassword}
+                      onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
+                      disabled={loading}
+                      required
+                      className="h-11 text-base"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full h-11 text-base shadow-sm" disabled={loading}>
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Creating account...
+                      </>
+                    ) : (
+                      <>
+                        Create Account
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </>
+                    )}
+                  </Button>
+                  <div className="text-center text-sm">
+                    Already have an account?{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="p-0 h-auto"
+                      onClick={() => setShowSignup(false)}
+                    >
+                      Sign in
+                    </Button>
+                  </div>
+                </form>
+              </CardContent>
+            </div>
           ) : (
             // Login Form
             <div>
@@ -250,6 +402,17 @@ const Auth = () => {
                       onClick={() => setShowForgotPassword(true)}
                     >
                       Forgot your password?
+                    </Button>
+                  </div>
+                  <div className="text-center text-sm text-muted-foreground">
+                    Don't have an account?{" "}
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="p-0 h-auto"
+                      onClick={() => setShowSignup(true)}
+                    >
+                      Create one
                     </Button>
                   </div>
                 </form>

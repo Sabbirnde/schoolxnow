@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -49,6 +50,7 @@ interface ClassPerformanceProps {
 
 export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: ClassPerformanceProps) {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
@@ -72,7 +74,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
 
       // Get teacher's classes if teacher role
       let teacherClassIds: string[] = [];
-      if (profile.role === 'teacher') {
+      if (!canFull('analytics.view')) {
         const { data: teacherData } = await supabase
           .from('teachers')
           .select('id')
@@ -92,11 +94,11 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       // Determine which classes to analyze
       const targetClassIds = classId 
         ? [classId] 
-        : profile.role === 'teacher' 
+        : !canFull('analytics.view') 
         ? teacherClassIds 
         : [];
 
-      if (targetClassIds.length === 0 && profile.role === 'teacher') {
+      if (targetClassIds.length === 0 && !canFull('analytics.view')) {
         setLoading(false);
         return;
       }
@@ -316,7 +318,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-lg font-semibold text-foreground">No Student Data</p>
             <p className="text-sm text-muted-foreground">
-              {profile?.role === 'teacher' 
+              {!canFull('analytics.view') 
                 ? 'No students found in your assigned classes. Please check your timetable assignments.'
                 : 'No students found. Add students to see performance analytics.'}
             </p>
@@ -331,7 +333,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Attendance Rate */}
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-blue-500/5 via-card to-blue-500/3">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-blue-500/5 via-card to-blue-500/3">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
               Attendance Rate
@@ -360,7 +362,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
         </Card>
 
         {/* Average Grade */}
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-green-500/5 via-card to-green-500/3">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-green-500/5 via-card to-green-500/3">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
               Average Grade
@@ -389,7 +391,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
         </Card>
 
         {/* Active Students */}
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-purple-500/5 via-card to-purple-500/3">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-purple-500/5 via-card to-purple-500/3">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
               Active Students
@@ -416,7 +418,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
         </Card>
 
         {/* At-Risk Students */}
-        <Card className="border-0 shadow-soft hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3">
+        <Card className="border-0 shadow-sm hover:shadow-elegant transition-all duration-300 bg-gradient-to-br from-orange-500/5 via-card to-orange-500/3">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
               At-Risk Students
@@ -448,7 +450,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       {/* Detailed Analytics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Attendance Trend */}
-        <Card className="border-0 shadow-soft">
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <Calendar className="h-5 w-5 text-blue-500" />
@@ -497,7 +499,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
         </Card>
 
         {/* Grade Distribution */}
-        <Card className="border-0 shadow-soft">
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <BarChart3 className="h-5 w-5 text-green-500" />
@@ -549,7 +551,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       </div>
 
       {/* Additional Insights */}
-      <Card className="border-0 shadow-soft bg-gradient-to-br from-primary/5 to-accent/5">
+      <Card className="border-0 shadow-sm bg-gradient-to-br from-primary/5 to-accent/5">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CheckCircle className="h-5 w-5 text-primary" />

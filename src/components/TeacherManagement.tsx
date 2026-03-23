@@ -9,9 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AdvancedFilter, FilterField, FilterValue } from '@/components/AdvancedFilter';
 import { useAdvancedFilter } from '@/hooks/useAdvancedFilter';
-import { Edit, Users, Eye, CheckCircle, XCircle, UserX, UserPlus } from 'lucide-react';
+import { useAuditLog } from '@/hooks/useAuditLog';
+import { useFeatureAccess } from '@/hooks/useFeatureAccess';
+import { Edit, Users, Eye, CheckCircle, XCircle, UserX, UserPlus, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 interface Teacher {
@@ -30,6 +33,7 @@ interface Teacher {
 const TeacherManagement = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const auditLog = useAuditLog('TEACHER');
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,6 +43,7 @@ const TeacherManagement = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     full_name: '',
     approval_status: 'pending',
@@ -99,6 +104,7 @@ const TeacherManagement = () => {
 
   const fetchTeachers = async () => {
     try {
+      const { canFull } = useFeatureAccess();
       let query = supabase
         .from('user_profiles')
         .select(`
@@ -108,7 +114,7 @@ const TeacherManagement = () => {
         .eq('role', 'teacher');
 
       // School admins can only see teachers from their school
-      if (profile?.role === 'school_admin' && profile?.school_id) {
+      if (canFull('teachers.manage') && profile?.school_id) {
         query = query.eq('school_id', profile.school_id);
       }
 
@@ -150,6 +156,8 @@ const TeacherManagement = () => {
     if (!selectedTeacher) return;
 
     try {
+      setValidationError(null);
+      
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -163,6 +171,17 @@ const TeacherManagement = () => {
 
       if (error) {
         console.error('Error updating teacher:', error);
+        await auditLog.logFailedAction(selectedTeacher.id, {
+          entityName: selectedTeacher.full_name,
+          changes: {
+            full_name: formData.full_name,
+            approval_status: formData.approval_status,
+            is_active: formData.is_active,
+            phone: formData.phone,
+          },
+          error: error.message,
+        });
+        
         toast({
           title: 'Error',
           description: 'Failed to update teacher',
@@ -170,6 +189,16 @@ const TeacherManagement = () => {
         });
         return;
       }
+
+      await auditLog.logAction('UPDATE', selectedTeacher.id, {
+        entityName: selectedTeacher.full_name,
+        changes: {
+          full_name: formData.full_name,
+          approval_status: formData.approval_status,
+          is_active: formData.is_active,
+          phone: formData.phone,
+        },
+      });
 
       toast({
         title: 'Success',
@@ -180,11 +209,18 @@ const TeacherManagement = () => {
       fetchTeachers();
     } catch (error) {
       console.error('Error in handleUpdateTeacher:', error);
+      await auditLog.logFailedAction(selectedTeacher.id, {
+        entityName: selectedTeacher.full_name,
+        error: `Unexpected error: ${error}`,
+      });
     }
   };
 
   const handleApproveTeacher = async (teacherId: string) => {
     try {
+      const teacher = teachers.find(t => t.id === teacherId);
+      if (!teacher) return;
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ approval_status: 'approved' })
@@ -192,6 +228,13 @@ const TeacherManagement = () => {
 
       if (error) {
         console.error('Error approving teacher:', error);
+        await auditLog.logFailedAction(teacherId, {
+          entityName: teacher.full_name,
+          action: 'APPROVE',
+          transition: 'pending→approved',
+          error: error.message,
+        });
+        
         toast({
           title: 'Error',
           description: 'Failed to approve teacher',
@@ -199,6 +242,11 @@ const TeacherManagement = () => {
         });
         return;
       }
+
+      await auditLog.logAction('APPROVE', teacherId, {
+        entityName: teacher.full_name,
+        transition: 'pending→approved',
+      });
 
       toast({
         title: 'Success',
@@ -213,6 +261,9 @@ const TeacherManagement = () => {
 
   const handleRejectTeacher = async (teacherId: string) => {
     try {
+      const teacher = teachers.find(t => t.id === teacherId);
+      if (!teacher) return;
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ approval_status: 'rejected' })
@@ -220,6 +271,13 @@ const TeacherManagement = () => {
 
       if (error) {
         console.error('Error rejecting teacher:', error);
+        await auditLog.logFailedAction(teacherId, {
+          entityName: teacher.full_name,
+          action: 'REJECT',
+          transition: 'pending→rejected',
+          error: error.message,
+        });
+        
         toast({
           title: 'Error',
           description: 'Failed to reject teacher',
@@ -227,6 +285,11 @@ const TeacherManagement = () => {
         });
         return;
       }
+
+      await auditLog.logAction('REJECT', teacherId, {
+        entityName: teacher.full_name,
+        transition: 'pending→rejected',
+      });
 
       toast({
         title: 'Success',
@@ -241,6 +304,9 @@ const TeacherManagement = () => {
 
   const handleDeactivateTeacher = async (teacherId: string) => {
     try {
+      const teacher = teachers.find(t => t.id === teacherId);
+      if (!teacher) return;
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ is_active: false })
@@ -248,6 +314,13 @@ const TeacherManagement = () => {
 
       if (error) {
         console.error('Error deactivating teacher:', error);
+        await auditLog.logFailedAction(teacherId, {
+          entityName: teacher.full_name,
+          action: 'DEACTIVATE',
+          transition: 'active→inactive',
+          error: error.message,
+        });
+        
         toast({
           title: 'Error',
           description: 'Failed to deactivate teacher',
@@ -255,6 +328,12 @@ const TeacherManagement = () => {
         });
         return;
       }
+
+      await auditLog.logAction('DELETE', teacherId, {
+        entityName: teacher.full_name,
+        action: 'DEACTIVATE',
+        transition: 'active→inactive',
+      });
 
       toast({
         title: 'Success',
@@ -295,6 +374,7 @@ const TeacherManagement = () => {
     }
 
     if (!createFormData.email || !createFormData.password || !createFormData.full_name || !createFormData.phone) {
+      setValidationError('Please fill in all required fields: Email, Password, Full Name, and Phone');
       toast({
         title: 'Validation Error',
         description: 'Please fill in all required fields',
@@ -304,6 +384,8 @@ const TeacherManagement = () => {
     }
 
     try {
+      setValidationError(null);
+
       // Create auth user with teacher role
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: createFormData.email,
@@ -319,6 +401,13 @@ const TeacherManagement = () => {
       });
 
       if (authError) {
+        setValidationError(`Authentication error: ${authError.message}`);
+        await auditLog.logFailedAction('new', {
+          entityName: createFormData.full_name,
+          action: 'CREATE',
+          error: authError.message,
+        });
+        
         toast({
           title: 'Error',
           description: authError.message,
@@ -328,9 +417,17 @@ const TeacherManagement = () => {
       }
 
       if (!authData.user) {
+        const errorMsg = 'Failed to create user account';
+        setValidationError(errorMsg);
+        await auditLog.logFailedAction('new', {
+          entityName: createFormData.full_name,
+          action: 'CREATE',
+          error: errorMsg,
+        });
+        
         toast({
           title: 'Error',
-          description: 'Failed to create user account',
+          description: errorMsg,
           variant: 'destructive',
         });
         return;
@@ -359,6 +456,12 @@ const TeacherManagement = () => {
 
       if (teacherError) {
         console.error('Error creating teacher record:', teacherError);
+        await auditLog.logFailedAction(authData.user.id, {
+          entityName: createFormData.full_name,
+          action: 'CREATE',
+          error: teacherError.message,
+        });
+        
         toast({
           title: 'Error',
           description: 'Failed to create teacher record',
@@ -366,6 +469,13 @@ const TeacherManagement = () => {
         });
         return;
       }
+
+      await auditLog.logAction('CREATE', authData.user.id, {
+        entityName: createFormData.full_name,
+        email: createFormData.email,
+        phone: createFormData.phone,
+        teacher_id: teacherId,
+      });
 
       toast({
         title: 'Success',
@@ -645,6 +755,12 @@ const TeacherManagement = () => {
               Create a new teacher account with username and password
             </DialogDescription>
           </DialogHeader>
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="create_email">Email (Username) *</Label>
@@ -732,6 +848,12 @@ const TeacherManagement = () => {
               Update teacher information and permissions
             </DialogDescription>
           </DialogHeader>
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          )}
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="full_name">Full Name</Label>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
 interface BootstrapCheckerProps {
@@ -10,10 +11,18 @@ interface BootstrapCheckerProps {
 const BootstrapChecker = ({ children }: BootstrapCheckerProps) => {
   const [loading, setLoading] = useState(true);
   const [needsBootstrap, setNeedsBootstrap] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const checkBootstrapStatus = async () => {
       try {
+        // Only check bootstrap status if user is authenticated
+        // Prevents RPC errors after logout
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+
         const { data, error } = await supabase
           .rpc('super_admin_exists');
 
@@ -33,7 +42,7 @@ const BootstrapChecker = ({ children }: BootstrapCheckerProps) => {
     };
 
     checkBootstrapStatus();
-  }, []);
+  }, [user]);
 
   if (loading) {
     return (

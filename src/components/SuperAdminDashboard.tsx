@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DashboardSkeleton } from '@/components/ui/skeleton-loader';
+import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 import { 
   School, 
   Users, 
@@ -47,18 +48,37 @@ interface School {
   created_at: string;
 }
 
+interface RecentAuditLog {
+  id: string;
+  action: string;
+  entity_type: string;
+  timestamp: string;
+  success: boolean;
+  user_id: string | null;
+}
+
 const SuperAdminDashboard = () => {
   const [schools, setSchools] = useState<School[]>([]);
   const [stats, setStats] = useState({
     totalSchools: 0,
     activeSchools: 0,
+    totalSchoolAdmins: 0,
     totalStudents: 0,
     totalTeachers: 0,
     totalClasses: 0,
     totalSubjects: 0,
     pendingApplications: 0,
+    schoolsThisMonth: 0,
+    studentsThisMonth: 0,
+    teachersThisMonth: 0,
     monthlyGrowth: 0,
   });
+  const [schoolTypeStats, setSchoolTypeStats] = useState({
+    bangla_medium: 0,
+    english_medium: 0,
+    madrasha: 0,
+  });
+  const [recentActivity, setRecentActivity] = useState<RecentAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -81,49 +101,76 @@ const SuperAdminDashboard = () => {
   });
   const { toast } = useToast();
 
+  // Move useThrottledFetch to top level with a wrapper function to avoid hoisting issues
+  const [throttledFetch] = useThrottledFetch(
+    () => fetchDashboardData(),
+    1000
+  );
+
   useEffect(() => {
     fetchDashboardData();
-    
-    // Set up real-time subscriptions
-    const schoolsChannel = supabase
-      .channel('schools_changes')
-      .on('postgres_changes' as any, 
-        { event: '*', schema: 'public', table: 'schools' }, 
-        () => {
-          console.log('School data changed, refreshing dashboard...');
-          fetchDashboardData();
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Subscribed to schools changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Error subscribing to schools changes');
-        }
-      });
 
-    const studentsChannel = supabase
-      .channel('students_changes') 
-      .on('postgres_changes' as any, 
-        { event: '*', schema: 'public', table: 'students' }, 
-        () => {
-          console.log('Student data changed, refreshing dashboard...');
-          fetchDashboardData();
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Subscribed to students changes');
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Error subscribing to students changes');
-        }
-      });
+    // Set up narrow real-time subscriptions for dashboard (INSERT/UPDATE only)
+    let schoolsInsertChannel: any = null;
+    let schoolsUpdateChannel: any = null;
+    let studentsInsertChannel: any = null;
+    let studentsUpdateChannel: any = null;
+
+    try {
+      schoolsInsertChannel = supabase
+        .channel('schools_inserts')
+        .on('postgres_changes' as any, 
+          { event: 'INSERT', schema: 'public', table: 'schools' }, 
+          () => {
+            console.log('[SuperAdminDashboard] School inserted, refreshing stats...');
+            throttledFetch();
+          }
+        )
+        .subscribe();
+
+      schoolsUpdateChannel = supabase
+        .channel('schools_updates')
+        .on('postgres_changes' as any, 
+          { event: 'UPDATE', schema: 'public', table: 'schools' }, 
+          () => {
+            console.log('[SuperAdminDashboard] School updated, refreshing stats...');
+            throttledFetch();
+          }
+        )
+        .subscribe();
+
+      studentsInsertChannel = supabase
+        .channel('students_inserts') 
+        .on('postgres_changes' as any, 
+          { event: 'INSERT', schema: 'public', table: 'students' }, 
+          () => {
+            console.log('[SuperAdminDashboard] Student inserted, refreshing stats...');
+            throttledFetch();
+          }
+        )
+        .subscribe();
+
+      studentsUpdateChannel = supabase
+        .channel('students_updates') 
+        .on('postgres_changes' as any, 
+          { event: 'UPDATE', schema: 'public', table: 'students' }, 
+          () => {
+            console.log('[SuperAdminDashboard] Student updated, refreshing stats...');
+            throttledFetch();
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('[SuperAdminDashboard] Error setting up subscriptions:', error);
+    }
 
     return () => {
-      supabase.removeChannel(schoolsChannel);
-      supabase.removeChannel(studentsChannel);
+      if (schoolsInsertChannel) supabase.removeChannel(schoolsInsertChannel);
+      if (schoolsUpdateChannel) supabase.removeChannel(schoolsUpdateChannel);
+      if (studentsInsertChannel) supabase.removeChannel(studentsInsertChannel);
+      if (studentsUpdateChannel) supabase.removeChannel(studentsUpdateChannel);
     };
-  }, []);
+  }, [throttledFetch]);
 
   const fetchDashboardData = async () => {
     try {
@@ -141,6 +188,17 @@ const SuperAdminDashboard = () => {
       // Fetch statistics
       const totalSchools = schoolsData?.length || 0;
       const activeSchools = schoolsData?.filter(school => school.is_active).length || 0;
+
+      const schoolTypeSummary = {
+        bangla_medium: schoolsData?.filter((school) => school.school_type === 'bangla_medium').length || 0,
+        english_medium: schoolsData?.filter((school) => school.school_type === 'english_medium').length || 0,
+        madrasha: schoolsData?.filter((school) => school.school_type === 'madrasha').length || 0,
+      };
+      setSchoolTypeStats(schoolTypeSummary);
+
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
 
       // Fetch total students count
       const { count: studentsCount } = await supabase
@@ -168,26 +226,61 @@ const SuperAdminDashboard = () => {
         .select('*', { count: 'exact', head: true })
         .eq('status', 'pending');
 
-      // Calculate monthly growth (simplified - comparing current month vs last month schools)
-      const currentDate = new Date();
-      const lastMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
-      const { count: lastMonthSchools } = await supabase
+      // Fetch total school admin count
+      const { count: schoolAdminsCount } = await supabase
+        .from('user_roles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'school_admin');
+
+      // Current month entries
+      const { count: currentMonthSchools } = await supabase
         .from('schools')
         .select('*', { count: 'exact', head: true })
-        .lt('created_at', lastMonth.toISOString());
+        .gte('created_at', currentMonthStart);
 
-      const monthlyGrowth = lastMonthSchools 
-        ? Math.round(((totalSchools - lastMonthSchools) / lastMonthSchools) * 100)
-        : 0;
+      const { count: currentMonthStudents } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', currentMonthStart);
+
+      const { count: currentMonthTeachers } = await supabase
+        .from('teachers')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', currentMonthStart);
+
+      // Previous month schools for growth comparison
+      const { count: previousMonthSchools } = await supabase
+        .from('schools')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', previousMonthStart)
+        .lt('created_at', currentMonthStart);
+
+      const currentMonthSchoolsValue = currentMonthSchools || 0;
+      const previousMonthSchoolsValue = previousMonthSchools || 0;
+      const monthlyGrowth = previousMonthSchoolsValue > 0
+        ? Math.round(((currentMonthSchoolsValue - previousMonthSchoolsValue) / previousMonthSchoolsValue) * 100)
+        : (currentMonthSchoolsValue > 0 ? 100 : 0);
+
+      // Recent activity logs
+      const { data: auditData } = await supabase
+        .from('audit_logs')
+        .select('id, action, entity_type, timestamp, success, user_id')
+        .order('timestamp', { ascending: false })
+        .limit(8);
+      setRecentActivity((auditData || []) as RecentAuditLog[]);
 
       setStats({
         totalSchools,
         activeSchools,
+        totalSchoolAdmins: schoolAdminsCount || 0,
         totalStudents: studentsCount || 0,
         totalTeachers: teachersCount || 0,
         totalClasses: classesCount || 0,
         totalSubjects: subjectsCount || 0,
         pendingApplications: pendingApplicationsCount || 0,
+        schoolsThisMonth: currentMonthSchoolsValue,
+        studentsThisMonth: currentMonthStudents || 0,
+        teachersThisMonth: currentMonthTeachers || 0,
         monthlyGrowth,
       });
 
@@ -369,6 +462,19 @@ const SuperAdminDashboard = () => {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">School Admins</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{stats.totalSchoolAdmins}</div>
+                <p className="text-xs text-muted-foreground">
+                  Platform administrators
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Students</CardTitle>
                 <GraduationCap className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
@@ -401,14 +507,14 @@ const SuperAdminDashboard = () => {
               <CardContent>
                 <div className="text-2xl font-bold text-warning">+{stats.monthlyGrowth}%</div>
                 <p className="text-xs text-muted-foreground">
-                  This month
+                  Schools vs last month
                 </p>
               </CardContent>
             </Card>
           </div>
 
           {/* Additional Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
@@ -447,7 +553,99 @@ const SuperAdminDashboard = () => {
                 </p>
               </CardContent>
             </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Schools This Month</CardTitle>
+                <School className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary">{stats.schoolsThisMonth}</div>
+                <p className="text-xs text-muted-foreground">
+                  Newly added schools
+                </p>
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Monthly Activity */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">New Users This Month</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Students</span>
+                  <span className="font-semibold">{stats.studentsThisMonth}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Teachers</span>
+                  <span className="font-semibold">{stats.teachersThisMonth}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">School Type Distribution</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Bangla Medium</span>
+                  <Badge className={getSchoolTypeBadgeColor('bangla_medium')}>
+                    {schoolTypeStats.bangla_medium}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">English Medium</span>
+                  <Badge className={getSchoolTypeBadgeColor('english_medium')}>
+                    {schoolTypeStats.english_medium}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Madrasha</span>
+                  <Badge className={getSchoolTypeBadgeColor('madrasha')}>
+                    {schoolTypeStats.madrasha}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Platform Activity */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Recent Platform Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {recentActivity.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent activity found.</p>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {recentActivity.map((log) => (
+                    <div key={log.id} className="flex items-start justify-between gap-3 border-b pb-2">
+                      <div>
+                        <p className="text-sm font-medium capitalize">{log.action.replaceAll('_', ' ')}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{log.entity_type.replaceAll('_', ' ')}</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant={log.success ? 'default' : 'destructive'}>
+                          {log.success ? 'Success' : 'Failed'}
+                        </Badge>
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Recent Schools Overview */}
           <Card>

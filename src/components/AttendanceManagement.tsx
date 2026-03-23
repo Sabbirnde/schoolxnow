@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -48,6 +49,7 @@ interface AttendanceRecord {
 
 export function AttendanceManagement() {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [students, setStudents] = useState<Student[]>([]);
@@ -82,7 +84,7 @@ export function AttendanceManagement() {
       }
 
       // For teachers, only show classes they teach
-      if (profile?.role === 'teacher') {
+      if (canFull('attendance.record')) {
         // Get teacher record
         const { data: teacherData } = await supabase
           .from('teachers')

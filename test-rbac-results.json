@@ -1,0 +1,538 @@
+{
+  "timestamp": "2026-03-23T15:58:10.375Z",
+  "environment": {
+    "node": "v20.20.1",
+    "platform": "win32",
+    "cwd": "E:\\Shikka Corp (Now SchoolXNow)\\schoolxnow-essential-v2"
+  },
+  "summary": {
+    "totalTests": 87,
+    "passed": 87,
+    "failed": 0,
+    "successRate": "100.0"
+  },
+  "results": [
+    {
+      "role": "super_admin",
+      "feature": "schools.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "schools.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "schools.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "school_admins.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "school_admins.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "school_admins.edit",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "audit_logs.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "audit_logs.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "system_settings.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "system_settings.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "teachers.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "teachers.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "students.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "analytics.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "marks.enter",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "super_admin",
+      "feature": "attendance.record",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "teachers.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "teachers.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "teachers.approve",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "students.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "students.enroll",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "students.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "classes.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "classes.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "subjects.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "subjects.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "attendance.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "attendance.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "marks.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "marks.approve",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "exams.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "exams.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "timetable.manage",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "analytics.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "reports.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "schools.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "schools.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "school_admins.view",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "system_settings.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "school_admin",
+      "feature": "audit_logs.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "attendance.record",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "marks.enter",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "exams.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "exams.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "analytics.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "analytics.view_own",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "reports.create",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "reports.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "my_classes.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "my_subjects.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "timetable.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "schools.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "schools.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "teachers.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "teachers.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "students.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "system_settings.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "audit_logs.view",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "teacher",
+      "feature": "school_admins.view",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "profile.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "profile.edit",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "my_classes.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "my_marks.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "my_attendance.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "my_timetable.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "my_analytics.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "reports.view_own",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "marks.enter",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "attendance.record",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "students.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "students.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "teachers.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "settings.school",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "system_settings.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "student",
+      "feature": "audit_logs.view",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "profile.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "child_marks.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "child_attendance.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "child_timetable.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "child_analytics.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "child_reports.view",
+      "expectedAccess": true,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "marks.enter",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "attendance.record",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "students.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "teachers.create",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "system_settings.manage",
+      "expectedAccess": false,
+      "pass": true
+    },
+    {
+      "role": "guardian",
+      "feature": "audit_logs.view",
+      "expectedAccess": false,
+      "pass": true
+    }
+  ]
+}

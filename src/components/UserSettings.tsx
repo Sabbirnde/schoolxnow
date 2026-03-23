@@ -156,7 +156,7 @@ export default function UserSettings() {
         <TabsList className="w-full grid grid-cols-2 sm:grid-cols-4 h-auto p-1 bg-muted/50 rounded-lg">
           <TabsTrigger 
             value="profile" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <User className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Profile</span>
@@ -164,7 +164,7 @@ export default function UserSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="security" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Security</span>
@@ -172,7 +172,7 @@ export default function UserSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="notifications" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Bell className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Notifications</span>
@@ -180,7 +180,7 @@ export default function UserSettings() {
           </TabsTrigger>
           <TabsTrigger 
             value="preferences" 
-            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-soft"
+            className="text-xs sm:text-sm py-2.5 px-2 rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
             <span className="hidden sm:inline">Preferences</span>
@@ -189,7 +189,7 @@ export default function UserSettings() {
         </TabsList>
 
         <TabsContent value="profile" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <User className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -303,7 +303,7 @@ export default function UserSettings() {
         </TabsContent>
 
         <TabsContent value="security" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Shield className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -383,7 +383,7 @@ export default function UserSettings() {
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Bell className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />
@@ -449,7 +449,7 @@ export default function UserSettings() {
         </TabsContent>
 
         <TabsContent value="preferences" className="space-y-3 lg:space-y-4">
-          <Card className="shadow-soft bg-card/80 backdrop-blur-sm">
+          <Card className="shadow-sm bg-card/80 backdrop-blur-sm">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="flex items-center gap-2 text-base lg:text-xl">
                 <Eye className="h-4 w-4 lg:h-5 lg:w-5 text-primary" />

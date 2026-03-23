@@ -7,10 +7,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SchoolCombobox } from "@/components/SchoolCombobox";
 import { useForm } from "react-hook-form";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { useToast } from "@/hooks/use-toast";
 import { AdvancedFilter, FilterField, FilterValue } from "@/components/AdvancedFilter";
 import { useAdvancedFilter } from "@/hooks/useAdvancedFilter";
@@ -19,7 +22,8 @@ import {
   Edit, 
   Trash2,
   Book,
-  Loader2
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 
 interface Subject {
@@ -51,7 +55,9 @@ const CLASS_LEVELS = [
 
 export function SubjectManagement() {
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const { toast } = useToast();
+  const auditLog = useAuditLog('SUBJECT');
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -59,6 +65,7 @@ export function SubjectManagement() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const filterFields: FilterField[] = [
     { key: 'name', label: 'Subject Name', type: 'text', placeholder: 'Enter name...' },
@@ -91,7 +98,7 @@ export function SubjectManagement() {
   });
 
   useEffect(() => {
-    if (profile?.role === 'super_admin') {
+    if (canFull('subjects.manage')) {
       // Super admin needs to select a school first
       if (selectedSchoolId) {
         fetchSubjects();
@@ -103,7 +110,7 @@ export function SubjectManagement() {
   }, [profile, selectedSchoolId]);
 
   const fetchSubjects = async () => {
-    const schoolId = profile?.role === 'super_admin' ? selectedSchoolId : profile?.school_id;
+    const schoolId = canFull('subjects.manage') ? selectedSchoolId : profile?.school_id;
     
     if (!schoolId) {
       setLoading(false);
@@ -114,7 +121,7 @@ export function SubjectManagement() {
       setLoading(true);
 
       // For teachers, only fetch subjects they teach (based on timetable)
-      if (profile?.role === 'teacher') {
+      if (!canFull('subjects.manage')) {
         // First get the teacher record
         const { data: teacherData, error: teacherError } = await supabase
           .from('teachers')
@@ -187,7 +194,7 @@ export function SubjectManagement() {
   };
 
   const handleAddSubject = async (values: any) => {
-    const schoolId = profile?.role === 'super_admin' ? selectedSchoolId : profile?.school_id;
+    const schoolId = canFull('subjects.manage') ? selectedSchoolId : profile?.school_id;
     
     if (!schoolId) {
       toast({
@@ -199,6 +206,8 @@ export function SubjectManagement() {
     }
 
     try {
+      setValidationError(null);
+
       const { error } = await supabase
         .from('subjects')
         .insert({
@@ -208,9 +217,18 @@ export function SubjectManagement() {
 
       if (error) {
         if (error.code === '23505') {
+          const errorMsg = "A subject with this code already exists for this class level. Please use a different code or edit the existing subject instead.";
+          setValidationError(errorMsg);
+          
+          await auditLog.logFailedAction('new', {
+            entityName: values.name,
+            action: 'CREATE',
+            error: 'Duplicate subject code',
+          });
+
           toast({
             title: "Duplicate Subject Code",
-            description: "A subject with this code already exists for this class level. Please use a different code or edit the existing subject instead.",
+            description: errorMsg,
             variant: "destructive",
           });
         } else {
@@ -218,6 +236,13 @@ export function SubjectManagement() {
         }
         return;
       }
+
+      await auditLog.logAction('CREATE', 'new', {
+        entityName: values.name,
+        code: values.code,
+        class_level: values.class_level,
+        is_optional: values.is_optional,
+      });
 
       toast({
         title: "Success",
@@ -229,9 +254,18 @@ export function SubjectManagement() {
       fetchSubjects();
     } catch (error: any) {
       console.error('Error adding subject:', error);
+      
+      await auditLog.logFailedAction('new', {
+        entityName: values.name,
+        action: 'CREATE',
+        error: error.message || 'Unknown error',
+      });
+
+      const message = error.message || "Failed to add subject";
+      setValidationError(message);
       toast({
         title: "Error",
-        description: error.message || "Failed to add subject",
+        description: message,
         variant: "destructive",
       });
     }
@@ -241,12 +275,24 @@ export function SubjectManagement() {
     if (!editingSubject) return;
 
     try {
+      setValidationError(null);
+
       const { error } = await supabase
         .from('subjects')
         .update(values)
         .eq('id', editingSubject.id);
 
       if (error) throw error;
+
+      await auditLog.logAction('UPDATE', editingSubject.id, {
+        entityName: values.name,
+        changes: {
+          name: values.name,
+          code: values.code,
+          class_level: values.class_level,
+          is_optional: values.is_optional,
+        },
+      });
 
       toast({
         title: "Success",
@@ -258,9 +304,18 @@ export function SubjectManagement() {
       fetchSubjects();
     } catch (error: any) {
       console.error('Error updating subject:', error);
+      
+      await auditLog.logFailedAction(editingSubject.id, {
+        entityName: editingSubject.name,
+        action: 'UPDATE',
+        error: error.message || 'Unknown error',
+      });
+
+      const message = error.message || "Failed to update subject";
+      setValidationError(message);
       toast({
         title: "Error",
-        description: "Failed to update subject",
+        description: message,
         variant: "destructive",
       });
     }
@@ -268,12 +323,24 @@ export function SubjectManagement() {
 
   const handleDeleteSubject = async (subjectId: string) => {
     try {
+      setValidationError(null);
+
+      const subjectToDelete = subjects.find(s => s.id === subjectId);
+      if (!subjectToDelete) return;
+
       const { error } = await supabase
         .from('subjects')
         .update({ is_active: false })
         .eq('id', subjectId);
 
       if (error) throw error;
+
+      await auditLog.logAction('DELETE', subjectId, {
+        entityName: subjectToDelete.name,
+        code: subjectToDelete.code,
+        class_level: subjectToDelete.class_level,
+        action: 'DEACTIVATE',
+      });
 
       toast({
         title: "Success",
@@ -283,9 +350,21 @@ export function SubjectManagement() {
       fetchSubjects();
     } catch (error: any) {
       console.error('Error deactivating subject:', error);
+      
+      const subjectToDelete = subjects.find(s => s.id === subjectId);
+      if (subjectToDelete) {
+        await auditLog.logFailedAction(subjectId, {
+          entityName: subjectToDelete.name,
+          action: 'DELETE',
+          error: error.message || 'Unknown error',
+        });
+      }
+
+      const message = error.message || "Failed to deactivate subject";
+      setValidationError(message);
       toast({
         title: "Error",
-        description: "Failed to deactivate subject",
+        description: message,
         variant: "destructive",
       });
     }
@@ -334,19 +413,19 @@ export function SubjectManagement() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">
-            {profile?.role === 'teacher' ? 'My Subjects' : 'Subject Management'}
+            {!canFull('subjects.manage') ? 'My Subjects' : 'Subject Management'}
           </h1>
           <p className="text-muted-foreground">
-            {profile?.role === 'teacher' 
+            {!canFull('subjects.manage') 
               ? 'View subjects you teach based on your timetable' 
               : 'Manage curriculum subjects by class'}
           </p>
         </div>
-        {profile?.role !== 'teacher' && (
+        {canFull('subjects.manage') && (
           <Button 
             className="bg-gradient-primary hover:opacity-90"
             onClick={() => setIsAddDialogOpen(true)}
-            disabled={profile?.role === 'super_admin' && !selectedSchoolId}
+            disabled={canFull('subjects.manage') && !selectedSchoolId}
           >
             <Plus className="h-4 w-4 mr-2" />
             Add New Subject
@@ -355,8 +434,8 @@ export function SubjectManagement() {
       </div>
 
       {/* School Selector for Super Admin */}
-      {profile?.role === 'super_admin' && (
-        <Card className="shadow-soft">
+      {canFull('subjects.manage') && (
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Select School</label>
@@ -372,7 +451,7 @@ export function SubjectManagement() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -386,7 +465,7 @@ export function SubjectManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
@@ -400,7 +479,7 @@ export function SubjectManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
@@ -414,7 +493,7 @@ export function SubjectManagement() {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft">
+        <Card className="shadow-sm">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center">
@@ -432,7 +511,7 @@ export function SubjectManagement() {
       </div>
 
       {/* Search and Filters */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardContent className="p-4">
           <AdvancedFilter
             fields={filterFields}
@@ -444,14 +523,14 @@ export function SubjectManagement() {
       </Card>
 
       {/* Subjects List */}
-      <Card className="shadow-soft">
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>
-            {profile?.role === 'teacher' ? 'My Subjects' : 'Subjects'} ({filteredSubjects.length})
-          </CardTitle>
+          {!canFull('subjects.manage') ? 'My Subjects' : 'Subjects'} ({filteredSubjects.length})
+        </CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredSubjects.length === 0 && profile?.role === 'teacher' ? (
+          {filteredSubjects.length === 0 && !canFull('subjects.manage') ? (
             <div className="text-center py-8">
               <Book className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-foreground mb-2">No Subjects Assigned</h3>
@@ -464,7 +543,7 @@ export function SubjectManagement() {
               <Book className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-foreground mb-2">No Subjects Found</h3>
               <p className="text-muted-foreground">
-                {profile?.role === 'super_admin' && !selectedSchoolId
+                {canFull('subjects.manage') && !selectedSchoolId
                   ? 'Please select a school to view subjects.'
                   : 'Get started by adding your first subject.'}
               </p>
@@ -472,7 +551,7 @@ export function SubjectManagement() {
           ) : (
             <div className="space-y-4">
               {filteredSubjects.map((subject) => (
-              <div key={subject.id} className="border border-border rounded-lg p-4 hover:shadow-soft transition-shadow duration-200">
+              <div key={subject.id} className="border border-border rounded-lg p-4 hover:shadow-sm transition-shadow duration-200">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-gradient-accent rounded-lg flex items-center justify-center">
@@ -536,12 +615,19 @@ export function SubjectManagement() {
           setIsAddDialogOpen(false);
           setEditingSubject(null);
           form.reset();
+          setValidationError(null);
         }
       }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingSubject ? 'Edit Subject' : 'Add New Subject'}</DialogTitle>
           </DialogHeader>
+          {validationError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          )}
           <Form {...form}>
             <form onSubmit={form.handleSubmit(editingSubject ? handleEditSubject : handleAddSubject)} className="space-y-4">
               <FormField
@@ -641,6 +727,7 @@ export function SubjectManagement() {
                     setIsAddDialogOpen(false);
                     setEditingSubject(null);
                     form.reset();
+                    setValidationError(null);
                   }}
                 >
                   Cancel
