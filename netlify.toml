@@ -13,6 +13,8 @@ functions = "netlify/functions"
 [build.environment]
 # Node version
 NODE_VERSION = "20"
+# CI environment to skip optional dependencies
+CI = "true"
 
 [[redirects]]
 # Redirect all non-file requests to index.html (for SPA routing)
