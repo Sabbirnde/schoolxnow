@@ -45,7 +45,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - use network-first for HTML, cache-first for assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -62,41 +62,63 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(request)
-      .then((cachedResponse) => {
-        // Return cached response if available
-        if (cachedResponse) {
-          return cachedResponse;
-        }
+  // Strategy: Network-first for HTML, cache-first for assets
+  const isHtmlRequest = request.headers.get('accept')?.includes('text/html');
 
-        // Otherwise fetch from network
-        return fetch(request)
-          .then((networkResponse) => {
-            // Don't cache non-successful responses
-            if (!networkResponse || networkResponse.status !== 200 || networkResponse.type === 'error') {
-              return networkResponse;
-            }
+  if (isHtmlRequest) {
+    // Network-first for HTML (critical for SPA routing after deploys)
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200) {
+            return networkResponse;
+          }
 
-            // Clone the response
-            const responseToCache = networkResponse.clone();
+          // Cache the response
+          const responseToCache = networkResponse.clone();
+          caches.open(DYNAMIC_CACHE).then((cache) => {
+            cache.put(request, responseToCache);
+          });
 
-            // Cache dynamic assets
-            caches.open(DYNAMIC_CACHE)
-              .then((cache) => {
+          return networkResponse;
+        })
+        .catch(() => {
+          // Fallback to cache if network fails
+          return caches.match(request)
+            .then((cachedResponse) => {
+              return cachedResponse || caches.match('/index.html');
+            });
+        })
+    );
+  } else {
+    // Cache-first for assets (CSS, JS, images)
+    event.respondWith(
+      caches.match(request)
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          return fetch(request)
+            .then((networkResponse) => {
+              if (!networkResponse || networkResponse.status !== 200 || networkResponse.type === 'error') {
+                return networkResponse;
+              }
+
+              const responseToCache = networkResponse.clone();
+              caches.open(DYNAMIC_CACHE).then((cache) => {
                 cache.put(request, responseToCache);
               });
 
-            return networkResponse;
-          })
-          .catch(() => {
-            // Return offline page for HTML requests
-            if (request.headers.get('accept').includes('text/html')) {
-              return caches.match('/index.html');
-            }
-          });
-      })
-  );
+              return networkResponse;
+            });
+        })
+        .catch(() => {
+          // Return fallback for failed requests
+          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        })
+    );
+  }
 });
 
 // Message event - for cache management from the app

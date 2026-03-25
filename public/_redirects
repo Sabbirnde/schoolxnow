@@ -1,0 +1,11 @@
+# Netlify redirects for SPA routing
+# Redirect all non-file requests to index.html for client-side routing
+
+# Main SPA redirect - handles all routes except specific files
+/*    /index.html   200
+
+# Specific asset exclusions (optional - for extra clarity)
+/assets/*         200
+/manifest.json    200
+/robots.txt       200
+/service-worker.js 200
