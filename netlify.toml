@@ -1,0 +1,64 @@
+# Netlify Configuration for SchoolXNow Essential v2
+
+[build]
+# Build command
+command = "npm run build"
+
+# Directory to publish
+publish = "dist"
+
+# Functions directory
+functions = "netlify/functions"
+
+[build.environment]
+# Node version
+NODE_VERSION = "20"
+
+[[redirects]]
+# Redirect all non-file requests to index.html (for SPA routing)
+from = "/*"
+to = "/index.html"
+status = 200
+
+# Prevent redirects for actual files and directories
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/:splat"
+status = 200
+
+[dev]
+# Development settings
+framework = "#custom"
+command = "npm run dev"
+port = 8080
+
+[context.production]
+# Production environment variables can be set in Netlify UI
+command = "npm run build"
+publish = "dist"
+
+[context.deploy-preview]
+# Deploy preview environment
+command = "npm run build"
+publish = "dist"
+
+[context.branch-deploy]
+# Branch deployments
+command = "npm run build"
+publish = "dist"
+
+# Cache settings
+[[headers]]
+for = "/index.html"
+[headers.values]
+Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+for = "/assets/*"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+for = "/*.{js,css}"
+[headers.values]
+Cache-Control = "public, max-age=31536000, immutable"
