@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DashboardSkeleton } from '@/components/ui/skeleton-loader';
-import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 import { 
   School, 
   Users, 
@@ -101,78 +100,8 @@ const SuperAdminDashboard = () => {
   });
   const { toast } = useToast();
 
-  // Move useThrottledFetch to top level with a wrapper function to avoid hoisting issues
-  const [throttledFetch] = useThrottledFetch(
-    () => fetchDashboardData(),
-    1000
-  );
-
-  useEffect(() => {
-    fetchDashboardData();
-
-    // Set up narrow real-time subscriptions for dashboard (INSERT/UPDATE only)
-    let schoolsInsertChannel: any = null;
-    let schoolsUpdateChannel: any = null;
-    let studentsInsertChannel: any = null;
-    let studentsUpdateChannel: any = null;
-
-    try {
-      schoolsInsertChannel = supabase
-        .channel('schools_inserts')
-        .on('postgres_changes' as any, 
-          { event: 'INSERT', schema: 'public', table: 'schools' }, 
-          () => {
-            console.log('[SuperAdminDashboard] School inserted, refreshing stats...');
-            throttledFetch();
-          }
-        )
-        .subscribe();
-
-      schoolsUpdateChannel = supabase
-        .channel('schools_updates')
-        .on('postgres_changes' as any, 
-          { event: 'UPDATE', schema: 'public', table: 'schools' }, 
-          () => {
-            console.log('[SuperAdminDashboard] School updated, refreshing stats...');
-            throttledFetch();
-          }
-        )
-        .subscribe();
-
-      studentsInsertChannel = supabase
-        .channel('students_inserts') 
-        .on('postgres_changes' as any, 
-          { event: 'INSERT', schema: 'public', table: 'students' }, 
-          () => {
-            console.log('[SuperAdminDashboard] Student inserted, refreshing stats...');
-            throttledFetch();
-          }
-        )
-        .subscribe();
-
-      studentsUpdateChannel = supabase
-        .channel('students_updates') 
-        .on('postgres_changes' as any, 
-          { event: 'UPDATE', schema: 'public', table: 'students' }, 
-          () => {
-            console.log('[SuperAdminDashboard] Student updated, refreshing stats...');
-            throttledFetch();
-          }
-        )
-        .subscribe();
-    } catch (error) {
-      console.error('[SuperAdminDashboard] Error setting up subscriptions:', error);
-    }
-
-    return () => {
-      if (schoolsInsertChannel) supabase.removeChannel(schoolsInsertChannel);
-      if (schoolsUpdateChannel) supabase.removeChannel(schoolsUpdateChannel);
-      if (studentsInsertChannel) supabase.removeChannel(studentsInsertChannel);
-      if (studentsUpdateChannel) supabase.removeChannel(studentsUpdateChannel);
-    };
-  }, [throttledFetch]);
-
-  const fetchDashboardData = async () => {
+  // Wrap fetchDashboardData in useCallback to prevent infinite refetches
+  const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -294,7 +223,74 @@ const SuperAdminDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Set up real-time subscriptions and initial data fetch
+  useEffect(() => {
+    fetchDashboardData();
+
+    // Set up narrow real-time subscriptions for dashboard (INSERT/UPDATE only)
+    let schoolsInsertChannel: any = null;
+    let schoolsUpdateChannel: any = null;
+    let studentsInsertChannel: any = null;
+    let studentsUpdateChannel: any = null;
+
+    try {
+      schoolsInsertChannel = supabase
+        .channel('schools_inserts')
+        .on('postgres_changes' as any, 
+          { event: 'INSERT', schema: 'public', table: 'schools' }, 
+          () => {
+            console.log('[SuperAdminDashboard] School inserted, refreshing stats...');
+            // Add small delay before refetch to batch potential concurrent updates
+            setTimeout(() => fetchDashboardData(), 300);
+          }
+        )
+        .subscribe();
+
+      schoolsUpdateChannel = supabase
+        .channel('schools_updates')
+        .on('postgres_changes' as any, 
+          { event: 'UPDATE', schema: 'public', table: 'schools' }, 
+          () => {
+            console.log('[SuperAdminDashboard] School updated, refreshing stats...');
+            setTimeout(() => fetchDashboardData(), 300);
+          }
+        )
+        .subscribe();
+
+      studentsInsertChannel = supabase
+        .channel('students_inserts') 
+        .on('postgres_changes' as any, 
+          { event: 'INSERT', schema: 'public', table: 'students' }, 
+          () => {
+            console.log('[SuperAdminDashboard] Student inserted, refreshing stats...');
+            setTimeout(() => fetchDashboardData(), 300);
+          }
+        )
+        .subscribe();
+
+      studentsUpdateChannel = supabase
+        .channel('students_updates') 
+        .on('postgres_changes' as any, 
+          { event: 'UPDATE', schema: 'public', table: 'students' }, 
+          () => {
+            console.log('[SuperAdminDashboard] Student updated, refreshing stats...');
+            setTimeout(() => fetchDashboardData(), 300);
+          }
+        )
+        .subscribe();
+    } catch (error) {
+      console.error('[SuperAdminDashboard] Error setting up subscriptions:', error);
+    }
+
+    return () => {
+      if (schoolsInsertChannel) supabase.removeChannel(schoolsInsertChannel);
+      if (schoolsUpdateChannel) supabase.removeChannel(schoolsUpdateChannel);
+      if (studentsInsertChannel) supabase.removeChannel(studentsInsertChannel);
+      if (studentsUpdateChannel) supabase.removeChannel(studentsUpdateChannel);
+    };
+  }, [fetchDashboardData]);
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
