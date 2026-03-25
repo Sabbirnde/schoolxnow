@@ -94,7 +94,6 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
     "jsdom": "^29.0.1",
-    "lovable-tagger": "^1.1.11",
     "node-fetch": "^3.3.2",
     "open": "^10.2.0",
     "postcss": "^8.5.6",
