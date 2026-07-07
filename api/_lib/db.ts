@@ -55,7 +55,7 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
   connection?: PoolConnection,
 ): Promise<T> {
   const executor = connection ?? db();
-  const [rows] = await executor.execute<T>(sql, params);
+  const [rows] = await executor.execute<T>(sql, params as any);
   return rows;
 }
 
@@ -65,7 +65,7 @@ export async function execute(
   connection?: PoolConnection,
 ) {
   const executor = connection ?? db();
-  const [result] = await executor.execute(sql, params);
+  const [result] = await executor.execute(sql, params as any);
   return result;
 }
 
