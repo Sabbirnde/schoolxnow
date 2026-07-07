@@ -66,6 +66,24 @@ FRONTEND_URL=https://your-vercel-domain.vercel.app
 BLOB_READ_WRITE_TOKEN=vercel_blob_rw_token
 ```
 
+Local helper flow:
+
+```bash
+cp .env.vercel.example .env.vercel.local
+npm run check:vercel-deploy -- --env .env.vercel.local
+npm run db:import:mysql -- --env .env.vercel.local --seed
+vercel login
+npm run vercel:env:push -- --env .env.vercel.local --targets production
+vercel deploy --prod
+```
+
+Notes:
+
+- `.env.vercel.local` is ignored by git. Keep real DB passwords and Blob tokens there only.
+- `DB_HOST` must be an external MySQL host. `localhost` and `127.0.0.1` will not work from Vercel.
+- `npm run db:import:mysql -- --seed` imports the schema and demo login accounts.
+- `npm run vercel:env:push` requires the Vercel CLI to be logged in.
+
 Health check:
 
 ```text
