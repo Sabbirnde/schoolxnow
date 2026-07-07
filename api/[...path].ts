@@ -712,7 +712,16 @@ async function upload(req: VercelRequest, res: VercelResponse, bucket: string) {
 
 function pathSegments(req: VercelRequest) {
   const raw = req.query.path;
-  return (Array.isArray(raw) ? raw : raw ? [raw] : []).map((segment) => String(segment));
+  const querySegments = (Array.isArray(raw) ? raw : raw ? [raw] : [])
+    .flatMap((segment) => String(segment).split('/'))
+    .filter(Boolean);
+
+  if (querySegments.length > 0) {
+    return querySegments;
+  }
+
+  const pathname = new URL(req.url || '/', 'https://schoolxnow.local').pathname;
+  return pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
