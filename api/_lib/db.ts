@@ -1,5 +1,5 @@
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from 'mysql2/promise';
-import { ApiError } from './http';
+import { ApiError } from './http.js';
 
 let pool: Pool | null = null;
 

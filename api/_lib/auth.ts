@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import type { VercelRequest } from '@vercel/node';
 import type { RowDataPacket } from 'mysql2/promise';
-import { query } from './db';
-import { ApiError, readBearerToken, requiredEnv } from './http';
+import { query } from './db.js';
+import { ApiError, readBearerToken, requiredEnv } from './http.js';
 
 export type ApiUser = {
   id: string;

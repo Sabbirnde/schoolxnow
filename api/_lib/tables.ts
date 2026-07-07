@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'node:crypto';
-import type { ApiUser } from './auth';
-import { canManage, requireUser } from './auth';
-import { execute, query } from './db';
-import { ApiError, readJsonBody, sendData } from './http';
+import type { ApiUser } from './auth.js';
+import { canManage, requireUser } from './auth.js';
+import { execute, query } from './db.js';
+import { ApiError, readJsonBody, sendData } from './http.js';
 
 const ALLOWED_TABLES = [
   'schools',
@@ -266,4 +266,3 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
 
   throw new ApiError(405, 'Method not allowed');
 }
-

@@ -5,8 +5,8 @@ import { put } from '@vercel/blob';
 import bcrypt from 'bcryptjs';
 import formidable, { type File } from 'formidable';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { issueToken, requireUser, verifyPassword, hashPassword, type ApiUser } from './_lib/auth';
-import { execute, query, transaction } from './_lib/db';
+import { issueToken, requireUser, verifyPassword, hashPassword, type ApiUser } from './_lib/auth.js';
+import { execute, query, transaction } from './_lib/db.js';
 import {
   ApiError,
   appendQuery,
@@ -16,8 +16,8 @@ import {
   sendData,
   sendError,
   setCors,
-} from './_lib/http';
-import { handleTable } from './_lib/tables';
+} from './_lib/http.js';
+import { handleTable } from './_lib/tables.js';
 
 type LoginUser = ApiUser & RowDataPacket & { password_hash: string };
 
