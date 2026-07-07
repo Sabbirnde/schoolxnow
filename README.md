@@ -1,14 +1,13 @@
 # SchoolXNow Essential V2
 
-SchoolXNow is a school management system with a React/Vite frontend and a PHP/MySQL backend for shared-hosting deployment.
+SchoolXNow is a school management system with a React/Vite frontend, a Vercel Node API, and MySQL database support.
 
 ## Requirements
 
 - Node.js 20+
 - npm
-- PHP 8.1+ on the server
 - MySQL/MariaDB
-- Apache with `.htaccess` rewrite support
+- Vercel Blob storage for uploads when deploying the API to Vercel
 
 ## Frontend Setup
 
@@ -37,7 +36,45 @@ Build production files:
 npm run build
 ```
 
-## Backend Setup
+## Vercel Full Deployment
+
+This repo includes a Vercel serverless API at `api/[...path].ts`. It replaces the PHP runtime for Vercel deployments while keeping the same frontend API path: `/api`.
+
+1. Create an external MySQL database.
+2. Import `backend/database/schema.mysql.sql`.
+3. Optionally import `backend/database/seed-super-admin.mysql.sql` for demo logins.
+4. Create a Vercel Blob store.
+5. Add the variables from `.env.vercel.example` to Vercel Project Settings.
+6. Deploy with Vercel.
+
+Required Vercel variables:
+
+```env
+VITE_BACKEND_PROVIDER=php
+VITE_API_URL=/api
+
+DB_HOST=your-mysql-host
+DB_PORT=3306
+DB_DATABASE=your_database_name
+DB_USERNAME=your_database_user
+DB_PASSWORD=your_database_password
+
+JWT_SECRET=generated_value
+SUPER_ADMIN_SECRET=generated_value
+CORS_ORIGIN=https://your-vercel-domain.vercel.app
+FRONTEND_URL=https://your-vercel-domain.vercel.app
+BLOB_READ_WRITE_TOKEN=vercel_blob_rw_token
+```
+
+Health check:
+
+```text
+https://your-vercel-domain.vercel.app/api/health
+```
+
+## PHP Backend Setup
+
+The old PHP backend is still kept for shared-hosting deployments.
 
 Create backend secrets:
 
