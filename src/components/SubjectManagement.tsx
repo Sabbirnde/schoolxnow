@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SchoolCombobox } from "@/components/SchoolCombobox";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { useAuditLog } from "@/hooks/useAuditLog";
@@ -25,15 +27,38 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 
 interface Subject {
   id: string;
+  school_id?: string;
   name: string;
   name_bangla: string | null;
   code: string;
   class_level: string;
   is_optional: boolean;
   is_active: boolean;
+}
+
+interface TeacherRecord {
+  id: string;
+  user_id: string | null;
+  school_id: string;
+}
+
+interface TimetableRecord {
+  id: string;
+  school_id: string;
+  teacher_id: string | null;
+  subject_id: string;
+}
+
+interface SubjectFormData {
+  name: string;
+  name_bangla: string;
+  code: string;
+  class_level: string;
+  is_optional: boolean;
 }
 
 const CLASS_LEVELS = [
@@ -52,6 +77,12 @@ const CLASS_LEVELS = [
   { value: 'class_11', label: 'Class 11' },
   { value: 'class_12', label: 'Class 12' }
 ];
+
+const normalizeSubject = (subject: Subject): Subject => ({
+  ...subject,
+  is_active: Boolean(subject.is_active),
+  is_optional: Boolean(subject.is_optional),
+});
 
 export function SubjectManagement() {
   const { profile } = useAuth();
@@ -81,13 +112,7 @@ export function SubjectManagement() {
     ]},
   ];
 
-  const form = useForm<{
-    name: string;
-    name_bangla: string;
-    code: string;
-    class_level: string;
-    is_optional: boolean;
-  }>({
+  const form = useForm<SubjectFormData>({
     defaultValues: {
       name: "",
       name_bangla: "",
@@ -97,19 +122,7 @@ export function SubjectManagement() {
     }
   });
 
-  useEffect(() => {
-    if (canFull('subjects.manage')) {
-      // Super admin needs to select a school first
-      if (selectedSchoolId) {
-        fetchSubjects();
-      }
-    } else if (profile?.school_id) {
-      setSelectedSchoolId(profile.school_id);
-      fetchSubjects();
-    }
-  }, [profile, selectedSchoolId]);
-
-  const fetchSubjects = async () => {
+  const fetchSubjects = useCallback(async () => {
     const schoolId = canFull('subjects.manage') ? selectedSchoolId : profile?.school_id;
     
     if (!schoolId) {
@@ -119,6 +132,52 @@ export function SubjectManagement() {
 
     try {
       setLoading(true);
+
+      if (isPhpBackend) {
+        if (!canFull('subjects.manage')) {
+          const teacherRows = await phpApi.table<TeacherRecord>('teachers').list({
+            school_id: schoolId,
+            user_id: profile?.user_id,
+            limit: 1,
+          });
+          const teacher = teacherRows[0];
+
+          if (!teacher) {
+            setSubjects([]);
+            return;
+          }
+
+          const timetableRows = await phpApi.table<TimetableRecord>('timetable').list({
+            school_id: schoolId,
+            teacher_id: teacher.id,
+            limit: 200,
+          });
+          const subjectIds = new Set(timetableRows.map((item) => item.subject_id).filter(Boolean));
+
+          if (subjectIds.size === 0) {
+            setSubjects([]);
+            return;
+          }
+
+          const schoolSubjects = await phpApi.table<Subject>('subjects').list({
+            school_id: schoolId,
+            sort: 'name',
+            order: 'asc',
+            limit: 200,
+          });
+          setSubjects((schoolSubjects || []).filter((subject) => subjectIds.has(subject.id)).map(normalizeSubject));
+          return;
+        }
+
+        const data = await phpApi.table<Subject>('subjects').list({
+          school_id: schoolId,
+          sort: 'name',
+          order: 'asc',
+          limit: 200,
+        });
+        setSubjects((data || []).map(normalizeSubject));
+        return;
+      }
 
       // For teachers, only fetch subjects they teach (based on timetable)
       if (!canFull('subjects.manage')) {
@@ -130,7 +189,14 @@ export function SubjectManagement() {
           .single();
 
         if (teacherError) {
-          console.error('Error fetching teacher:', teacherError);
+          const notice = handleSupabaseError('Load subject teacher assignment', teacherError, {
+            context: { schoolId, userId: profile?.user_id },
+          });
+          toast({
+            title: notice.title,
+            description: notice.description,
+            variant: "destructive",
+          });
           setSubjects([]);
           return;
         }
@@ -148,7 +214,14 @@ export function SubjectManagement() {
           .eq('school_id', schoolId);
 
         if (timetableError) {
-          console.error('Error fetching timetable:', timetableError);
+          const notice = handleSupabaseError('Load teacher subject timetable', timetableError, {
+            context: { schoolId, teacherId: teacherData.id },
+          });
+          toast({
+            title: notice.title,
+            description: notice.description,
+            variant: "destructive",
+          });
           setSubjects([]);
           return;
         }
@@ -181,19 +254,33 @@ export function SubjectManagement() {
         if (error) throw error;
         setSubjects(data || []);
       }
-    } catch (error: any) {
-      console.error('Error fetching subjects:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Load subjects', error, {
+        context: { schoolId, userId: profile?.user_id },
+      });
       toast({
-        title: "Error",
-        description: "Failed to load subjects data",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
-  };
+  }, [canFull, profile?.school_id, profile?.user_id, selectedSchoolId, toast]);
 
-  const handleAddSubject = async (values: any) => {
+  useEffect(() => {
+    if (canFull('subjects.manage')) {
+      // Super admin needs to select a school first
+      if (selectedSchoolId) {
+        fetchSubjects();
+      }
+    } else if (profile?.school_id) {
+      setSelectedSchoolId(profile.school_id);
+      fetchSubjects();
+    }
+  }, [profile?.school_id, selectedSchoolId, canFull, fetchSubjects]);
+
+  const handleAddSubject = async (values: SubjectFormData) => {
     const schoolId = canFull('subjects.manage') ? selectedSchoolId : profile?.school_id;
     
     if (!schoolId) {
@@ -207,6 +294,43 @@ export function SubjectManagement() {
 
     try {
       setValidationError(null);
+
+      if (isPhpBackend) {
+        const duplicate = subjects.find(
+          (subject) =>
+            subject.id !== editingSubject?.id &&
+            subject.code.toLowerCase() === values.code.toLowerCase() &&
+            subject.class_level === values.class_level &&
+            subject.is_active
+        );
+
+        if (duplicate) {
+          const errorMsg = "A subject with this code already exists for this class level. Please use a different code or edit the existing subject instead.";
+          setValidationError(errorMsg);
+          toast({
+            title: "Duplicate Subject Code",
+            description: errorMsg,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        await phpApi.table<Subject>('subjects').create({
+          ...values,
+          school_id: schoolId,
+          is_active: true,
+        });
+
+        toast({
+          title: "Success",
+          description: "Subject added successfully",
+        });
+
+        setIsAddDialogOpen(false);
+        form.reset();
+        fetchSubjects();
+        return;
+      }
 
       const { error } = await supabase
         .from('subjects')
@@ -252,30 +376,69 @@ export function SubjectManagement() {
       setIsAddDialogOpen(false);
       form.reset();
       fetchSubjects();
-    } catch (error: any) {
-      console.error('Error adding subject:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Create subject', error, {
+        context: {
+          schoolId,
+          subjectName: values.name,
+          code: values.code,
+          classLevel: values.class_level,
+        },
+      });
       
       await auditLog.logFailedAction('new', {
         entityName: values.name,
         action: 'CREATE',
-        error: error.message || 'Unknown error',
+        error: notice.description,
       });
 
-      const message = error.message || "Failed to add subject";
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
   };
 
-  const handleEditSubject = async (values: any) => {
+  const handleEditSubject = async (values: SubjectFormData) => {
     if (!editingSubject) return;
 
     try {
       setValidationError(null);
+
+      if (isPhpBackend) {
+        const duplicate = subjects.find(
+          (subject) =>
+            subject.id !== editingSubject.id &&
+            subject.code.toLowerCase() === values.code.toLowerCase() &&
+            subject.class_level === values.class_level &&
+            subject.is_active
+        );
+
+        if (duplicate) {
+          const errorMsg = "A subject with this code already exists for this class level. Please use a different code.";
+          setValidationError(errorMsg);
+          toast({
+            title: "Duplicate Subject Code",
+            description: errorMsg,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        await phpApi.table<Subject>('subjects').update(editingSubject.id, values);
+
+        toast({
+          title: "Success",
+          description: "Subject updated successfully",
+        });
+
+        setEditingSubject(null);
+        form.reset();
+        fetchSubjects();
+        return;
+      }
 
       const { error } = await supabase
         .from('subjects')
@@ -302,20 +465,26 @@ export function SubjectManagement() {
       setEditingSubject(null);
       form.reset();
       fetchSubjects();
-    } catch (error: any) {
-      console.error('Error updating subject:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Update subject', error, {
+        context: {
+          subjectId: editingSubject.id,
+          subjectName: values.name,
+          code: values.code,
+          classLevel: values.class_level,
+        },
+      });
       
       await auditLog.logFailedAction(editingSubject.id, {
         entityName: editingSubject.name,
         action: 'UPDATE',
-        error: error.message || 'Unknown error',
+        error: notice.description,
       });
 
-      const message = error.message || "Failed to update subject";
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
@@ -327,6 +496,18 @@ export function SubjectManagement() {
 
       const subjectToDelete = subjects.find(s => s.id === subjectId);
       if (!subjectToDelete) return;
+
+      if (isPhpBackend) {
+        await phpApi.table<Subject>('subjects').update(subjectId, { is_active: false });
+
+        toast({
+          title: "Success",
+          description: "Subject deactivated successfully",
+        });
+
+        fetchSubjects();
+        return;
+      }
 
       const { error } = await supabase
         .from('subjects')
@@ -348,23 +529,24 @@ export function SubjectManagement() {
       });
 
       fetchSubjects();
-    } catch (error: any) {
-      console.error('Error deactivating subject:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Deactivate subject', error, {
+        context: { subjectId },
+      });
       
       const subjectToDelete = subjects.find(s => s.id === subjectId);
       if (subjectToDelete) {
         await auditLog.logFailedAction(subjectId, {
           entityName: subjectToDelete.name,
           action: 'DELETE',
-          error: error.message || 'Unknown error',
+          error: notice.description,
         });
       }
 
-      const message = error.message || "Failed to deactivate subject";
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }

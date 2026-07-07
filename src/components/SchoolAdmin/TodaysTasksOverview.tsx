@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -37,13 +39,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchTodaysTasks();
-    }
-  }, [profile?.school_id]);
-
-  const fetchTodaysTasks = async () => {
+  const fetchTodaysTasks = useCallback(async () => {
     if (!profile?.school_id) {
       setLoading(false);
       return;
@@ -54,6 +50,41 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayStr = today.toISOString().split('T')[0];
+      const weekLaterStr = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+
+      if (isPhpBackend) {
+        const [classesCount, examsCount, admissionsCount, applicationsCount] = await Promise.all([
+          phpApi.table('classes').count({
+            school_id: profile.school_id,
+            is_active: 1,
+          }),
+          phpApi.table('exams').count({
+            school_id: profile.school_id,
+            is_active: 1,
+            exam_date__gte: todayStr,
+            exam_date__lte: weekLaterStr,
+          }),
+          phpApi.table('students').count({
+            school_id: profile.school_id,
+            status: 'active',
+            admission_date__gte: todayStr,
+          }),
+          phpApi.table('teacher_applications').count({
+            school_id: profile.school_id,
+            status: 'pending',
+          }),
+        ]);
+
+        setTasks({
+          pendingAttendance: classesCount.count,
+          scheduledExams: examsCount.count,
+          newAdmissions: admissionsCount.count,
+          pendingApplications: applicationsCount.count,
+        });
+        return;
+      }
 
       // Get pending attendance records (classes without attendance marked today)
       const attendanceData = await supabase
@@ -64,10 +95,6 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       const pendingAttendanceCount = (attendanceData.data?.length || 0);
 
       // Get scheduled exams for today and this week
-      const weekLaterStr = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
       const examsData = await supabase
         .from('exams')
         .select('id')
@@ -99,7 +126,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
         newAdmissions: admissionsCount,
         pendingApplications: applicationsCount,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching today\'s tasks:', error);
       toast({
         title: 'Error',
@@ -109,7 +136,13 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [profile?.school_id, toast]);
+
+  useEffect(() => {
+    if (profile?.school_id) {
+      fetchTodaysTasks();
+    }
+  }, [profile?.school_id, fetchTodaysTasks]);
 
   const taskItems = [
     {

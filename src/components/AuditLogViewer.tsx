@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import type { Json } from "@/integrations/database/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,11 +19,40 @@ interface AuditLog {
   action: string;
   entity_type: string;
   entity_id: string | null;
-  old_values: any;
-  new_values: any;
+  old_values: Json | null;
+  new_values: Json | null;
   success: boolean;
   error_message: string | null;
-  metadata: any;
+  metadata: Json | null;
+}
+
+interface AuditLogPhpRow extends Omit<AuditLog, 'success' | 'old_values' | 'new_values' | 'metadata'> {
+  success: boolean | number;
+  old_values?: string | Json | null;
+  new_values?: string | Json | null;
+  metadata?: string | Json | null;
+}
+
+function parseJsonField(value: string | Json | null | undefined): Json | null {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+
+  try {
+    return JSON.parse(value) as Json;
+  } catch {
+    return value;
+  }
+}
+
+function normalizeAuditLog(row: AuditLogPhpRow): AuditLog {
+  return {
+    ...row,
+    success: row.success === true || row.success === 1,
+    old_values: parseJsonField(row.old_values),
+    new_values: parseJsonField(row.new_values),
+    metadata: parseJsonField(row.metadata),
+  };
 }
 
 const AuditLogViewer = () => {
@@ -31,13 +63,20 @@ const AuditLogViewer = () => {
   const [successFilter, setSuccessFilter] = useState<string>("all");
   const { toast } = useToast();
 
-  useEffect(() => {
-    fetchAuditLogs();
-  }, []);
-
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = useCallback(async () => {
     try {
       setLoading(true);
+      if (isPhpBackend) {
+        const data = await phpApi.table<AuditLogPhpRow>('audit_logs').list({
+          sort: 'timestamp',
+          order: 'desc',
+          limit: 100,
+        });
+
+        setLogs(data.map(normalizeAuditLog));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('audit_logs')
         .select('*')
@@ -60,7 +99,11 @@ const AuditLogViewer = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [fetchAuditLogs]);
 
   const getActionBadgeVariant = (action: string): "default" | "secondary" | "destructive" | "outline" => {
     if (action.includes('CREATE') || action.includes('ASSIGNED')) return 'default';

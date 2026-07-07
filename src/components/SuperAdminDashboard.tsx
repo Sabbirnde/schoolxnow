@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import type { RealtimeChannel } from '@/integrations/php-api/compat-types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,60 +26,30 @@ import {
   Database,
   Shield
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
 import { useToast } from '@/hooks/use-toast';
+import { usePollingRefresh } from '@/hooks/usePollingRefresh';
+import {
+  useSuperAdminDashboardData,
+  type SuperAdminSchool as School,
+} from '@/hooks/useSuperAdminDashboardData';
+import { handleSupabaseError } from '@/lib/api-error-handler';
 import SchoolAdminManagement from '@/components/SchoolAdminManagement';
 import SchoolManagement from '@/components/SchoolManagement';
 import SystemSettings from '@/components/SystemSettings';
 import AuditLogViewer from '@/components/AuditLogViewer';
 
-interface School {
-  id: string;
-  name: string;
-  name_bangla: string | null;
-  school_type: 'bangla_medium' | 'english_medium' | 'madrasha';
-  address: string;
-  address_bangla: string | null;
-  phone: string | null;
-  email: string | null;
-  eiin_number: string | null;
-  established_year: number | null;
-  is_active: boolean;
-  created_at: string;
-}
-
-interface RecentAuditLog {
-  id: string;
-  action: string;
-  entity_type: string;
-  timestamp: string;
-  success: boolean;
-  user_id: string | null;
-}
-
 const SuperAdminDashboard = () => {
-  const [schools, setSchools] = useState<School[]>([]);
-  const [stats, setStats] = useState({
-    totalSchools: 0,
-    activeSchools: 0,
-    totalSchoolAdmins: 0,
-    totalStudents: 0,
-    totalTeachers: 0,
-    totalClasses: 0,
-    totalSubjects: 0,
-    pendingApplications: 0,
-    schoolsThisMonth: 0,
-    studentsThisMonth: 0,
-    teachersThisMonth: 0,
-    monthlyGrowth: 0,
-  });
-  const [schoolTypeStats, setSchoolTypeStats] = useState({
-    bangla_medium: 0,
-    english_medium: 0,
-    madrasha: 0,
-  });
-  const [recentActivity, setRecentActivity] = useState<RecentAuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    schools,
+    stats,
+    schoolTypeStats,
+    recentActivity,
+    loading,
+    error: dashboardError,
+    refetch,
+  } = useSuperAdminDashboardData();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
   const [isAddSchoolOpen, setIsAddSchoolOpen] = useState(false);
@@ -100,197 +71,91 @@ const SuperAdminDashboard = () => {
   });
   const { toast } = useToast();
 
-  // Wrap fetchDashboardData in useCallback to prevent infinite refetches
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch schools
-      const { data: schoolsData, error: schoolsError } = await supabase
-        .from('schools')
-        .select('*')
-        .order('created_at', { ascending: false });
+  usePollingRefresh({
+    enabled: isPhpBackend,
+    intervalMs: 10000,
+    onRefresh: refetch,
+  });
 
-      if (schoolsError) throw schoolsError;
-      setSchools(schoolsData || []);
-
-      // Fetch statistics
-      const totalSchools = schoolsData?.length || 0;
-      const activeSchools = schoolsData?.filter(school => school.is_active).length || 0;
-
-      const schoolTypeSummary = {
-        bangla_medium: schoolsData?.filter((school) => school.school_type === 'bangla_medium').length || 0,
-        english_medium: schoolsData?.filter((school) => school.school_type === 'english_medium').length || 0,
-        madrasha: schoolsData?.filter((school) => school.school_type === 'madrasha').length || 0,
-      };
-      setSchoolTypeStats(schoolTypeSummary);
-
-      const now = new Date();
-      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-
-      // Fetch total students count
-      const { count: studentsCount } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch total teachers count
-      const { count: teachersCount } = await supabase
-        .from('teachers')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch total classes count
-      const { count: classesCount } = await supabase
-        .from('classes')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch total subjects count
-      const { count: subjectsCount } = await supabase
-        .from('subjects')
-        .select('*', { count: 'exact', head: true });
-
-      // Fetch pending teacher applications count
-      const { count: pendingApplicationsCount } = await supabase
-        .from('teacher_applications')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
-
-      // Fetch total school admin count
-      const { count: schoolAdminsCount } = await supabase
-        .from('user_roles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'school_admin');
-
-      // Current month entries
-      const { count: currentMonthSchools } = await supabase
-        .from('schools')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', currentMonthStart);
-
-      const { count: currentMonthStudents } = await supabase
-        .from('students')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', currentMonthStart);
-
-      const { count: currentMonthTeachers } = await supabase
-        .from('teachers')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', currentMonthStart);
-
-      // Previous month schools for growth comparison
-      const { count: previousMonthSchools } = await supabase
-        .from('schools')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', previousMonthStart)
-        .lt('created_at', currentMonthStart);
-
-      const currentMonthSchoolsValue = currentMonthSchools || 0;
-      const previousMonthSchoolsValue = previousMonthSchools || 0;
-      const monthlyGrowth = previousMonthSchoolsValue > 0
-        ? Math.round(((currentMonthSchoolsValue - previousMonthSchoolsValue) / previousMonthSchoolsValue) * 100)
-        : (currentMonthSchoolsValue > 0 ? 100 : 0);
-
-      // Recent activity logs
-      const { data: auditData } = await supabase
-        .from('audit_logs')
-        .select('id, action, entity_type, timestamp, success, user_id')
-        .order('timestamp', { ascending: false })
-        .limit(8);
-      setRecentActivity((auditData || []) as RecentAuditLog[]);
-
-      setStats({
-        totalSchools,
-        activeSchools,
-        totalSchoolAdmins: schoolAdminsCount || 0,
-        totalStudents: studentsCount || 0,
-        totalTeachers: teachersCount || 0,
-        totalClasses: classesCount || 0,
-        totalSubjects: subjectsCount || 0,
-        pendingApplications: pendingApplicationsCount || 0,
-        schoolsThisMonth: currentMonthSchoolsValue,
-        studentsThisMonth: currentMonthStudents || 0,
-        teachersThisMonth: currentMonthTeachers || 0,
-        monthlyGrowth,
-      });
-
-    } catch (error: any) {
-      console.error('Error fetching dashboard data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load dashboard data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Set up real-time subscriptions and initial data fetch
   useEffect(() => {
-    fetchDashboardData();
+    if (!dashboardError) return;
 
-    // Set up narrow real-time subscriptions for dashboard (INSERT/UPDATE only)
-    let schoolsInsertChannel: any = null;
-    let schoolsUpdateChannel: any = null;
-    let studentsInsertChannel: any = null;
-    let studentsUpdateChannel: any = null;
+    const notice = handleSupabaseError('Load super admin dashboard', dashboardError, {
+      log: false,
+    });
+
+    toast({
+      title: notice.title,
+      description: notice.description,
+      variant: "destructive",
+    });
+  }, [dashboardError, toast]);
+
+  // Set up real-time subscriptions and refresh cached dashboard data.
+  useEffect(() => {
+    if (isPhpBackend) {
+      return;
+    }
+
+    let schoolsChannel: RealtimeChannel | null = null;
+    let studentsChannel: RealtimeChannel | null = null;
+
+    const refreshDashboardData = () => {
+      setTimeout(() => {
+        void refetch();
+      }, 300);
+    };
 
     try {
-      schoolsInsertChannel = supabase
-        .channel('schools_inserts')
-        .on('postgres_changes' as any, 
-          { event: 'INSERT', schema: 'public', table: 'schools' }, 
+      schoolsChannel = supabase
+        .channel('schools_changes')
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'schools' },
           () => {
             console.log('[SuperAdminDashboard] School inserted, refreshing stats...');
-            // Add small delay before refetch to batch potential concurrent updates
-            setTimeout(() => fetchDashboardData(), 300);
+            refreshDashboardData();
           }
         )
-        .subscribe();
-
-      schoolsUpdateChannel = supabase
-        .channel('schools_updates')
-        .on('postgres_changes' as any, 
-          { event: 'UPDATE', schema: 'public', table: 'schools' }, 
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'schools' },
           () => {
             console.log('[SuperAdminDashboard] School updated, refreshing stats...');
-            setTimeout(() => fetchDashboardData(), 300);
+            refreshDashboardData();
           }
         )
         .subscribe();
 
-      studentsInsertChannel = supabase
-        .channel('students_inserts') 
-        .on('postgres_changes' as any, 
-          { event: 'INSERT', schema: 'public', table: 'students' }, 
+      studentsChannel = supabase
+        .channel('students_changes')
+        .on('postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'students' },
           () => {
             console.log('[SuperAdminDashboard] Student inserted, refreshing stats...');
-            setTimeout(() => fetchDashboardData(), 300);
+            refreshDashboardData();
           }
         )
-        .subscribe();
-
-      studentsUpdateChannel = supabase
-        .channel('students_updates') 
-        .on('postgres_changes' as any, 
-          { event: 'UPDATE', schema: 'public', table: 'students' }, 
+        .on('postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'students' },
           () => {
             console.log('[SuperAdminDashboard] Student updated, refreshing stats...');
-            setTimeout(() => fetchDashboardData(), 300);
+            refreshDashboardData();
           }
         )
         .subscribe();
     } catch (error) {
-      console.error('[SuperAdminDashboard] Error setting up subscriptions:', error);
+      const notice = handleSupabaseError('Subscribe to super admin dashboard updates', error);
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: "destructive",
+      });
     }
 
     return () => {
-      if (schoolsInsertChannel) supabase.removeChannel(schoolsInsertChannel);
-      if (schoolsUpdateChannel) supabase.removeChannel(schoolsUpdateChannel);
-      if (studentsInsertChannel) supabase.removeChannel(studentsInsertChannel);
-      if (studentsUpdateChannel) supabase.removeChannel(studentsUpdateChannel);
+      if (schoolsChannel) supabase.removeChannel(schoolsChannel);
+      if (studentsChannel) supabase.removeChannel(studentsChannel);
     };
-  }, [fetchDashboardData]);
+  }, [refetch, toast]);
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
@@ -342,13 +207,14 @@ const SuperAdminDashboard = () => {
         description: 'School created successfully',
       });
 
+      void refetch();
       setIsAddSchoolOpen(false);
       resetForm();
-    } catch (error: any) {
-      console.error('Error creating school:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Create school from super admin dashboard', error);
       toast({
-        title: 'Error',
-        description: 'Failed to create school',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -370,13 +236,14 @@ const SuperAdminDashboard = () => {
         description: 'School deleted successfully',
       });
 
+      void refetch();
       setIsDeleteDialogOpen(false);
       setSchoolToDelete(null);
-    } catch (error: any) {
-      console.error('Error deleting school:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Delete school from super admin dashboard', error);
       toast({
-        title: 'Error',
-        description: 'Failed to delete school',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -418,17 +285,17 @@ const SuperAdminDashboard = () => {
   }
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="min-w-0 space-y-6 lg:space-y-8">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Super Admin Dashboard</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-foreground md:text-3xl">Super Admin Dashboard</h1>
           <p className="text-muted-foreground mt-1">Manage all schools and platform overview</p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid h-auto w-full grid-flow-col auto-cols-max justify-start overflow-x-auto p-1 sm:grid-flow-row sm:grid-cols-5 sm:justify-center">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="schools">Schools</TabsTrigger>
           <TabsTrigger value="users">School Admins</TabsTrigger>
@@ -442,7 +309,7 @@ const SuperAdminDashboard = () => {
         <TabsContent value="overview" className="space-y-6">
 
           {/* Statistics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-6 xl:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Schools</CardTitle>
@@ -510,7 +377,7 @@ const SuperAdminDashboard = () => {
           </div>
 
           {/* Additional Statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:gap-6 xl:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Classes</CardTitle>
@@ -565,7 +432,7 @@ const SuperAdminDashboard = () => {
           </div>
 
           {/* Monthly Activity */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm font-medium">New Users This Month</CardTitle>
@@ -646,7 +513,7 @@ const SuperAdminDashboard = () => {
           {/* Recent Schools Overview */}
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <BookOpen className="h-5 w-5" />
                   Recent Schools
@@ -654,6 +521,7 @@ const SuperAdminDashboard = () => {
                 <Button 
                   onClick={() => setIsAddSchoolOpen(true)}
                   size="sm"
+                  className="w-full sm:w-auto"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add New School
@@ -691,17 +559,17 @@ const SuperAdminDashboard = () => {
                     {filteredSchools.slice(0, 5).map((school) => (
                       <div
                         key={school.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                        className="flex flex-col gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50 sm:p-4 lg:flex-row lg:items-center lg:justify-between"
                       >
-                        <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center">
+                        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-12 sm:w-12">
                             <School className="h-6 w-6 text-primary" />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-semibold">{school.name}</h3>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="min-w-0 break-words font-semibold">{school.name}</h3>
                               <Badge 
-                                className={getSchoolTypeBadgeColor(school.school_type)}
+                                className={`${getSchoolTypeBadgeColor(school.school_type)} shrink-0`}
                               >
                                 {getSchoolTypeLabel(school.school_type)}
                               </Badge>
@@ -712,8 +580,8 @@ const SuperAdminDashboard = () => {
                             {school.name_bangla && (
                               <p className="text-sm text-muted-foreground">{school.name_bangla}</p>
                             )}
-                            <div className="flex items-center gap-4 mt-1">
-                              <span className="text-xs text-muted-foreground">{school.address}</span>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                              <span className="break-words text-xs text-muted-foreground">{school.address}</span>
                               {school.eiin_number && (
                                 <span className="text-xs text-muted-foreground">
                                   EIIN: {school.eiin_number}
@@ -728,7 +596,7 @@ const SuperAdminDashboard = () => {
                           </div>
                         </div>
                         
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center justify-end gap-1 self-end sm:gap-2 lg:self-auto">
                           <Button 
                             variant="ghost" 
                             size="sm"
@@ -796,7 +664,7 @@ const SuperAdminDashboard = () => {
               Create a new school in the platform
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">School Name (English) *</Label>
               <Input
@@ -816,7 +684,13 @@ const SuperAdminDashboard = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="school_type">School Type *</Label>
-              <Select value={formData.school_type} onValueChange={(value: any) => setFormData({ ...formData, school_type: value })}>
+              <Select
+                value={formData.school_type}
+                onValueChange={(value) => setFormData({
+                  ...formData,
+                  school_type: value as School['school_type'],
+                })}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -835,7 +709,7 @@ const SuperAdminDashboard = () => {
                 onChange={(e) => setFormData({ ...formData, eiin_number: e.target.value })}
               />
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="address">Address (English) *</Label>
               <Textarea
                 id="address"
@@ -844,7 +718,7 @@ const SuperAdminDashboard = () => {
                 required
               />
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="address_bangla">Address (Bangla)</Label>
               <Textarea
                 id="address_bangla"
@@ -911,7 +785,7 @@ const SuperAdminDashboard = () => {
           </DialogHeader>
           {selectedSchool && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label className="text-sm font-medium">School Name</Label>
                   <p>{selectedSchool.name}</p>
@@ -927,7 +801,7 @@ const SuperAdminDashboard = () => {
                     </Badge>
                   </p>
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Label className="text-sm font-medium">Address</Label>
                   <p>{selectedSchool.address}</p>
                   {selectedSchool.address_bangla && (

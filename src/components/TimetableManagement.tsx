@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
-import { supabase } from "@/integrations/supabase/client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import type { Database } from "@/integrations/database/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,6 +16,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Calendar, Clock, Users, MapPin, Plus, Edit2, Trash2, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 
 interface TimetableEntry {
   id: string;
@@ -28,6 +32,10 @@ interface TimetableEntry {
   subject_name?: string;
   teacher_name?: string;
 }
+
+type TimetableInsert = Database["public"]["Tables"]["timetable"]["Insert"];
+type TimetableUpdate = Database["public"]["Tables"]["timetable"]["Update"];
+type SelectedView = 'weekly' | 'teacher' | 'class';
 
 interface Teacher {
   id: string;
@@ -49,6 +57,88 @@ interface Subject {
   class_level: string;
 }
 
+interface TimetablePhpRow {
+  id: string;
+  school_id: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  class_id: string;
+  subject_id: string;
+  teacher_id: string | null;
+  room: string | null;
+  created_at: string;
+}
+
+interface TimetablePhpPayload {
+  school_id: string;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  class_id: string;
+  subject_id: string;
+  teacher_id: string;
+  room: string | null;
+  is_active?: number;
+}
+
+interface TeacherPhpRow extends Teacher {
+  user_id?: string | null;
+  is_active?: boolean | number;
+}
+
+interface ClassPhpRow extends Class {
+  is_active?: boolean | number;
+}
+
+interface SubjectPhpRow extends Subject {
+  is_active?: boolean | number;
+}
+
+const PHP_PAGE_SIZE = 200;
+
+async function phpListAll<T extends object>(
+  table: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  sort = 'created_at',
+  order: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await phpApi.table<T>(table).list({
+      ...params,
+      sort,
+      order,
+      limit: PHP_PAGE_SIZE,
+      offset,
+    });
+
+    rows.push(...page);
+    if (page.length < PHP_PAGE_SIZE) break;
+    offset += PHP_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+function normalizeTime(value: string) {
+  return value.length >= 5 ? value.slice(0, 5) : value;
+}
+
+function parseTimeSlot(timeSlot: string) {
+  const [start, end] = timeSlot.split('-');
+  return {
+    start_time: `${normalizeTime(start || '')}:00`,
+    end_time: `${normalizeTime(end || '')}:00`,
+  };
+}
+
+function formatTimeSlot(startTime: string, endTime: string) {
+  return `${normalizeTime(startTime)}-${normalizeTime(endTime)}`;
+}
+
 const daysOfWeek = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
 ];
@@ -66,7 +156,7 @@ export function TimetableManagement() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedView, setSelectedView] = useState<'weekly' | 'teacher' | 'class'>('weekly');
+  const [selectedView, setSelectedView] = useState<SelectedView>('weekly');
   const [selectedFilter, setSelectedFilter] = useState<string>('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
@@ -81,15 +171,80 @@ export function TimetableManagement() {
     room_number: ''
   });
 
-  useEffect(() => {
-    fetchData();
-  }, [profile?.school_id, profile?.role]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!profile?.school_id) return;
 
     try {
       setLoading(true);
+
+      if (isPhpBackend) {
+        let teacherRecord: TeacherPhpRow | null = null;
+        const canManageTimetable = canFull('timetable.manage');
+
+        if (!canManageTimetable) {
+          const teacherRows = await phpListAll<TeacherPhpRow>('teachers', {
+            school_id: profile.school_id,
+            user_id: profile.user_id,
+          });
+          teacherRecord = teacherRows[0] || null;
+        }
+
+        const [timetableData, classesData, subjectsData, teachersData] = await Promise.all([
+          teacherRecord || canManageTimetable
+            ? phpListAll<TimetablePhpRow>('timetable', {
+                school_id: profile.school_id,
+                ...(teacherRecord ? { teacher_id: teacherRecord.id } : {}),
+              }, 'day_of_week', 'asc')
+            : Promise.resolve([]),
+          phpListAll<ClassPhpRow>('classes', {
+            school_id: profile.school_id,
+            is_active: 1,
+          }, 'name', 'asc'),
+          phpListAll<SubjectPhpRow>('subjects', {
+            school_id: profile.school_id,
+            is_active: 1,
+          }, 'name', 'asc'),
+          phpListAll<TeacherPhpRow>('teachers', {
+            school_id: profile.school_id,
+            is_active: 1,
+          }, 'full_name', 'asc'),
+        ]);
+
+        const classesMap = new Map(classesData.map(c => [c.id, c]));
+        const subjectsMap = new Map(subjectsData.map(s => [s.id, s]));
+        const teachersMap = new Map(teachersData.map(t => [t.id, t]));
+
+        const formattedTimetable = timetableData
+          .map((entry) => {
+            const classData = classesMap.get(entry.class_id);
+            const subjectData = subjectsMap.get(entry.subject_id);
+            const teacherData = entry.teacher_id ? teachersMap.get(entry.teacher_id) : null;
+
+            return {
+              id: entry.id,
+              day_of_week: entry.day_of_week,
+              time_slot: formatTimeSlot(entry.start_time, entry.end_time),
+              class_id: entry.class_id,
+              subject_id: entry.subject_id,
+              teacher_id: entry.teacher_id || '',
+              room_number: entry.room || undefined,
+              created_at: entry.created_at,
+              class_name: classData ? `${classData.name} - ${classData.section}` : 'Unknown Class',
+              subject_name: subjectData?.name || 'Unknown Subject',
+              teacher_name: teacherData?.full_name || 'Unknown Teacher',
+            };
+          })
+          .sort((a, b) => {
+            const dayDiff = daysOfWeek.indexOf(a.day_of_week) - daysOfWeek.indexOf(b.day_of_week);
+            return dayDiff || a.time_slot.localeCompare(b.time_slot);
+          });
+
+        setTimetableEntries(formattedTimetable);
+        setTeachers(teachersData);
+        setClasses(classesData);
+        setSubjects(subjectsData);
+        return;
+      }
 
       // For teachers, get their teacher record first
       let teacherRecord = null;
@@ -108,7 +263,7 @@ export function TimetableManagement() {
 
       // Fetch timetable entries - filter by teacher if teacher role
       let timetableQuery = supabase
-        .from('timetable' as any)
+        .from('timetable')
         .select('*')
         .eq('school_id', profile.school_id);
 
@@ -135,7 +290,7 @@ export function TimetableManagement() {
       const teachersMap = new Map(teachersResponse.data?.map(t => [t.id, t]) || []);
 
       // Format the data with manual joins
-      const formattedTimetable = timetableData?.map((entry: any) => {
+      const formattedTimetable = timetableData?.map((entry) => {
         const classData = classesMap.get(entry.class_id);
         const subjectData = subjectsMap.get(entry.subject_id);
         const teacherData = teachersMap.get(entry.teacher_id);
@@ -188,12 +343,18 @@ export function TimetableManagement() {
       setSubjects(subjectsData || []);
 
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to load timetable data');
+      const notice = handleSupabaseError('Load timetable data', error, {
+        context: { schoolId: profile?.school_id, userId: profile?.user_id },
+      });
+      toast.error(notice.title, { description: notice.description });
     } finally {
       setLoading(false);
     }
-  };
+  }, [canFull, profile?.school_id, profile?.user_id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const checkConflicts = (data: typeof formData) => {
     const conflicts: string[] = [];
@@ -242,6 +403,10 @@ export function TimetableManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile?.school_id) {
+      toast.error('School assignment is required to save timetable entries');
+      return;
+    }
     
     if (!checkConflicts(formData)) {
       toast.error('Schedule conflicts detected. Please resolve them before saving.');
@@ -249,24 +414,62 @@ export function TimetableManagement() {
     }
 
     try {
-      const dataToSave = {
+      if (isPhpBackend) {
+        const { start_time, end_time } = parseTimeSlot(formData.time_slot);
+        const dataToSave: TimetablePhpPayload = {
+          school_id: profile.school_id,
+          day_of_week: formData.day_of_week,
+          start_time,
+          end_time,
+          class_id: formData.class_id,
+          subject_id: formData.subject_id,
+          teacher_id: formData.teacher_id,
+          room: formData.room_number || null,
+          is_active: 1,
+        };
+
+        if (editingEntry) {
+          await phpApi.table<TimetablePhpPayload>('timetable').update(editingEntry.id, dataToSave);
+          toast.success('Timetable entry updated successfully');
+        } else {
+          await phpApi.table<TimetablePhpPayload>('timetable').create(dataToSave);
+          toast.success('Timetable entry created successfully');
+        }
+
+        setIsDialogOpen(false);
+        setEditingEntry(null);
+        setFormData({
+          day_of_week: '',
+          time_slot: '',
+          class_id: '',
+          subject_id: '',
+          teacher_id: '',
+          room_number: ''
+        });
+        setConflicts([]);
+        fetchData();
+        return;
+      }
+
+      const dataToSave: TimetableInsert = {
         ...formData,
-        school_id: profile?.school_id,
+        school_id: profile.school_id,
         room_number: formData.room_number || null
       };
 
       if (editingEntry) {
+        const dataToUpdate: TimetableUpdate = dataToSave;
         const { error } = await supabase
-          .from('timetable' as any)
-          .update(dataToSave as any)
+          .from('timetable')
+          .update(dataToUpdate)
           .eq('id', editingEntry.id);
 
         if (error) throw error;
         toast.success('Timetable entry updated successfully');
       } else {
         const { error } = await supabase
-          .from('timetable' as any)
-          .insert([dataToSave as any]);
+          .from('timetable')
+          .insert([dataToSave]);
 
         if (error) throw error;
         toast.success('Timetable entry created successfully');
@@ -285,8 +488,18 @@ export function TimetableManagement() {
       setConflicts([]);
       fetchData();
     } catch (error) {
-      console.error('Error saving timetable entry:', error);
-      toast.error('Failed to save timetable entry');
+      const notice = handleSupabaseError('Save timetable entry', error, {
+        context: {
+          schoolId: profile.school_id,
+          editingEntryId: editingEntry?.id,
+          classId: formData.class_id,
+          subjectId: formData.subject_id,
+          teacherId: formData.teacher_id,
+          day: formData.day_of_week,
+          timeSlot: formData.time_slot,
+        },
+      });
+      toast.error(notice.title, { description: notice.description });
     }
   };
 
@@ -305,8 +518,15 @@ export function TimetableManagement() {
 
   const handleDelete = async (id: string) => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<TimetablePhpPayload>('timetable').delete(id);
+        toast.success('Timetable entry deleted successfully');
+        fetchData();
+        return;
+      }
+
       const { error } = await supabase
-        .from('timetable' as any)
+        .from('timetable')
         .delete()
         .eq('id', id);
 
@@ -314,8 +534,10 @@ export function TimetableManagement() {
       toast.success('Timetable entry deleted successfully');
       fetchData();
     } catch (error) {
-      console.error('Error deleting entry:', error);
-      toast.error('Failed to delete timetable entry');
+      const notice = handleSupabaseError('Delete timetable entry', error, {
+        context: { entryId: id, schoolId: profile?.school_id },
+      });
+      toast.error(notice.title, { description: notice.description });
     }
   };
 
@@ -907,7 +1129,7 @@ export function TimetableManagement() {
         )}
       </div>
 
-      <Tabs value={selectedView} onValueChange={(value) => setSelectedView(value as any)}>
+      <Tabs value={selectedView} onValueChange={(value) => setSelectedView(value as SelectedView)}>
         <div className="flex flex-col gap-3 lg:gap-4">
           <TabsList className="w-full grid grid-cols-3 h-auto p-1 bg-muted/50 rounded-lg">
             <TabsTrigger 

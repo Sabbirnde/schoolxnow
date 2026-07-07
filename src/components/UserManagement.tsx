@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Edit, Users, Eye, Shield, UserCheck, UserX, CheckCircle, XCircle } from 'lucide-react';
+import { handleSupabaseError, SupabaseErrorNotice } from '@/lib/api-error-handler';
 
 interface UserProfile {
   id: string;
@@ -24,10 +27,16 @@ interface UserProfile {
   schools?: { name: string; school_type: string };
 }
 
+interface SchoolOption {
+  id: string;
+  name: string;
+  school_type: string;
+}
+
 const UserManagement = () => {
   const { toast } = useToast();
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [schools, setSchools] = useState<any[]>([]);
+  const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
@@ -44,9 +53,93 @@ const UserManagement = () => {
     school_id: '',
   });
 
+  const showErrorNotice = useCallback((notice: SupabaseErrorNotice) => {
+    toast({
+      title: notice.title,
+      description: notice.description,
+      variant: 'destructive',
+    });
+  }, [toast]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const [profiles, schoolRows] = await Promise.all([
+          phpApi.table<UserProfile>('user_profiles').list({
+            sort: 'created_at',
+            order: 'desc',
+            limit: 500,
+          }),
+          phpApi.table<SchoolOption>('schools').list({
+            is_active: 1,
+            sort: 'name',
+            order: 'asc',
+            limit: 500,
+          }),
+        ]);
+        const schoolById = new Map(schoolRows.map((school) => [school.id, school]));
+        setUsers((profiles || [])
+          .filter((profile) => profile.role !== 'super_admin')
+          .map((profile) => ({
+            ...profile,
+            is_active: Boolean(profile.is_active),
+            schools: profile.school_id ? schoolById.get(profile.school_id) : undefined,
+          })));
+        setSchools(schoolRows || []);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select(`
+          *,
+          schools (name, school_type)
+        `)
+        .neq('role', 'super_admin') // Don't show super admins in the list
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setUsers(data || []);
+    } catch (error) {
+      showErrorNotice(handleSupabaseError('Load users', error));
+    } finally {
+      setLoading(false);
+    }
+  }, [showErrorNotice]);
+
+  const fetchSchools = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<SchoolOption>('schools').list({
+          is_active: 1,
+          sort: 'name',
+          order: 'asc',
+          limit: 500,
+        });
+        setSchools(data || []);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('schools')
+        .select('id, name')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setSchools(data || []);
+    } catch (error) {
+      handleSupabaseError('Load schools for user management', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsers();
     fetchSchools();
+
+    if (isPhpBackend) {
+      return;
+    }
     
     // Set up real-time subscription for user_profiles changes
     const channel = supabase
@@ -68,55 +161,32 @@ const UserManagement = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
-
-  const fetchUsers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select(`
-          *,
-          schools (name, school_type)
-        `)
-        .neq('role', 'super_admin') // Don't show super admins in the list
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching users:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch users',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setUsers(data || []);
-    } catch (error) {
-      console.error('Error in fetchUsers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSchools = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setSchools(data || []);
-    } catch (error) {
-      console.error('Error fetching schools:', error);
-    }
-  };
+  }, [fetchUsers, fetchSchools]);
 
   const handleUpdateUser = async () => {
     if (!selectedUser) return;
 
     try {
+      if (isPhpBackend) {
+        await phpApi.table<UserProfile>('user_profiles').update(selectedUser.id, {
+          full_name: formData.full_name,
+          role: formData.role,
+          approval_status: formData.approval_status,
+          is_active: formData.is_active,
+          phone: formData.phone,
+          school_id: formData.school_id || null,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'User updated successfully',
+        });
+
+        setIsEditDialogOpen(false);
+        fetchUsers();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -129,15 +199,7 @@ const UserManagement = () => {
         })
         .eq('id', selectedUser.id);
 
-      if (error) {
-        console.error('Error updating user:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to update user',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -147,26 +209,32 @@ const UserManagement = () => {
       setIsEditDialogOpen(false);
       fetchUsers();
     } catch (error) {
-      console.error('Error in handleUpdateUser:', error);
+      showErrorNotice(handleSupabaseError('Update user', error, {
+        context: { userId: selectedUser.id, role: formData.role, schoolId: formData.school_id || null },
+      }));
     }
   };
 
   const handleApproveUser = async (userId: string) => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<UserProfile>('user_profiles').update(userId, { approval_status: 'approved' });
+
+        toast({
+          title: 'Success',
+          description: 'User approved successfully',
+        });
+
+        fetchUsers();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ approval_status: 'approved' })
         .eq('id', userId);
 
-      if (error) {
-        console.error('Error approving user:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to approve user',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -175,26 +243,32 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      console.error('Error in handleApproveUser:', error);
+      showErrorNotice(handleSupabaseError('Approve user', error, {
+        context: { userId },
+      }));
     }
   };
 
   const handleRejectUser = async (userId: string) => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<UserProfile>('user_profiles').update(userId, { approval_status: 'rejected' });
+
+        toast({
+          title: 'Success',
+          description: 'User rejected successfully',
+        });
+
+        fetchUsers();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ approval_status: 'rejected' })
         .eq('id', userId);
 
-      if (error) {
-        console.error('Error rejecting user:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to reject user',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -203,26 +277,32 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      console.error('Error in handleRejectUser:', error);
+      showErrorNotice(handleSupabaseError('Reject user', error, {
+        context: { userId },
+      }));
     }
   };
 
   const handleDeactivateUser = async (userId: string) => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<UserProfile>('user_profiles').update(userId, { is_active: false });
+
+        toast({
+          title: 'Success',
+          description: 'User deactivated successfully',
+        });
+
+        fetchUsers();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ is_active: false })
         .eq('id', userId);
 
-      if (error) {
-        console.error('Error deactivating user:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to deactivate user',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -231,7 +311,9 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      console.error('Error in handleDeactivateUser:', error);
+      showErrorNotice(handleSupabaseError('Deactivate user', error, {
+        context: { userId },
+      }));
     }
   };
 

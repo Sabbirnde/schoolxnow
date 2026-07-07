@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +6,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -59,17 +61,50 @@ export function ClassAssignment() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [promotionMode, setPromotionMode] = useState<'next' | 'custom'>('next');
 
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchData();
-    }
-  }, [profile]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!profile?.school_id) return;
 
     try {
       setLoading(true);
+
+      if (isPhpBackend) {
+        const [studentsData, classesData] = await Promise.all([
+          phpApi.table<Student>('students').list({
+            school_id: profile.school_id,
+            status: 'active',
+            sort: 'full_name',
+            order: 'asc',
+            limit: 200,
+          }),
+          phpApi.table<Class>('classes').list({
+            school_id: profile.school_id,
+            is_active: 1,
+            sort: 'class_level',
+            order: 'asc',
+            limit: 200,
+          }),
+        ]);
+
+        const classesById = new Map(classesData.map((classItem) => [classItem.id, classItem]));
+        const studentsWithClass = studentsData.map((student) => ({
+          ...student,
+          classes: student.class_id ? classesById.get(student.class_id) : undefined,
+        }));
+        const classesWithCounts = await Promise.all(
+          classesData.map(async (classItem) => {
+            const { count } = await phpApi.table('students').count({
+              class_id: classItem.id,
+              status: 'active',
+            });
+
+            return { ...classItem, student_count: count };
+          })
+        );
+
+        setStudents(studentsWithClass);
+        setClasses(classesWithCounts);
+        return;
+      }
 
       // Fetch students with their class info
       const { data: studentsData, error: studentsError } = await supabase
@@ -109,7 +144,7 @@ export function ClassAssignment() {
 
       setStudents(studentsData || []);
       setClasses(classesWithCounts);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching data:', error);
       toast({
         title: "Error",
@@ -119,7 +154,13 @@ export function ClassAssignment() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [profile?.school_id, toast]);
+
+  useEffect(() => {
+    if (profile?.school_id) {
+      fetchData();
+    }
+  }, [profile?.school_id, fetchData]);
 
   const getNextClassLevel = (currentLevel: string): string | null => {
     const currentIndex = CLASS_LEVEL_ORDER.indexOf(currentLevel);
@@ -203,6 +244,25 @@ export function ClassAssignment() {
 
     try {
       const studentIds = Array.from(selectedStudents);
+
+      if (isPhpBackend) {
+        await Promise.all(
+          studentIds.map((studentId) =>
+            phpApi.table<Student>('students').update(studentId, { class_id: selectedTargetClass })
+          )
+        );
+
+        toast({
+          title: "Success",
+          description: `Successfully assigned ${studentIds.length} student(s) to the new class`,
+        });
+
+        setSelectedStudents(new Set());
+        setSelectedSourceClass("");
+        setSelectedTargetClass("");
+        await fetchData();
+        return;
+      }
       
       const { error } = await supabase
         .from('students')
@@ -221,7 +281,7 @@ export function ClassAssignment() {
       setSelectedSourceClass("");
       setSelectedTargetClass("");
       await fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error promoting students:', error);
       toast({
         title: "Error",
@@ -247,6 +307,27 @@ export function ClassAssignment() {
 
     try {
       const studentIds = Array.from(selectedStudents);
+
+      if (isPhpBackend) {
+        await Promise.all(
+          studentIds.map((studentId) =>
+            phpApi.table<Student>('students').update(studentId, {
+              status: 'graduated',
+              class_id: null,
+            })
+          )
+        );
+
+        toast({
+          title: "Success",
+          description: `Successfully graduated ${studentIds.length} student(s)`,
+        });
+
+        setSelectedStudents(new Set());
+        setSelectedSourceClass("");
+        await fetchData();
+        return;
+      }
       
       const { error } = await supabase
         .from('students')
@@ -266,7 +347,7 @@ export function ClassAssignment() {
       setSelectedStudents(new Set());
       setSelectedSourceClass("");
       await fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error graduating students:', error);
       toast({
         title: "Error",

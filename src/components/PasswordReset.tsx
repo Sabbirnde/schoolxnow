@@ -1,29 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useSearchParams, Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, GraduationCap } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 
 const PasswordReset = () => {
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [isValidSession, setIsValidSession] = useState(false);
-
-  useEffect(() => {
-    // Check if this is a valid password reset session
-    const mode = searchParams.get('mode');
-    if (mode === 'reset') {
-      setIsValidSession(true);
-    }
-  }, [searchParams]);
+  const isValidSession =
+    searchParams.get('mode') === 'reset' && (!isPhpBackend || Boolean(searchParams.get('token')));
 
   // Redirect if not a password reset session or if user is already logged in normally
   if (!isValidSession) {
@@ -55,28 +48,37 @@ const PasswordReset = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: password
-      });
+      if (isPhpBackend) {
+        const token = searchParams.get('token');
+        if (!token) {
+          throw new Error("Password reset link is missing its token");
+        }
 
-      if (error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
+        await phpApi.resetPassword(token, password);
       } else {
-        toast({
-          title: "Success",
-          description: "Your password has been updated successfully!",
+        const { error } = await supabase.auth.updateUser({
+          password: password
         });
-        // Redirect to main app after successful password reset
-        window.location.href = "/";
+
+        if (error) {
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
       }
-    } catch (error: any) {
+
+      toast({
+        title: "Success",
+        description: "Your password has been updated successfully!",
+      });
+      window.location.href = isPhpBackend ? "/auth" : "/";
+    } catch (error: unknown) {
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
         variant: "destructive",
       });
     } finally {

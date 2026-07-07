@@ -3,7 +3,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-let mockAuthState: any;
+type MockAuthState = {
+  user: { id: string; email: string } | null;
+  profile: {
+    user_id: string;
+    full_name: string;
+    role: string;
+    school_id: string | null;
+    approval_status: string;
+  } | null;
+  profileState: {
+    status: string;
+    userId: string | null;
+    error: string | null;
+    updatedAt: string;
+  };
+  loading: boolean;
+};
+
+let mockAuthState: MockAuthState;
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => mockAuthState,

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -26,6 +28,23 @@ const TeacherPortalEntry = () => {
       try {
         setIsProcessing(true);
         setError(null);
+
+        if (isPhpBackend) {
+          const token = new URLSearchParams(window.location.search).get('token');
+          if (token) {
+            await phpApi.loginWithTeacherPortalToken(token);
+            window.history.replaceState({}, document.title, '/teacher-portal');
+            window.location.href = '/dashboard';
+            return;
+          }
+
+          if (!user && !session) {
+            setError(null);
+          }
+
+          setIsProcessing(false);
+          return;
+        }
 
         // Check if there's a session recovery token in URL fragment
         const fragment = window.location.hash;

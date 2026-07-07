@@ -20,9 +20,9 @@ interface LayoutProps {
 export function Layout({ children, activeModule, setActiveModule }: LayoutProps) {
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-screen w-full min-w-0">
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
-        <SidebarInset className="flex-1">
+        <SidebarInset className="min-w-0 flex-1">
           <header className="sticky top-0 z-40 flex h-14 md:h-16 shrink-0 items-center gap-2 border-b px-3 md:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <SidebarTrigger className="touch-target -ml-1">
               <Menu className="h-5 w-5" />
@@ -42,7 +42,7 @@ export function Layout({ children, activeModule, setActiveModule }: LayoutProps)
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex flex-1 flex-col gap-3 md:gap-4 p-3 md:p-4 lg:p-6 bg-background min-h-[calc(100vh-3.5rem)] md:min-h-[calc(100vh-4rem)] overflow-x-hidden">
+          <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-x-hidden bg-background p-3 md:min-h-[calc(100vh-4rem)] md:gap-4 md:p-4 lg:p-6 min-h-[calc(100vh-3.5rem)]">
             {children}
           </main>
         </SidebarInset>

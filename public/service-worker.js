@@ -51,11 +51,11 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   // Skip caching for:
-  // 1. API calls (Supabase)
+  // 1. API calls
   // 2. Chrome extensions
   // 3. Hot reload (development)
   if (
-    url.origin.includes('supabase.co') ||
+    url.pathname.startsWith('/api') ||
     url.protocol === 'chrome-extension:' ||
     request.url.includes('hot-update')
   ) {

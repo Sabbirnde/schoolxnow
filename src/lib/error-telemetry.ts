@@ -132,7 +132,7 @@ class ErrorTelemetryService {
       errorType?: string;
       operation?: string;
       severity?: 'low' | 'medium' | 'high' | 'critical';
-      context?: Record<string, any>;
+      context?: Record<string, unknown>;
       tags?: Record<string, string>;
     } = {}
   ): void {

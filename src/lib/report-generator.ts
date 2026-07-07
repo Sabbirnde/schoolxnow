@@ -18,7 +18,7 @@ import {
 /**
  * Convert array of objects to CSV string
  */
-function convertToCSV<T extends Record<string, any>>(data: T[], headers?: string[]): string {
+function convertToCSV<T extends Record<string, unknown>>(data: T[], headers?: string[]): string {
   if (data.length === 0) return '';
 
   // Get headers from first object if not provided
@@ -46,7 +46,7 @@ function convertToCSV<T extends Record<string, any>>(data: T[], headers?: string
 /**
  * Get nested property value from object using dot notation
  */
-function getNestedValue(obj: any, path: string): any {
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
   return path.split('.').reduce((current, prop) => current?.[prop], obj);
 }
 
@@ -74,7 +74,7 @@ function downloadCSV(csv: string, filename: string): void {
  * Simple Excel format generator (using XLSX format)
  * Note: For production, consider using xlsx or similar library
  */
-function convertToExcel<T extends Record<string, any>>(
+function convertToExcel<T extends Record<string, unknown>>(
   data: T[],
   sheetName: string = 'Sheet1',
   headers?: string[]
@@ -100,7 +100,7 @@ function convertToExcel<T extends Record<string, any>>(
 /**
  * Download as Excel-compatible TSV file
  */
-function downloadAsExcel(data: any[], filename: string, headers?: string[]): void {
+function downloadAsExcel<T extends Record<string, unknown>>(data: T[], filename: string, headers?: string[]): void {
   const csv = convertToCSV(data, headers);
   // Convert to TSV for better Excel compatibility
   const tsv = csv.replace(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/g, '\t');

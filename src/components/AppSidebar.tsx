@@ -57,7 +57,7 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
     );
   }
 
-  const iconByModule: Record<string, any> = {
+  const iconByModule: Record<string, unknown> = {
     dashboard: Home,
     schools: School,
     users: Users,

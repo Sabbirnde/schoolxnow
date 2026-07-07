@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import type { Database } from "@/integrations/database/types";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,9 +13,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Save, CheckCircle, GraduationCap, Award, TrendingUp, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 
 interface Exam {
   id: string;
+  school_id?: string;
   name: string;
   name_bangla?: string;
   class_level: string;
@@ -23,6 +28,7 @@ interface Exam {
 
 interface Subject {
   id: string;
+  school_id?: string;
   name: string;
   code: string;
   class_level: string;
@@ -30,6 +36,7 @@ interface Subject {
 
 interface Student {
   id: string;
+  school_id?: string;
   student_id: string;
   full_name: string;
   class_id: string;
@@ -37,10 +44,39 @@ interface Student {
 
 interface ExamResult {
   id?: string;
+  school_id?: string;
+  exam_id?: string;
   student_id: string;
+  subject_id?: string;
   obtained_marks: number;
+  total_marks?: number;
   grade?: string;
 }
+
+interface ClassRecord {
+  id: string;
+  school_id: string;
+  class_level: string;
+}
+
+type ExamResultInsert = Database["public"]["Tables"]["exam_results"]["Insert"];
+type StudentWithClass = Student & {
+  classes: {
+    class_level: string;
+  } | null;
+};
+
+const toStudentWithClassLevel = (studentRows: Student[], classRows: ClassRecord[]): StudentWithClass[] => {
+  const classById = new Map(classRows.map((classItem) => [classItem.id, classItem]));
+
+  return studentRows.map((student) => {
+    const classItem = classById.get(student.class_id);
+    return {
+      ...student,
+      classes: classItem ? { class_level: classItem.class_level } : null,
+    };
+  });
+};
 
 interface ExamMarksEntryProps {
   onComplete?: () => void;
@@ -59,20 +95,25 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
   const [saving, setSaving] = useState(false);
   const [savedStudents, setSavedStudents] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadExams();
-    loadSubjects();
-  }, []);
-
-  useEffect(() => {
-    if (selectedExam) {
-      loadStudents();
-      loadExistingResults();
-    }
-  }, [selectedExam, selectedSubject]);
-
-  const loadExams = async () => {
+  const loadExams = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const params: Record<string, string | number> = {
+          is_active: 1,
+          sort: 'exam_date',
+          order: 'desc',
+          limit: 200,
+        };
+
+        if (profile?.school_id) {
+          params.school_id = profile.school_id;
+        }
+
+        const data = await phpApi.table<Exam>('exams').list(params);
+        setExams(data || []);
+        return;
+      }
+
       let query = supabase
         .from('exams')
         .select('*')
@@ -87,17 +128,36 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       if (error) throw error;
       setExams(data || []);
     } catch (error) {
-      console.error('Error loading exams:', error);
+      const notice = handleSupabaseError('Load exams for marks entry', error, {
+        context: { schoolId: profile?.school_id },
+      });
       toast({
-        title: "Error",
-        description: "Failed to load exams",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
-  };
+  }, [profile?.school_id, toast]);
 
-  const loadSubjects = async () => {
+  const loadSubjects = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const params: Record<string, string | number> = {
+          is_active: 1,
+          sort: 'name',
+          order: 'asc',
+          limit: 300,
+        };
+
+        if (profile?.school_id) {
+          params.school_id = profile.school_id;
+        }
+
+        const data = await phpApi.table<Subject>('subjects').list(params);
+        setSubjects(data || []);
+        return;
+      }
+
       let query = supabase
         .from('subjects')
         .select('*')
@@ -112,21 +172,51 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       if (error) throw error;
       setSubjects(data || []);
     } catch (error) {
-      console.error('Error loading subjects:', error);
+      const notice = handleSupabaseError('Load subjects for marks entry', error, {
+        context: { schoolId: profile?.school_id },
+      });
       toast({
-        title: "Error",
-        description: "Failed to load subjects",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
-  };
+  }, [profile?.school_id, toast]);
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     if (!selectedExam) return;
 
     try {
       const exam = exams.find(e => e.id === selectedExam);
       if (!exam) return;
+
+      if (isPhpBackend) {
+        const params: Record<string, string | number> = {
+          status: 'active',
+          sort: 'student_id',
+          order: 'asc',
+          limit: 500,
+        };
+
+        if (profile?.school_id) {
+          params.school_id = profile.school_id;
+        }
+
+        const [studentRows, classRows] = await Promise.all([
+          phpApi.table<Student>('students').list(params),
+          phpApi.table<ClassRecord>('classes').list({
+            ...(profile?.school_id ? { school_id: profile.school_id } : {}),
+            limit: 500,
+          }),
+        ]);
+
+        const filteredStudents = toStudentWithClassLevel(studentRows || [], classRows || []).filter((student) =>
+          student.classes?.class_level === exam.class_level
+        );
+
+        setStudents(filteredStudents);
+        return;
+      }
 
       let query = supabase
         .from('students')
@@ -146,22 +236,24 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
 
       if (error) throw error;
       
-      const filteredStudents = (data || []).filter((student: any) => 
+      const filteredStudents = ((data || []) as unknown as StudentWithClass[]).filter((student) => 
         student.classes?.class_level === exam.class_level
       );
       
       setStudents(filteredStudents);
     } catch (error) {
-      console.error('Error loading students:', error);
+      const notice = handleSupabaseError('Load students for marks entry', error, {
+        context: { schoolId: profile?.school_id, examId: selectedExam },
+      });
       toast({
-        title: "Error",
-        description: "Failed to load students",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
-  };
+  }, [exams, profile?.school_id, selectedExam, toast]);
 
-  const loadExistingResults = async () => {
+  const loadExistingResults = useCallback(async () => {
     if (!selectedExam || !selectedSubject) {
       setExistingResults({});
       setMarks({});
@@ -169,6 +261,26 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
     }
 
     try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<ExamResult>('exam_results').list({
+          exam_id: selectedExam,
+          subject_id: selectedSubject,
+          limit: 500,
+        });
+
+        const resultsMap: Record<string, ExamResult> = {};
+        const marksMap: Record<string, number> = {};
+
+        (data || []).forEach(result => {
+          resultsMap[result.student_id] = result;
+          marksMap[result.student_id] = result.obtained_marks;
+        });
+
+        setExistingResults(resultsMap);
+        setMarks(marksMap);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('exam_results')
         .select('*')
@@ -188,9 +300,23 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       setExistingResults(resultsMap);
       setMarks(marksMap);
     } catch (error) {
-      console.error('Error loading exam results:', error);
+      handleSupabaseError('Load existing exam results', error, {
+        context: { examId: selectedExam, subjectId: selectedSubject },
+      });
     }
-  };
+  }, [selectedExam, selectedSubject]);
+
+  useEffect(() => {
+    loadExams();
+    loadSubjects();
+  }, [loadExams, loadSubjects]);
+
+  useEffect(() => {
+    if (selectedExam) {
+      loadStudents();
+      loadExistingResults();
+    }
+  }, [selectedExam, selectedSubject, loadStudents, loadExistingResults]);
 
   const calculateGrade = (obtainedMarks: number, totalMarks: number): string => {
     const percentage = (obtainedMarks / totalMarks) * 100;
@@ -207,6 +333,14 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
     const numValue = parseFloat(value);
     const exam = exams.find(e => e.id === selectedExam);
     if (!exam) return;
+    if (!profile?.school_id) {
+      toast({
+        title: "Error",
+        description: "School ID not found. Please contact your administrator.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     if (!isNaN(numValue) && numValue >= 0 && numValue <= exam.total_marks) {
       setMarks(prev => ({ ...prev, [studentId]: numValue }));
@@ -276,6 +410,37 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       const grade = calculateGrade(obtainedMarks, exam.total_marks);
       const existingResult = existingResults[studentId];
 
+      if (isPhpBackend) {
+        if (!profile?.school_id) {
+          throw new Error('School ID not found. Please contact your administrator.');
+        }
+
+        if (existingResult?.id) {
+          await phpApi.table<ExamResult>('exam_results').update(existingResult.id, {
+            obtained_marks: obtainedMarks,
+            grade,
+          });
+        } else {
+          await phpApi.table<ExamResult>('exam_results').create({
+            school_id: profile.school_id,
+            exam_id: selectedExam,
+            student_id: studentId,
+            subject_id: selectedSubject,
+            obtained_marks: obtainedMarks,
+            total_marks: exam.total_marks,
+            grade,
+          });
+        }
+
+        setSavedStudents(prev => new Set(prev).add(studentId));
+        toast({
+          title: "Success",
+          description: "Marks saved successfully",
+        });
+        await loadExistingResults();
+        return;
+      }
+
       if (existingResult?.id) {
         const { error } = await supabase
           .from('exam_results')
@@ -287,17 +452,19 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
 
         if (error) throw error;
       } else {
+        const newResult: ExamResultInsert = {
+          school_id: profile.school_id,
+          exam_id: selectedExam,
+          student_id: studentId,
+          subject_id: selectedSubject,
+          obtained_marks: obtainedMarks,
+          total_marks: exam.total_marks,
+          grade: grade,
+        };
+
         const { error } = await supabase
           .from('exam_results')
-          .insert({
-            school_id: profile?.school_id,
-            exam_id: selectedExam,
-            student_id: studentId,
-            subject_id: selectedSubject,
-            obtained_marks: obtainedMarks,
-            total_marks: exam.total_marks,
-            grade: grade,
-          } as any);
+          .insert(newResult);
 
         if (error) throw error;
       }
@@ -310,10 +477,17 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       
       await loadExistingResults();
     } catch (error) {
-      console.error('Error saving marks:', error);
+      const notice = handleSupabaseError('Save student marks', error, {
+        context: {
+          schoolId: profile?.school_id,
+          examId: selectedExam,
+          subjectId: selectedSubject,
+          studentId,
+        },
+      });
       toast({
-        title: "Error",
-        description: "Failed to save marks",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     } finally {
@@ -326,6 +500,14 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
 
     const exam = exams.find(e => e.id === selectedExam);
     if (!exam) return;
+    if (!profile?.school_id) {
+      toast({
+        title: "Error",
+        description: "School ID not found. Please contact your administrator.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setSaving(true);
     let successCount = 0;
@@ -340,6 +522,29 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         const grade = calculateGrade(obtainedMarks, exam.total_marks);
         const existingResult = existingResults[student.id];
 
+        if (isPhpBackend) {
+          if (existingResult?.id) {
+            await phpApi.table<ExamResult>('exam_results').update(existingResult.id, {
+              obtained_marks: obtainedMarks,
+              grade,
+            });
+          } else {
+            await phpApi.table<ExamResult>('exam_results').create({
+              school_id: profile.school_id,
+              exam_id: selectedExam,
+              student_id: student.id,
+              subject_id: selectedSubject,
+              obtained_marks: obtainedMarks,
+              total_marks: exam.total_marks,
+              grade,
+            });
+          }
+
+          setSavedStudents(prev => new Set(prev).add(student.id));
+          successCount++;
+          continue;
+        }
+
         if (existingResult?.id) {
           const { error } = await supabase
             .from('exam_results')
@@ -351,17 +556,19 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
 
           if (error) throw error;
         } else {
+          const newResult: ExamResultInsert = {
+            school_id: profile.school_id,
+            exam_id: selectedExam,
+            student_id: student.id,
+            subject_id: selectedSubject,
+            obtained_marks: obtainedMarks,
+            total_marks: exam.total_marks,
+            grade: grade,
+          };
+
           const { error } = await supabase
             .from('exam_results')
-            .insert({
-              school_id: profile?.school_id,
-              exam_id: selectedExam,
-              student_id: student.id,
-              subject_id: selectedSubject,
-              obtained_marks: obtainedMarks,
-              total_marks: exam.total_marks,
-              grade: grade,
-            } as any);
+            .insert(newResult);
 
           if (error) throw error;
         }
@@ -369,7 +576,14 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         setSavedStudents(prev => new Set(prev).add(student.id));
         successCount++;
       } catch (error) {
-        console.error('Error saving marks for student:', student.id, error);
+        handleSupabaseError('Save student marks in bulk', error, {
+          context: {
+            schoolId: profile?.school_id,
+            examId: selectedExam,
+            subjectId: selectedSubject,
+            studentId: student.id,
+          },
+        });
         errorCount++;
       }
     }

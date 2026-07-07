@@ -56,31 +56,27 @@ export function useRoleBasedAccess() {
  * Component Permission Checker
  * Use this in components to check what the current user can do
  */
-export const componentPermissions = {
-  /**
-   * Check if current user should see administration panels
-   */
-  shouldShowAdminPanel: () => {
-    const { is } = useFeatureAccess();
-    return is(['super_admin', 'school_admin']);
-  },
+export function useComponentPermissions() {
+  const { is, can } = useFeatureAccess();
 
-  /**
-   * Check if current user should see teacher tools
-   */
-  shouldShowTeacherTools: () => {
-    const { can } = useFeatureAccess();
-    return can('attendance.record', 'full') || can('marks.enter', 'full');
-  },
+  return {
+    /**
+     * Check if current user should see administration panels
+     */
+    shouldShowAdminPanel: () => is(['super_admin', 'school_admin']),
 
-  /**
-   * Check if current user should see student personal data
-   */
-  shouldShowStudentDashboard: () => {
-    const { can } = useFeatureAccess();
-    return can('analytics.view_own', 'full');
-  },
-};
+    /**
+     * Check if current user should see teacher tools
+     */
+    shouldShowTeacherTools: () =>
+      can('attendance.record', 'full') || can('marks.enter', 'full'),
+
+    /**
+     * Check if current user should see student personal data
+     */
+    shouldShowStudentDashboard: () => can('analytics.view_own', 'full'),
+  };
+}
 
 /**
  * Migration Checklist for Components

@@ -57,7 +57,7 @@ export const queryKeys = {
   teacher: (teacherId: string) => ['teachers', teacherId] as const,
   
   // Attendance
-  attendance: (filters: Record<string, any>) => ['attendance', filters] as const,
+  attendance: (filters: Record<string, unknown>) => ['attendance', filters] as const,
   
   // Exams
   exams: (schoolId?: string, classId?: string) => 
@@ -70,11 +70,11 @@ export const queryKeys = {
     ['timetable', { classId, teacherId }] as const,
   
   // Analytics
-  analytics: (type: string, filters: Record<string, any>) => 
+  analytics: (type: string, filters: Record<string, unknown>) => 
     ['analytics', type, filters] as const,
   
   // Audit logs
-  auditLogs: (filters: Record<string, any>) => ['audit-logs', filters] as const,
+  auditLogs: (filters: Record<string, unknown>) => ['audit-logs', filters] as const,
 };
 
 // Cache time presets for different data types

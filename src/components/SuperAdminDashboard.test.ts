@@ -43,7 +43,7 @@ describe('SuperAdminDashboard - Statistics Calculations', () => {
     });
 
     it('should calculate total schools from type counts', () => {
-      const total = Object.values(mockSchools.reduce((acc: any, school) => {
+      const total = Object.values(mockSchools.reduce<Record<string, number>>((acc, school) => {
         acc[school.school_type] = (acc[school.school_type] || 0) + 1;
         return acc;
       }, {})).reduce((a: number, b: number) => a + b, 0);

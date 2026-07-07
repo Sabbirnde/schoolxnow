@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +18,8 @@ import { useAuditLog } from '@/hooks/useAuditLog';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { Edit, Users, Eye, CheckCircle, XCircle, UserX, UserPlus, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { usePollingRefresh } from '@/hooks/usePollingRefresh';
+import { handleSupabaseError, SupabaseErrorNotice } from '@/lib/api-error-handler';
 
 interface Teacher {
   id: string;
@@ -30,12 +34,39 @@ interface Teacher {
   schools?: { name: string; school_type: string };
 }
 
+interface SchoolOption {
+  id: string;
+  name: string;
+  school_type: string;
+}
+
+interface TeacherRecord {
+  id: string;
+  user_id: string | null;
+  school_id: string;
+  teacher_id: string;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  qualification: string | null;
+  subject_specialization: string | null;
+  designation: string | null;
+  is_active: boolean | number;
+}
+
+const normalizeTeacherProfile = (teacher: Teacher, school?: SchoolOption): Teacher => ({
+  ...teacher,
+  is_active: Boolean(teacher.is_active),
+  schools: school ? { name: school.name, school_type: school.school_type } : teacher.schools,
+});
+
 const TeacherManagement = () => {
   const { toast } = useToast();
   const { profile } = useAuth();
+  const { canFull } = useFeatureAccess();
   const auditLog = useAuditLog('TEACHER');
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [schools, setSchools] = useState<any[]>([]);
+  const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [advancedFilters, setAdvancedFilters] = useState<FilterValue[]>([]);
@@ -61,6 +92,14 @@ const TeacherManagement = () => {
     designation: '',
   });
 
+  const showErrorNotice = useCallback((notice: SupabaseErrorNotice) => {
+    toast({
+      title: notice.title,
+      description: notice.description,
+      variant: 'destructive',
+    });
+  }, [toast]);
+
   const filterFields: FilterField[] = [
     { key: 'full_name', label: 'Teacher Name', type: 'text', placeholder: 'Enter name...' },
     { key: 'phone', label: 'Phone', type: 'text', placeholder: 'Enter phone...' },
@@ -76,9 +115,95 @@ const TeacherManagement = () => {
     { key: 'school_name', label: 'School', type: 'text', placeholder: 'Enter school name...' },
   ];
 
+  const fetchTeachers = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const schoolRows = await phpApi.table<SchoolOption>('schools').list({
+          is_active: 1,
+          sort: 'name',
+          order: 'asc',
+          limit: 500,
+        });
+        const schoolById = new Map(schoolRows.map((school) => [school.id, school]));
+        const filters: Record<string, string | number> = {
+          role: 'teacher',
+          sort: 'created_at',
+          order: 'desc',
+          limit: 500,
+        };
+
+        if (canFull('teachers.manage') && profile?.school_id) {
+          filters.school_id = profile.school_id;
+        }
+
+        const data = await phpApi.table<Teacher>('user_profiles').list(filters);
+        setSchools(schoolRows);
+        setTeachers((data || []).map((teacher) => normalizeTeacherProfile(
+          teacher,
+          teacher.school_id ? schoolById.get(teacher.school_id) : undefined
+        )));
+        return;
+      }
+
+      let query = supabase
+        .from('user_profiles')
+        .select(`
+          *,
+          schools (name, school_type)
+        `)
+        .eq('role', 'teacher');
+
+      // School admins can only see teachers from their school
+      if (canFull('teachers.manage') && profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setTeachers(data || []);
+    } catch (error) {
+      showErrorNotice(handleSupabaseError('Load teachers', error, {
+        context: { schoolId: profile?.school_id },
+      }));
+    } finally {
+      setLoading(false);
+    }
+  }, [canFull, profile?.school_id, showErrorNotice]);
+
+  const fetchSchools = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<SchoolOption>('schools').list({
+          is_active: 1,
+          sort: 'name',
+          order: 'asc',
+          limit: 500,
+        });
+        setSchools(data || []);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('schools')
+        .select('id, name, school_type')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      setSchools(data || []);
+    } catch (error) {
+      handleSupabaseError('Load schools for teacher management', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTeachers();
     fetchSchools();
+
+    if (isPhpBackend) {
+      return;
+    }
     
     // Set up real-time subscription for user_profiles changes
     const channel = supabase
@@ -100,63 +225,38 @@ const TeacherManagement = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchTeachers, fetchSchools]);
 
-  const fetchTeachers = async () => {
-    try {
-      const { canFull } = useFeatureAccess();
-      let query = supabase
-        .from('user_profiles')
-        .select(`
-          *,
-          schools (name, school_type)
-        `)
-        .eq('role', 'teacher');
-
-      // School admins can only see teachers from their school
-      if (canFull('teachers.manage') && profile?.school_id) {
-        query = query.eq('school_id', profile.school_id);
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching teachers:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch teachers',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setTeachers(data || []);
-    } catch (error) {
-      console.error('Error in fetchTeachers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchSchools = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setSchools(data || []);
-    } catch (error) {
-      console.error('Error fetching schools:', error);
-    }
-  };
+  usePollingRefresh({
+    enabled: isPhpBackend,
+    intervalMs: 10000,
+    onRefresh: fetchTeachers,
+  });
 
   const handleUpdateTeacher = async () => {
     if (!selectedTeacher) return;
 
     try {
       setValidationError(null);
+
+      if (isPhpBackend) {
+        await phpApi.table<Teacher>('user_profiles').update(selectedTeacher.id, {
+          full_name: formData.full_name,
+          approval_status: formData.approval_status,
+          is_active: formData.is_active,
+          phone: formData.phone,
+          school_id: formData.school_id === 'none' ? null : formData.school_id,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Teacher updated successfully',
+        });
+
+        setIsEditDialogOpen(false);
+        fetchTeachers();
+        return;
+      }
       
       const { error } = await supabase
         .from('user_profiles')
@@ -170,7 +270,9 @@ const TeacherManagement = () => {
         .eq('id', selectedTeacher.id);
 
       if (error) {
-        console.error('Error updating teacher:', error);
+        const notice = handleSupabaseError('Update teacher', error, {
+          context: { teacherId: selectedTeacher.id, schoolId: formData.school_id },
+        });
         await auditLog.logFailedAction(selectedTeacher.id, {
           entityName: selectedTeacher.full_name,
           changes: {
@@ -179,14 +281,10 @@ const TeacherManagement = () => {
             is_active: formData.is_active,
             phone: formData.phone,
           },
-          error: error.message,
+          error: notice.description,
         });
         
-        toast({
-          title: 'Error',
-          description: 'Failed to update teacher',
-          variant: 'destructive',
-        });
+        showErrorNotice(notice);
         return;
       }
 
@@ -208,18 +306,35 @@ const TeacherManagement = () => {
       setIsEditDialogOpen(false);
       fetchTeachers();
     } catch (error) {
-      console.error('Error in handleUpdateTeacher:', error);
+      const notice = handleSupabaseError('Update teacher', error, {
+        context: { teacherId: selectedTeacher.id, schoolId: formData.school_id },
+      });
       await auditLog.logFailedAction(selectedTeacher.id, {
         entityName: selectedTeacher.full_name,
-        error: `Unexpected error: ${error}`,
+        error: notice.description,
       });
+      showErrorNotice(notice);
     }
   };
 
   const handleApproveTeacher = async (teacherId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+
     try {
-      const teacher = teachers.find(t => t.id === teacherId);
-      if (!teacher) return;
+      if (isPhpBackend) {
+        await phpApi.table<Teacher>('user_profiles').update(teacherId, {
+          approval_status: 'approved',
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Teacher approved successfully',
+        });
+
+        fetchTeachers();
+        return;
+      }
 
       const { error } = await supabase
         .from('user_profiles')
@@ -227,17 +342,19 @@ const TeacherManagement = () => {
         .eq('id', teacherId);
 
       if (error) {
-        console.error('Error approving teacher:', error);
+        const notice = handleSupabaseError('Approve teacher', error, {
+          context: { teacherId, schoolId: teacher.school_id },
+        });
         await auditLog.logFailedAction(teacherId, {
           entityName: teacher.full_name,
           action: 'APPROVE',
           transition: 'pending→approved',
-          error: error.message,
+          error: notice.description,
         });
         
         toast({
-          title: 'Error',
-          description: 'Failed to approve teacher',
+          title: notice.title,
+          description: notice.description,
           variant: 'destructive',
         });
         return;
@@ -255,14 +372,36 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      console.error('Error in handleApproveTeacher:', error);
+      const notice = handleSupabaseError('Approve teacher', error, {
+        context: { teacherId, schoolId: teacher.school_id },
+      });
+      await auditLog.logFailedAction(teacherId, {
+        entityName: teacher.full_name,
+        action: 'APPROVE',
+        error: notice.description,
+      });
+      showErrorNotice(notice);
     }
   };
 
   const handleRejectTeacher = async (teacherId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+
     try {
-      const teacher = teachers.find(t => t.id === teacherId);
-      if (!teacher) return;
+      if (isPhpBackend) {
+        await phpApi.table<Teacher>('user_profiles').update(teacherId, {
+          approval_status: 'rejected',
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Teacher rejected successfully',
+        });
+
+        fetchTeachers();
+        return;
+      }
 
       const { error } = await supabase
         .from('user_profiles')
@@ -270,17 +409,19 @@ const TeacherManagement = () => {
         .eq('id', teacherId);
 
       if (error) {
-        console.error('Error rejecting teacher:', error);
+        const notice = handleSupabaseError('Reject teacher', error, {
+          context: { teacherId, schoolId: teacher.school_id },
+        });
         await auditLog.logFailedAction(teacherId, {
           entityName: teacher.full_name,
           action: 'REJECT',
           transition: 'pending→rejected',
-          error: error.message,
+          error: notice.description,
         });
         
         toast({
-          title: 'Error',
-          description: 'Failed to reject teacher',
+          title: notice.title,
+          description: notice.description,
           variant: 'destructive',
         });
         return;
@@ -298,14 +439,36 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      console.error('Error in handleRejectTeacher:', error);
+      const notice = handleSupabaseError('Reject teacher', error, {
+        context: { teacherId, schoolId: teacher.school_id },
+      });
+      await auditLog.logFailedAction(teacherId, {
+        entityName: teacher.full_name,
+        action: 'REJECT',
+        error: notice.description,
+      });
+      showErrorNotice(notice);
     }
   };
 
   const handleDeactivateTeacher = async (teacherId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    if (!teacher) return;
+
     try {
-      const teacher = teachers.find(t => t.id === teacherId);
-      if (!teacher) return;
+      if (isPhpBackend) {
+        await phpApi.table<Teacher>('user_profiles').update(teacherId, {
+          is_active: false,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Teacher deactivated successfully',
+        });
+
+        fetchTeachers();
+        return;
+      }
 
       const { error } = await supabase
         .from('user_profiles')
@@ -313,17 +476,19 @@ const TeacherManagement = () => {
         .eq('id', teacherId);
 
       if (error) {
-        console.error('Error deactivating teacher:', error);
+        const notice = handleSupabaseError('Deactivate teacher', error, {
+          context: { teacherId, schoolId: teacher.school_id },
+        });
         await auditLog.logFailedAction(teacherId, {
           entityName: teacher.full_name,
           action: 'DEACTIVATE',
           transition: 'active→inactive',
-          error: error.message,
+          error: notice.description,
         });
         
         toast({
-          title: 'Error',
-          description: 'Failed to deactivate teacher',
+          title: notice.title,
+          description: notice.description,
           variant: 'destructive',
         });
         return;
@@ -342,7 +507,15 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      console.error('Error in handleDeactivateTeacher:', error);
+      const notice = handleSupabaseError('Deactivate teacher', error, {
+        context: { teacherId, schoolId: teacher.school_id },
+      });
+      await auditLog.logFailedAction(teacherId, {
+        entityName: teacher.full_name,
+        action: 'DEACTIVATE',
+        error: notice.description,
+      });
+      showErrorNotice(notice);
     }
   };
 
@@ -386,6 +559,65 @@ const TeacherManagement = () => {
     try {
       setValidationError(null);
 
+      if (isPhpBackend) {
+        const user = await phpApi.register({
+          email: createFormData.email,
+          password: createFormData.password,
+          full_name: createFormData.full_name,
+          role: 'teacher',
+          school_id: profile.school_id,
+        });
+
+        const profileRows = await phpApi.table<Teacher>('user_profiles').list({
+          user_id: user.id,
+          limit: 1,
+        });
+        const teacherProfile = profileRows[0];
+
+        if (teacherProfile) {
+          await phpApi.table<Teacher>('user_profiles').update(teacherProfile.id, {
+            phone: createFormData.phone,
+            approval_status: 'approved',
+            is_active: true,
+          });
+        }
+
+        const timestamp = Date.now().toString().slice(-6);
+        const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const teacherId = `TCH-${timestamp}-${random}`;
+
+        await phpApi.table<TeacherRecord>('teachers').create({
+          user_id: user.id,
+          school_id: profile.school_id,
+          full_name: createFormData.full_name,
+          phone: createFormData.phone,
+          email: createFormData.email,
+          qualification: createFormData.qualification || null,
+          subject_specialization: createFormData.subject_specialization || null,
+          designation: createFormData.designation || null,
+          teacher_id: teacherId,
+          is_active: true,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'Teacher account created successfully',
+        });
+
+        setIsCreateDialogOpen(false);
+        setCreateFormData({
+          email: '',
+          password: '',
+          full_name: '',
+          phone: '',
+          qualification: '',
+          subject_specialization: '',
+          designation: '',
+        });
+        fetchTeachers();
+        return;
+      }
+
       // Create auth user with teacher role
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: createFormData.email,
@@ -401,35 +633,33 @@ const TeacherManagement = () => {
       });
 
       if (authError) {
-        setValidationError(`Authentication error: ${authError.message}`);
+        const notice = handleSupabaseError('Create teacher auth account', authError, {
+          context: { schoolId: profile.school_id, email: createFormData.email },
+        });
+        setValidationError(notice.description);
         await auditLog.logFailedAction('new', {
           entityName: createFormData.full_name,
           action: 'CREATE',
-          error: authError.message,
+          error: notice.description,
         });
         
-        toast({
-          title: 'Error',
-          description: authError.message,
-          variant: 'destructive',
-        });
+        showErrorNotice(notice);
         return;
       }
 
       if (!authData.user) {
-        const errorMsg = 'Failed to create user account';
-        setValidationError(errorMsg);
+        const accountError = new Error('Supabase did not return a user account after signup');
+        const notice = handleSupabaseError('Create teacher auth account', accountError, {
+          context: { schoolId: profile.school_id, email: createFormData.email },
+        });
+        setValidationError(notice.description);
         await auditLog.logFailedAction('new', {
           entityName: createFormData.full_name,
           action: 'CREATE',
-          error: errorMsg,
+          error: notice.description,
         });
         
-        toast({
-          title: 'Error',
-          description: errorMsg,
-          variant: 'destructive',
-        });
+        showErrorNotice(notice);
         return;
       }
 
@@ -452,21 +682,19 @@ const TeacherManagement = () => {
           designation: createFormData.designation || null,
           teacher_id: teacherId,
           is_active: true,
-        });
+      });
 
       if (teacherError) {
-        console.error('Error creating teacher record:', teacherError);
+        const notice = handleSupabaseError('Create teacher record', teacherError, {
+          context: { schoolId: profile.school_id, userId: authData.user.id, teacherId },
+        });
         await auditLog.logFailedAction(authData.user.id, {
           entityName: createFormData.full_name,
           action: 'CREATE',
-          error: teacherError.message,
+          error: notice.description,
         });
         
-        toast({
-          title: 'Error',
-          description: 'Failed to create teacher record',
-          variant: 'destructive',
-        });
+        showErrorNotice(notice);
         return;
       }
 
@@ -494,12 +722,16 @@ const TeacherManagement = () => {
       });
       fetchTeachers();
     } catch (error) {
-      console.error('Error in handleCreateTeacher:', error);
-      toast({
-        title: 'Error',
-        description: 'An unexpected error occurred',
-        variant: 'destructive',
+      const notice = handleSupabaseError('Create teacher', error, {
+        context: { schoolId: profile.school_id, email: createFormData.email },
       });
+      setValidationError(notice.description);
+      await auditLog.logFailedAction('new', {
+        entityName: createFormData.full_name,
+        action: 'CREATE',
+        error: notice.description,
+      });
+      showErrorNotice(notice);
     }
   };
 

@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -17,6 +19,7 @@ interface Student {
 }
 
 interface AttendanceRecord {
+  id?: string;
   student_id: string;
   is_present: boolean;
 }
@@ -43,17 +46,42 @@ export function QuickAttendanceSheet({
   const [saving, setSaving] = useState(false);
   const [existingAttendance, setExistingAttendance] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (open && classId) {
-      loadStudentsAndAttendance();
-    }
-  }, [open, classId, date]);
-
-  const loadStudentsAndAttendance = async () => {
+  const loadStudentsAndAttendance = useCallback(async () => {
     if (!classId || !profile?.school_id) return;
 
     try {
       setLoading(true);
+      const dateStr = format(date, 'yyyy-MM-dd');
+
+      if (isPhpBackend) {
+        const [studentsData, attendanceData] = await Promise.all([
+          phpApi.table<Student>('students').list({
+            class_id: classId,
+            status: 'active',
+            sort: 'student_id',
+            order: 'asc',
+            limit: 200,
+          }),
+          phpApi.table<AttendanceRecord>('attendance').list({
+            class_id: classId,
+            date: dateStr,
+            limit: 200,
+          }),
+        ]);
+
+        setStudents(studentsData);
+
+        const attendanceMap: Record<string, boolean> = {};
+        const existingIds = new Set<string>();
+        attendanceData.forEach(record => {
+          attendanceMap[record.student_id] = Boolean(record.is_present);
+          existingIds.add(record.student_id);
+        });
+
+        setAttendance(attendanceMap);
+        setExistingAttendance(existingIds);
+        return;
+      }
 
       // Load students
       const { data: studentsData, error: studentsError } = await supabase
@@ -67,7 +95,6 @@ export function QuickAttendanceSheet({
       setStudents(studentsData || []);
 
       // Load existing attendance for this date
-      const dateStr = format(date, 'yyyy-MM-dd');
       const { data: attendanceData, error: attendanceError } = await supabase
         .from('attendance')
         .select('student_id, is_present')
@@ -92,7 +119,13 @@ export function QuickAttendanceSheet({
     } finally {
       setLoading(false);
     }
-  };
+  }, [classId, date, profile?.school_id]);
+
+  useEffect(() => {
+    if (open && classId) {
+      loadStudentsAndAttendance();
+    }
+  }, [open, classId, date, loadStudentsAndAttendance]);
 
   const toggleAttendance = (studentId: string) => {
     setAttendance(prev => ({
@@ -132,6 +165,31 @@ export function QuickAttendanceSheet({
         date: dateStr,
         is_present: attendance[student.id] ?? false,
       }));
+
+      if (isPhpBackend) {
+        const existingRows = await phpApi.table<AttendanceRecord>('attendance').list({
+          class_id: classId,
+          date: dateStr,
+          limit: 200,
+        });
+
+        await Promise.all(
+          existingRows
+            .filter((record) => record.id)
+            .map((record) => phpApi.table<AttendanceRecord>('attendance').delete(record.id as string))
+        );
+
+        await Promise.all(
+          records.map((record) => phpApi.table<AttendanceRecord>('attendance').create(record))
+        );
+
+        const presentCount = Object.values(attendance).filter(Boolean).length;
+        const absentCount = students.length - presentCount;
+
+        toast.success(`Attendance saved! ${presentCount} present, ${absentCount} absent`);
+        onOpenChange(false);
+        return;
+      }
 
       // Delete existing records for this class and date
       const { error: deleteError } = await supabase

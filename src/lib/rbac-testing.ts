@@ -306,8 +306,20 @@ export function testRoleAccess(role: UserRole) {
  *   };
  * }
  */
-if ((import.meta as any).env?.DEV) {
-  (window as any).rbacDebug = {
+declare global {
+  interface Window {
+    rbacDebug?: {
+      testAll: () => void;
+      testRole: typeof testRoleAccess;
+      exportReport: typeof exportTestReport;
+      generateSummary: typeof generateAccessSummary;
+      verify: typeof verifyFeatureConfiguration;
+    };
+  }
+}
+
+if (import.meta.env?.DEV) {
+  window.rbacDebug = {
     testAll: () => logTestResults(true),
     testRole: testRoleAccess,
     exportReport: exportTestReport,

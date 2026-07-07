@@ -4,7 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useDashboardMetricsExport } from '@/hooks/useReportExport';
@@ -43,6 +45,9 @@ interface MetricCard {
   status?: 'good' | 'warning' | 'critical';
 }
 
+type ExportFormat = 'csv' | 'excel' | 'pdf';
+type SchoolNameRow = { id: string; name: string };
+
 export function SchoolAdminReportsDashboard() {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -51,14 +56,7 @@ export function SchoolAdminReportsDashboard() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('pdf');
-
-  // Load metrics on component mount
-  useEffect(() => {
-    if (profile?.school_id) {
-      loadMetrics();
-    }
-  }, [profile?.school_id]);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('pdf');
 
   const loadMetrics = useCallback(async () => {
     if (!profile?.school_id) return;
@@ -79,6 +77,13 @@ export function SchoolAdminReportsDashboard() {
     }
   }, [profile?.school_id, toast]);
 
+  // Load metrics on component mount
+  useEffect(() => {
+    if (profile?.school_id) {
+      loadMetrics();
+    }
+  }, [profile?.school_id, loadMetrics]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadMetrics();
@@ -88,11 +93,13 @@ export function SchoolAdminReportsDashboard() {
   const handleExport = useCallback(async () => {
     if (!metrics || !profile?.school_id) return;
 
-    const { data: school } = await supabase
-      .from('schools')
-      .select('name')
-      .eq('id', profile.school_id)
-      .single();
+    const school = isPhpBackend
+      ? await phpApi.table<SchoolNameRow>('schools').get(profile.school_id)
+      : (await supabase
+          .from('schools')
+          .select('name')
+          .eq('id', profile.school_id)
+          .single()).data;
 
     await exportMetrics(metrics, school?.name || 'School', exportFormat);
   }, [metrics, profile?.school_id, exportFormat, exportMetrics]);
@@ -213,7 +220,7 @@ export function SchoolAdminReportsDashboard() {
 
         {/* Export Controls */}
         <div className="flex gap-2 w-full sm:w-auto">
-          <Select value={exportFormat} onValueChange={(value: any) => setExportFormat(value)}>
+          <Select value={exportFormat} onValueChange={(value: ExportFormat) => setExportFormat(value)}>
             <SelectTrigger className="w-full sm:w-40">
               <SelectValue placeholder="Select format" />
             </SelectTrigger>

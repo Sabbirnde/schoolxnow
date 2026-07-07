@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { FilterValue } from '@/components/AdvancedFilter';
 
-export function useAdvancedFilter<T extends Record<string, any>>(
+export function useAdvancedFilter<T extends Record<string, unknown>>(
   data: T[],
   filters: FilterValue[],
   searchTerm: string,

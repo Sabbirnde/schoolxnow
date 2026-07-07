@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -20,6 +22,12 @@ const BootstrapChecker = ({ children }: BootstrapCheckerProps) => {
         // Prevents RPC errors after logout
         if (!user) {
           setLoading(false);
+          return;
+        }
+
+        if (isPhpBackend) {
+          const status = await phpApi.bootstrapStatus();
+          setNeedsBootstrap(!status.super_admin_exists);
           return;
         }
 

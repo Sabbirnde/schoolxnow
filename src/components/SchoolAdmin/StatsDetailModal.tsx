@@ -16,7 +16,7 @@ import { useState } from "react";
 interface Column {
   key: string;
   label: string;
-  render?: (value: any, row: any) => ReactNode;
+  render?: (value: unknown, row: Record<string, unknown>) => ReactNode;
   width?: string;
 }
 
@@ -28,9 +28,9 @@ interface StatsDetailModalProps {
   count: number;
   icon?: ReactNode;
   columns: Column[];
-  data: Record<string, any>[];
+  data: Record<string, unknown>[];
   loading?: boolean;
-  onRowClick?: (row: Record<string, any>) => void;
+  onRowClick?: (row: Record<string, unknown>) => void;
   searchable?: boolean;
   searchPlaceholder?: string;
 }

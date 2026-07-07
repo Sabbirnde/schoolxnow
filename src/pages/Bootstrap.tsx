@@ -7,7 +7,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield, AlertTriangle, CheckCircle, Lock, Info } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const Bootstrap = () => {
@@ -29,6 +31,12 @@ const Bootstrap = () => {
   useEffect(() => {
     const checkSuperAdmins = async () => {
       try {
+        if (isPhpBackend) {
+          const status = await phpApi.bootstrapStatus();
+          setHasAdmins(status.super_admin_exists);
+          return;
+        }
+
         const { data, error } = await supabase.rpc('super_admin_exists');
 
         if (error) {
@@ -122,6 +130,25 @@ const Bootstrap = () => {
 
     setLoading(true);
     try {
+      if (isPhpBackend) {
+        await phpApi.createSuperAdmin({
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.fullName,
+          secret_key: formData.secretKey,
+        });
+
+        toast({
+          title: "Bootstrap Complete!",
+          description: "Super administrator created. Redirecting to login...",
+        });
+
+        setTimeout(() => {
+          navigate("/auth");
+        }, 1500);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('create-super-admin', {
         body: {
           email: formData.email,
@@ -148,7 +175,7 @@ const Bootstrap = () => {
       setTimeout(() => {
         navigate("/auth");
       }, 1500);
-    } catch (error: any) {
+    } catch (error: unknown) {
       let errorMessage = "Failed to create super admin account";
       
       // Provide more specific error messages

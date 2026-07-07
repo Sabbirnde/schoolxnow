@@ -1,10 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import { supabase } from "@/integrations/php-api/compat-client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import type { Json } from "@/integrations/database/types";
 import {
   Calendar,
   UserPlus,
@@ -27,13 +30,18 @@ interface AuditLogEntry {
   success: boolean;
   error_message?: string | null;
   user_id: string;
-  metadata?: any;
+  metadata?: Json | null;
 }
 
 interface ActivityFeed {
   entries: AuditLogEntry[];
   filtered: AuditLogEntry[];
   selectedFilter: string | null;
+}
+
+interface AuditLogPhpRow extends Omit<AuditLogEntry, 'success' | 'metadata'> {
+  success: boolean | number;
+  metadata?: string | Json | null;
 }
 
 const ActionIcons: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -102,6 +110,23 @@ const groupByDate = (entries: AuditLogEntry[]): Record<string, AuditLogEntry[]> 
   return groups;
 };
 
+const parseJsonField = (value: string | Json | null | undefined): Json | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') return value;
+
+  try {
+    return JSON.parse(value) as Json;
+  } catch {
+    return value;
+  }
+};
+
+const normalizeAuditLog = (log: AuditLogPhpRow): AuditLogEntry => ({
+  ...log,
+  success: log.success === true || log.success === 1,
+  metadata: parseJsonField(log.metadata),
+});
+
 export function EnhancedActivityFeed() {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -121,13 +146,7 @@ export function EnhancedActivityFeed() {
     { value: 'exam_marks', label: 'Marks' },
   ]);
 
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchActivityFeed();
-    }
-  }, [profile?.school_id]);
-
-  const fetchActivityFeed = async () => {
+  const fetchActivityFeed = useCallback(async () => {
     if (!profile?.school_id) {
       setLoading(false);
       return;
@@ -135,6 +154,26 @@ export function EnhancedActivityFeed() {
 
     try {
       setLoading(true);
+      const trackedEntities = ['students', 'teachers', 'classes', 'exams', 'attendance', 'exam_marks', 'timetable', 'subjects'];
+
+      if (isPhpBackend) {
+        const data = await phpApi.table<AuditLogPhpRow>('audit_logs').list({
+          sort: 'timestamp',
+          order: 'desc',
+          limit: 100,
+        });
+        const filtered = data
+          .map(normalizeAuditLog)
+          .filter(entry => trackedEntities.includes(entry.entity_type))
+          .slice(0, 15);
+
+        setActivityFeed({
+          entries: filtered,
+          filtered,
+          selectedFilter: null,
+        });
+        return;
+      }
 
       // Fetch audit logs for school
       const { data, error } = await supabase
@@ -150,7 +189,7 @@ export function EnhancedActivityFeed() {
           user_id,
           metadata
         `)
-        .in('entity_type', ['students', 'teachers', 'classes', 'exams', 'attendance', 'exam_marks', 'timetable', 'subjects'])
+        .in('entity_type', trackedEntities)
         .order('timestamp', { ascending: false })
         .limit(15);
 
@@ -161,7 +200,7 @@ export function EnhancedActivityFeed() {
         filtered: data || [],
         selectedFilter: null,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching activity feed:', error);
       toast({
         title: 'Error',
@@ -171,7 +210,13 @@ export function EnhancedActivityFeed() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [profile?.school_id, toast]);
+
+  useEffect(() => {
+    if (profile?.school_id) {
+      fetchActivityFeed();
+    }
+  }, [profile?.school_id, fetchActivityFeed]);
 
   const handleFilter = (filterValue: string | null) => {
     setActivityFeed(prev => ({

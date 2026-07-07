@@ -14,6 +14,7 @@ import {
   AuditLog,
   AuditEntityType as EntityType,
 } from '@/lib/audit-log';
+import type { Json } from '@/integrations/database/types';
 
 interface UseAuditLogOptions {
   entityType: EntityType;
@@ -36,8 +37,8 @@ export function useAuditLog(options: UseAuditLogOptions) {
       action: AuditAction,
       entityId: string,
       logOptions?: {
-        newValues?: any;
-        metadata?: Record<string, any>;
+        newValues?: Json;
+        metadata?: Json;
       }
     ) => {
       if (!profile?.user_id) {

@@ -10,10 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useThrottledFetch } from "@/hooks/useThrottledFetch";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { AdvancedFilter, FilterField, FilterValue } from "@/components/AdvancedFilter";
 import { useAdvancedFilter } from "@/hooks/useAdvancedFilter";
@@ -26,6 +29,8 @@ import {
   ValidationError,
 } from "@/lib/audit-log";
 import { AlertCircle } from "lucide-react";
+import type { Database } from "@/integrations/database/types";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 import { 
   Plus, 
   Download, 
@@ -40,6 +45,7 @@ import {
 
 interface Student {
   id: string;
+  school_id?: string;
   full_name: string;
   student_id: string;
   gender: string;
@@ -50,6 +56,9 @@ interface Student {
   status: 'active' | 'inactive' | 'transferred' | 'graduated';
   admission_date: string;
   class_id: string | null;
+  father_name?: string;
+  mother_name?: string;
+  blood_group?: string | null;
   classes?: {
     name: string;
     section: string;
@@ -62,6 +71,21 @@ interface Class {
   section: string;
   class_level: string;
 }
+
+type StudentInsert = Database["public"]["Tables"]["students"]["Insert"];
+type StudentUpdate = Database["public"]["Tables"]["students"]["Update"];
+
+const attachClassesToStudents = (studentRows: Student[], classRows: Class[]): Student[] => {
+  const classById = new Map(classRows.map((classItem) => [classItem.id, classItem]));
+
+  return studentRows.map((student) => {
+    const classItem = student.class_id ? classById.get(student.class_id) : null;
+    return {
+      ...student,
+      classes: classItem ? { name: classItem.name, section: classItem.section } : undefined,
+    };
+  });
+};
 
 export function StudentManagement() {
   const { profile } = useAuth();
@@ -138,8 +162,30 @@ export function StudentManagement() {
     try {
       setLoading(true);
 
+      if (isPhpBackend) {
+        const [studentsData, classesData] = await Promise.all([
+          phpApi.table<Student>('students').list({
+            school_id: profile.school_id,
+            sort: 'admission_date',
+            order: 'desc',
+            limit: 200,
+          }),
+          phpApi.table<Class>('classes').list({
+            school_id: profile.school_id,
+            is_active: 1,
+            sort: 'name',
+            order: 'asc',
+            limit: 200,
+          }),
+        ]);
+
+        setClasses(classesData || []);
+        setStudents(attachClassesToStudents(studentsData || [], classesData || []));
+        return;
+      }
+
       // Fetch students
-      const { data: studentsData, error: studentsError } = await (supabase as any)
+      const { data: studentsData, error: studentsError } = await supabase
         .from('students')
         .select(`
           *,
@@ -154,7 +200,7 @@ export function StudentManagement() {
       if (studentsError) throw studentsError;
 
       // Fetch classes
-      const { data: classesData, error: classesError } = await (supabase as any)
+      const { data: classesData, error: classesError } = await supabase
         .from('classes')
         .select('*')
         .eq('school_id', profile.school_id)
@@ -163,13 +209,15 @@ export function StudentManagement() {
 
       if (classesError) throw classesError;
 
-      setStudents(studentsData || []);
-      setClasses(classesData || []);
+      setStudents((studentsData || []) as unknown as Student[]);
+      setClasses((classesData || []) as Class[]);
     } catch (error: unknown) {
-      console.error('Error fetching data:', error);
+      const notice = handleSupabaseError('Load students', error, {
+        context: { schoolId: profile?.school_id },
+      });
       toast({
-        title: "Error",
-        description: "Failed to load students data",
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     } finally {
@@ -183,9 +231,53 @@ export function StudentManagement() {
     1000
   );
 
+  usePollingRefresh({
+    enabled: isPhpBackend && Boolean(profile?.school_id),
+    intervalMs: 10000,
+    onRefresh: throttledFetch,
+  });
+
+  const checkDuplicateStudentId = useCallback(
+    async (schoolId: string, studentId: string, excludeId?: string): Promise<ValidationError | null> => {
+      if (!isPhpBackend) {
+        return checkStudentIDDuplicate(schoolId, studentId, excludeId);
+      }
+
+      try {
+        const matches = await phpApi.table<Student>('students').list({
+          school_id: schoolId,
+          student_id: studentId,
+          limit: 5,
+        });
+        const duplicate = matches.find((student) => student.id !== excludeId);
+
+        if (!duplicate) {
+          return null;
+        }
+
+        return {
+          field: 'student_id',
+          message: 'A student with this ID already exists in this school.',
+          code: 'DUPLICATE_STUDENT_ID',
+        };
+      } catch (error) {
+        return {
+          field: 'student_id',
+          message: error instanceof Error ? error.message : 'Unable to validate student ID.',
+          code: 'DUPLICATE_CHECK_FAILED',
+        };
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (profile?.school_id) {
       fetchData();
+    }
+
+    if (isPhpBackend) {
+      return;
     }
 
     // Set up narrow real-time subscriptions for students (INSERT/UPDATE only)
@@ -267,7 +359,7 @@ export function StudentManagement() {
       supabase.removeChannel(classesInsertChannel);
       supabase.removeChannel(classesUpdateChannel);
     };
-  }, [profile, fetchData]);
+  }, [profile?.school_id, fetchData, throttledFetch]);
 
   const handleAddStudent = async (values: StudentFormData) => {
     if (!profile?.school_id) {
@@ -333,7 +425,7 @@ export function StudentManagement() {
       }
 
       // Check for duplicate student ID
-      const duplicateError = await checkStudentIDDuplicate(
+      const duplicateError = await checkDuplicateStudentId(
         profile.school_id,
         values.student_id
       );
@@ -351,7 +443,7 @@ export function StudentManagement() {
       const admissionDate = new Date().toISOString().split('T')[0];
 
       // Filter out empty optional fields and add required fields
-      const studentData = {
+      const studentData: StudentInsert = {
         full_name: values.full_name,
         student_id: values.student_id,
         date_of_birth: values.date_of_birth,
@@ -370,29 +462,42 @@ export function StudentManagement() {
 
       console.log('Attempting to add student with data:', studentData);
 
-      const { data, error } = await (supabase as any)
+      if (isPhpBackend) {
+        const data = await phpApi.table<Student>('students').create(studentData as Partial<Student>);
+
+        console.log('Successfully added student:', data);
+
+        toast({
+          title: "Success",
+          description: `Student "${values.full_name}" added successfully with ID ${values.student_id}`,
+        });
+
+        setIsAddDialogOpen(false);
+        form.reset();
+        setValidationError(null);
+        fetchData();
+        return;
+      }
+
+      const { data, error } = await supabase
         .from('students')
         .insert(studentData)
         .select()
         .single();
 
       if (error) {
-        console.error('Supabase error details:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint
+        const notice = handleSupabaseError('Create student', error, {
+          context: {
+            schoolId: profile.school_id,
+            studentId: values.student_id,
+            fullName: values.full_name,
+          },
         });
         
         // Log failed audit event
-        await auditLog.logFailedAction('CREATE', values.student_id, error.message);
+        await auditLog.logFailedAction('CREATE', values.student_id, notice.description);
         
-        let errorMessage = error.message || "Failed to add student";
-        if (error.code === '23505') {
-          errorMessage = "A student with this ID already exists in the system.";
-        }
-        
-        throw new Error(errorMessage);
+        throw error;
       }
 
       console.log('Successfully added student:', data);
@@ -413,19 +518,24 @@ export function StudentManagement() {
       setValidationError(null);
       fetchData();
     } catch (error: unknown) {
-      console.error('Error adding student:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : "Failed to add student";
+      const notice = handleSupabaseError('Create student', error, {
+        context: {
+          schoolId: profile?.school_id,
+          studentId: values.student_id,
+          fullName: values.full_name,
+        },
+        log: false,
+      });
       
       toast({
-        title: "Error Adding Student",
-        description: errorMessage,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
       
       setValidationError({
         field: 'form',
-        message: errorMessage,
+        message: notice.description,
         code: 'FORM_SUBMISSION_ERROR'
       });
     } finally {
@@ -476,8 +586,17 @@ export function StudentManagement() {
 
       // Check for duplicate student ID (excluding current student)
       if (values.student_id !== editingStudent.student_id) {
-        const duplicateError = await checkStudentIDDuplicate(
-          profile?.school_id!,
+        if (!profile?.school_id) {
+          toast({
+            title: "School Missing",
+            description: "Cannot validate student ID without a school assignment.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const duplicateError = await checkDuplicateStudentId(
+          profile.school_id,
           values.student_id,
           editingStudent.id
         );
@@ -492,20 +611,43 @@ export function StudentManagement() {
         }
       }
 
-      const { error } = await (supabase as any)
+      const studentUpdate: StudentUpdate = {
+        ...values,
+        class_id: values.class_id || null,
+        guardian_email: values.guardian_email || null,
+        blood_group: values.blood_group || null,
+      };
+
+      if (isPhpBackend) {
+        await phpApi.table<Student>('students').update(editingStudent.id, studentUpdate as Partial<Student>);
+
+        toast({
+          title: "Success",
+          description: `Student "${values.full_name}" updated successfully`,
+        });
+
+        setEditingStudent(null);
+        form.reset();
+        setValidationError(null);
+        fetchData();
+        return;
+      }
+
+      const { error } = await supabase
         .from('students')
-        .update(values)
+        .update(studentUpdate)
         .eq('id', editingStudent.id);
 
       if (error) {
-        await auditLog.logFailedAction('UPDATE', editingStudent.id, error.message);
+        const notice = handleSupabaseError('Update student', error, {
+          context: {
+            studentId: editingStudent.id,
+            schoolId: profile?.school_id,
+          },
+        });
+        await auditLog.logFailedAction('UPDATE', editingStudent.id, notice.description);
         
-        let errorMessage = error.message || "Failed to update student";
-        if (error.code === '23505') {
-          errorMessage = "A student with this ID already exists in the system.";
-        }
-        
-        throw new Error(errorMessage);
+        throw error;
       }
 
       // Log successful audit event
@@ -523,19 +665,23 @@ export function StudentManagement() {
       setValidationError(null);
       fetchData();
     } catch (error: unknown) {
-      console.error('Error editing student:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : "Failed to update student";
+      const notice = handleSupabaseError('Update student', error, {
+        context: {
+          studentId: editingStudent.id,
+          schoolId: profile?.school_id,
+        },
+        log: false,
+      });
       
       toast({
-        title: "Error Updating Student",
-        description: errorMessage,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
       
       setValidationError({
         field: 'form',
-        message: errorMessage,
+        message: notice.description,
         code: 'FORM_SUBMISSION_ERROR'
       });
     } finally {
@@ -556,13 +702,28 @@ export function StudentManagement() {
         return;
       }
 
-      const { error } = await (supabase as any)
+      if (isPhpBackend) {
+        await phpApi.table<Student>('students').delete(studentId);
+
+        toast({
+          title: "Success",
+          description: `Student "${student.full_name}" deleted successfully`,
+        });
+
+        fetchData();
+        return;
+      }
+
+      const { error } = await supabase
         .from('students')
         .delete()
         .eq('id', studentId);
 
       if (error) {
-        await auditLog.logFailedAction('DELETE', studentId, error.message);
+        const notice = handleSupabaseError('Delete student', error, {
+          context: { studentId, schoolId: profile?.school_id },
+        });
+        await auditLog.logFailedAction('DELETE', studentId, notice.description);
         throw error;
       }
 
@@ -579,13 +740,14 @@ export function StudentManagement() {
 
       fetchData();
     } catch (error: unknown) {
-      console.error('Error deleting student:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : "Failed to delete student";
+      const notice = handleSupabaseError('Delete student', error, {
+        context: { studentId, schoolId: profile?.school_id },
+        log: false,
+      });
       
       toast({
-        title: "Error Deleting Student",
-        description: errorMessage,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
@@ -678,9 +840,9 @@ export function StudentManagement() {
       guardian_email: student.guardian_email || "",
       address: student.address,
       class_id: student.class_id || "",
-      father_name: "",
-      mother_name: "",
-      blood_group: ""
+      father_name: student.father_name || "",
+      mother_name: student.mother_name || "",
+      blood_group: student.blood_group || ""
     });
   };
 
@@ -799,11 +961,11 @@ export function StudentManagement() {
       {/* Students List */}
       <Card className="shadow-sm">
         <CardHeader className="p-3 md:p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg md:text-xl">Students List ({filteredStudents.length})</CardTitle>
             <Button 
               size="sm"
-              className="bg-gradient-primary hover:opacity-90"
+              className="w-full bg-gradient-primary hover:opacity-90 sm:w-auto"
               onClick={() => setIsAddDialogOpen(true)}
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -841,21 +1003,21 @@ export function StudentManagement() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                       <Badge variant={
                         student.status === 'active' ? 'default' :
                         student.status === 'graduated' ? 'secondary' : 'outline'
                       } className="text-xs">
                         {student.status}
                       </Badge>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="break-words text-xs text-muted-foreground">
                         <span className="font-medium">{student.gender.charAt(0).toUpperCase() + student.gender.slice(1)}</span> • 
                         <span className="ml-1">DOB: {new Date(student.date_of_birth).toLocaleDateString()}</span>
                       </div>
                     </div>
                     
-                    <div className="flex gap-1">
+                    <div className="flex shrink-0 justify-end gap-1">
                       <Button variant="ghost" size="sm" className="h-8 w-8 p-0 touch-target">
                         <Eye className="h-3 w-3 md:h-4 md:w-4" />
                       </Button>
@@ -892,7 +1054,7 @@ export function StudentManagement() {
           form.reset();
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingStudent ? 'Edit Student' : 'Add New Student'}</DialogTitle>
           </DialogHeader>
@@ -906,9 +1068,9 @@ export function StudentManagement() {
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(editingStudent ? handleEditStudent : handleAddStudent)} className="space-y-4">
-              <ScrollArea className="h-[500px] pr-4">
+              <ScrollArea className="h-[58vh] max-h-[500px] pr-4">
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="full_name"
@@ -938,7 +1100,7 @@ export function StudentManagement() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="gender"
@@ -1001,7 +1163,7 @@ export function StudentManagement() {
                 )}
               />
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="father_name"
@@ -1031,7 +1193,7 @@ export function StudentManagement() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="guardian_phone"
@@ -1105,10 +1267,11 @@ export function StudentManagement() {
                 </div>
               </ScrollArea>
 
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
                 <Button 
                   type="button" 
                   variant="outline" 
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     setIsAddDialogOpen(false);
                     setEditingStudent(null);
@@ -1121,7 +1284,7 @@ export function StudentManagement() {
                 </Button>
                 <Button 
                   type="submit" 
-                  className="bg-gradient-primary hover:opacity-90"
+                  className="w-full bg-gradient-primary hover:opacity-90 sm:w-auto"
                   disabled={isFormSubmitting}
                 >
                   {isFormSubmitting ? (

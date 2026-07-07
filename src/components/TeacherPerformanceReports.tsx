@@ -4,7 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeacherMetricsExport, useTeacherClassReportExport } from '@/hooks/useReportExport';
@@ -48,6 +50,53 @@ import {
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 
+interface ClassOption {
+  id: string;
+  name: string;
+  section: string;
+}
+
+interface SubjectOption {
+  id: string;
+  name: string;
+}
+
+type ExportFormat = 'csv' | 'excel' | 'pdf';
+
+interface TimetableOptionRow {
+  class_id: string;
+  subject_id: string;
+  teacher_id: string;
+}
+
+const PHP_PAGE_SIZE = 200;
+
+async function phpListAll<T extends object>(
+  table: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  sort = 'created_at',
+  order: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await phpApi.table<T>(table).list({
+      ...params,
+      sort,
+      order,
+      limit: PHP_PAGE_SIZE,
+      offset,
+    });
+
+    rows.push(...page);
+    if (page.length < PHP_PAGE_SIZE) break;
+    offset += PHP_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 export function TeacherPerformanceReports() {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -58,38 +107,77 @@ export function TeacherPerformanceReports() {
   const [loading, setLoading] = useState(true);
   const [teachers, setTeachers] = useState<TeacherMetrics[]>([]);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
-  const [teacherDetails, setTeacherDetails] = useState<any[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<TeacherMetrics | null>(null);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [classReport, setClassReport] = useState<TeacherClassReport | null>(null);
-  const [subjects, setSubjects] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [subjectReport, setSubjectReport] = useState<TeacherSubjectReport | null>(null);
 
-  const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('csv');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('csv');
   const [activeTab, setActiveTab] = useState('overview');
 
-  // Load teacher metrics on mount
-  useEffect(() => {
-    if (profile?.school_id) {
-      loadTeacherMetrics();
+  const loadTeacherDetails = useCallback(async (teacherId: string) => {
+    if (isPhpBackend) {
+      const [assignments, classesData, subjectsData] = await Promise.all([
+        phpListAll<TimetableOptionRow>('timetable', {
+          school_id: profile?.school_id,
+          teacher_id: teacherId,
+        }),
+        phpListAll<ClassOption>('classes', {
+          school_id: profile?.school_id,
+          is_active: 1,
+        }, 'name', 'asc'),
+        phpListAll<SubjectOption>('subjects', {
+          school_id: profile?.school_id,
+          is_active: 1,
+        }, 'name', 'asc'),
+      ]);
+
+      const classIds = new Set(assignments.map(a => a.class_id));
+      const subjectIds = new Set(assignments.map(a => a.subject_id));
+      const teacherClasses = classesData.filter(classItem => classIds.has(classItem.id));
+      const teacherSubjects = subjectsData.filter(subject => subjectIds.has(subject.id));
+
+      setClasses(teacherClasses);
+      setSubjects(teacherSubjects);
+      setSelectedClassId(teacherClasses[0]?.id || '');
+      setSelectedSubjectId(teacherSubjects[0]?.id || '');
+      return;
     }
+
+    const { data: assignments } = await supabase
+      .from('timetable')
+      .select('class_id, subject_id')
+      .eq('teacher_id', teacherId);
+
+    if (assignments && assignments.length > 0) {
+      const classIds = Array.from(new Set(assignments.map(a => a.class_id)));
+      const subjectIds = Array.from(new Set(assignments.map(a => a.subject_id)));
+
+      const { data: classesData } = await supabase
+        .from('classes')
+        .select('id, name, section')
+        .in('id', classIds);
+
+      const { data: subjectsData } = await supabase
+        .from('subjects')
+        .select('id, name')
+        .in('id', subjectIds);
+
+      setClasses(classesData || []);
+      setSubjects(subjectsData || []);
+      setSelectedClassId(classesData?.[0]?.id || '');
+      setSelectedSubjectId(subjectsData?.[0]?.id || '');
+      return;
+    }
+
+    setClasses([]);
+    setSubjects([]);
+    setSelectedClassId('');
+    setSelectedSubjectId('');
   }, [profile?.school_id]);
-
-  // Load class report when class and teacher are selected
-  useEffect(() => {
-    if (selectedTeacherId && selectedClassId && activeTab === 'classes') {
-      loadClassReport(selectedTeacherId, selectedClassId);
-    }
-  }, [selectedTeacherId, selectedClassId, activeTab]);
-
-  // Load subject report when subject and teacher are selected
-  useEffect(() => {
-    if (selectedTeacherId && selectedSubjectId && activeTab === 'subjects') {
-      loadSubjectReport(selectedTeacherId, selectedSubjectId);
-    }
-  }, [selectedTeacherId, selectedSubjectId, activeTab]);
 
   const loadTeacherMetrics = useCallback(async () => {
     if (!profile?.school_id) return;
@@ -101,40 +189,7 @@ export function TeacherPerformanceReports() {
       if (metrics.length > 0) {
         setSelectedTeacherId(metrics[0].teacherId);
         setSelectedTeacher(metrics[0]);
-
-        // Load teacher details (classes and subjects)
-        const { data: assignments } = await supabase
-          .from('timetable')
-          .select('class_id, subject_id')
-          .eq('teacher_id', metrics[0].teacherId);
-
-        if (assignments && assignments.length > 0) {
-          // Get unique class IDs
-          const classIds = Array.from(new Set(assignments.map(a => a.class_id)));
-          const subjectIds = Array.from(new Set(assignments.map(a => a.subject_id)));
-          
-          // Fetch class details
-          const { data: classesData } = await supabase
-            .from('classes')
-            .select('id, name, section')
-            .in('id', classIds);
-            
-          // Fetch subject details
-          const { data: subjectsData } = await supabase
-            .from('subjects')
-            .select('id, name')
-            .in('id', subjectIds);
-
-          setClasses(classesData || []);
-          setSubjects(subjectsData || []);
-
-          if (classesData && classesData.length > 0) {
-            setSelectedClassId(classesData[0].id);
-          }
-          if (subjectsData && subjectsData.length > 0) {
-            setSelectedSubjectId(subjectsData[0].id);
-          }
-        }
+        await loadTeacherDetails(metrics[0].teacherId);
       }
       setLoading(false);
     } catch (error) {
@@ -146,51 +201,19 @@ export function TeacherPerformanceReports() {
       });
       setLoading(false);
     }
-  }, [profile?.school_id, toast]);
+  }, [loadTeacherDetails, profile?.school_id, toast]);
 
   const handleTeacherChange = useCallback(async (teacherId: string) => {
     setSelectedTeacherId(teacherId);
     const teacher = teachers.find(t => t.teacherId === teacherId);
     setSelectedTeacher(teacher || null);
 
-    // Load this teacher's classes and subjects
     try {
-      const { data: assignments } = await supabase
-        .from('timetable')
-        .select('class_id, subject_id')
-        .eq('teacher_id', teacherId);
-
-      if (assignments && assignments.length > 0) {
-        // Get unique class and subject IDs
-        const classIds = Array.from(new Set(assignments.map(a => a.class_id)));
-        const subjectIds = Array.from(new Set(assignments.map(a => a.subject_id)));
-        
-        // Fetch class details
-        const { data: classesData } = await supabase
-          .from('classes')
-          .select('id, name, section')
-          .in('id', classIds);
-          
-        // Fetch subject details
-        const { data: subjectsData } = await supabase
-          .from('subjects')
-          .select('id, name')
-          .in('id', subjectIds);
-
-        setClasses(classesData || []);
-        setSubjects(subjectsData || []);
-
-        if (classesData && classesData.length > 0) {
-          setSelectedClassId(classesData[0].id);
-        }
-        if (subjectsData && subjectsData.length > 0) {
-          setSelectedSubjectId(subjectsData[0].id);
-        }
-      }
+      await loadTeacherDetails(teacherId);
     } catch (error) {
       console.error('Error loading teacher details:', error);
     }
-  }, [teachers]);
+  }, [loadTeacherDetails, teachers]);
 
   const loadClassReport = useCallback(async (teacherId: string, classId: string) => {
     try {
@@ -221,6 +244,25 @@ export function TeacherPerformanceReports() {
       });
     }
   }, [profile?.school_id, toast]);
+
+  // Load teacher metrics and selected reports after callbacks are initialized.
+  useEffect(() => {
+    if (profile?.school_id) {
+      loadTeacherMetrics();
+    }
+  }, [profile?.school_id, loadTeacherMetrics]);
+
+  useEffect(() => {
+    if (selectedTeacherId && selectedClassId && activeTab === 'classes') {
+      loadClassReport(selectedTeacherId, selectedClassId);
+    }
+  }, [selectedTeacherId, selectedClassId, activeTab, loadClassReport]);
+
+  useEffect(() => {
+    if (selectedTeacherId && selectedSubjectId && activeTab === 'subjects') {
+      loadSubjectReport(selectedTeacherId, selectedSubjectId);
+    }
+  }, [selectedTeacherId, selectedSubjectId, activeTab, loadSubjectReport]);
 
   if (loading) {
     return (
@@ -316,7 +358,7 @@ export function TeacherPerformanceReports() {
                 </SelectContent>
               </Select>
 
-              <Select value={exportFormat} onValueChange={(v: any) => setExportFormat(v)}>
+              <Select value={exportFormat} onValueChange={(v: ExportFormat) => setExportFormat(v)}>
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Format" />
                 </SelectTrigger>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, GraduationCap } from "lucide-react";
 
@@ -56,12 +58,14 @@ export function TeacherRegistrationForm({ onSuccess }: TeacherRegistrationFormPr
     },
   });
 
-  useEffect(() => {
-    fetchSchools();
-  }, []);
-
-  const fetchSchools = async () => {
+  const fetchSchools = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const data = await phpApi.listPublicSchools();
+        setSchools(data || []);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('schools_public_view')
         .select('id, name, name_bangla, school_type')
@@ -79,7 +83,11 @@ export function TeacherRegistrationForm({ onSuccess }: TeacherRegistrationFormPr
     } finally {
       setLoadingSchools(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    fetchSchools();
+  }, [fetchSchools]);
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
@@ -97,6 +105,28 @@ export function TeacherRegistrationForm({ onSuccess }: TeacherRegistrationFormPr
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setLoading(true);
     try {
+      if (isPhpBackend) {
+        await phpApi.submitTeacherApplication({
+          school_id: values.school_id,
+          full_name: values.full_name,
+          full_name_bangla: values.full_name_bangla || null,
+          phone: values.phone,
+          address: values.address || null,
+          address_bangla: values.address_bangla || null,
+          qualification: values.qualification || null,
+          subject_specialization: values.subject_specialization || null,
+          experience_years: values.experience_years,
+        });
+
+        toast({
+          title: "Application Submitted!",
+          description: "Your teacher application has been submitted successfully. The school administrator will review your application.",
+        });
+
+        onSuccess();
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {

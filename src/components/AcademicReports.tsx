@@ -4,7 +4,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useClassReportExport, useStudentReportExport } from '@/hooks/useReportExport';
@@ -47,6 +49,74 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { handleSupabaseError } from '@/lib/api-error-handler';
+
+interface ClassOption {
+  id: string;
+  name: string;
+  section: string | null;
+}
+
+interface SubjectOption {
+  id: string;
+  name: string;
+}
+
+interface StudentOption {
+  id: string;
+  full_name: string;
+  student_id: string;
+  classes: {
+    name: string;
+    section: string;
+  } | null;
+}
+
+interface QueryResponse<T> {
+  data: T[] | null;
+  error: unknown;
+}
+
+interface ClassPhpRow extends ClassOption {
+  school_id: string;
+  class_level: string;
+  is_active: boolean | number;
+}
+
+interface StudentPhpRow {
+  id: string;
+  full_name: string;
+  student_id: string;
+  class_id: string | null;
+}
+
+const PHP_PAGE_SIZE = 200;
+
+async function phpListAll<T extends object>(
+  table: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  sort = 'created_at',
+  order: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await phpApi.table<T>(table).list({
+      ...params,
+      sort,
+      order,
+      limit: PHP_PAGE_SIZE,
+      offset,
+    });
+
+    rows.push(...page);
+    if (page.length < PHP_PAGE_SIZE) break;
+    offset += PHP_PAGE_SIZE;
+  }
+
+  return rows;
+}
 
 export function AcademicReports() {
   const { profile } = useAuth();
@@ -56,51 +126,37 @@ export function AcademicReports() {
 
   // State management
   const [loading, setLoading] = useState(true);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [classReport, setClassReport] = useState<ClassReport | null>(null);
-  const [subjects, setSubjects] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
   const [subjectReport, setSubjectReport] = useState<SubjectReport | null>(null);
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<StudentOption[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentReport, setStudentReport] = useState<StudentDetailedReport | null>(null);
 
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('pdf');
   const [activeTab, setActiveTab] = useState('class');
 
-  // Load classes on mount
-  useEffect(() => {
-    if (profile?.school_id) {
-      loadClasses();
-    }
-  }, [profile?.school_id]);
-
-  // Load class report when class is selected
-  useEffect(() => {
-    if (selectedClassId && activeTab === 'class') {
-      loadClassReport(selectedClassId);
-    }
-  }, [selectedClassId, activeTab]);
-
-  // Load subject report when subject is selected
-  useEffect(() => {
-    if (selectedSubjectId && activeTab === 'subject') {
-      loadSubjectReport(selectedSubjectId);
-    }
-  }, [selectedSubjectId, activeTab]);
-
-  // Load student report when student is selected
-  useEffect(() => {
-    if (selectedStudentId && activeTab === 'student') {
-      loadStudentReport(selectedStudentId);
-    }
-  }, [selectedStudentId, activeTab]);
-
   const loadClasses = useCallback(async () => {
     if (!profile?.school_id) return;
 
     try {
+      if (isPhpBackend) {
+        const data = await phpListAll<ClassPhpRow>('classes', {
+          school_id: profile.school_id,
+          is_active: 1,
+        }, 'name', 'asc');
+
+        setClasses(data);
+        if (data.length > 0) {
+          setSelectedClassId(data[0].id);
+        }
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('classes')
         .select('id, name, section')
@@ -116,10 +172,12 @@ export function AcademicReports() {
       }
       setLoading(false);
     } catch (error) {
-      console.error('Error loading classes:', error);
+      const notice = handleSupabaseError('Load academic report classes', error, {
+        context: { schoolId: profile?.school_id },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load classes',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
       setLoading(false);
@@ -131,10 +189,25 @@ export function AcademicReports() {
       const report = await fetchClassReport(classId);
       setClassReport(report);
 
+      if (isPhpBackend) {
+        const classData = await phpApi.table<ClassPhpRow>('classes').get(classId);
+        const data = await phpListAll<SubjectOption>('subjects', {
+          school_id: classData.school_id,
+          class_level: classData.class_level,
+          is_active: 1,
+        }, 'name', 'asc');
+
+        setSubjects(data);
+        if (data.length > 0) {
+          setSelectedSubjectId(data[0].id);
+        }
+        return;
+      }
+
       // Also load subjects for this class
-      const { data, error } = await ((supabase.from('subjects') as any)
+      const { data, error } = await supabase.from('subjects')
         .select('id, name')
-        .eq('class_id', classId));
+        .eq('class_id', classId) as unknown as QueryResponse<SubjectOption>;
 
       if (error) throw error;
       setSubjects(data || []);
@@ -142,10 +215,12 @@ export function AcademicReports() {
         setSelectedSubjectId(data[0].id);
       }
     } catch (error) {
-      console.error('Error loading class report:', error);
+      const notice = handleSupabaseError('Load class academic report', error, {
+        context: { classId },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load class report',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -156,10 +231,12 @@ export function AcademicReports() {
       const report = await fetchSubjectReport(subjectId, selectedClassId);
       setSubjectReport(report);
     } catch (error) {
-      console.error('Error loading subject report:', error);
+      const notice = handleSupabaseError('Load subject academic report', error, {
+        context: { subjectId, classId: selectedClassId },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load subject report',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -169,6 +246,38 @@ export function AcademicReports() {
     if (!profile?.school_id) return;
 
     try {
+      if (isPhpBackend) {
+        const [studentRows, classRows] = await Promise.all([
+          phpListAll<StudentPhpRow>('students', {
+            school_id: profile.school_id,
+            status: 'active',
+          }, 'full_name', 'asc'),
+          phpListAll<ClassPhpRow>('classes', {
+            school_id: profile.school_id,
+            is_active: 1,
+          }, 'name', 'asc'),
+        ]);
+        const classesById = new Map(classRows.map(classItem => [classItem.id, classItem]));
+        const data: StudentOption[] = studentRows.map(student => {
+          const classItem = student.class_id ? classesById.get(student.class_id) : null;
+          return {
+            id: student.id,
+            full_name: student.full_name,
+            student_id: student.student_id,
+            classes: classItem ? {
+              name: classItem.name,
+              section: classItem.section || '',
+            } : null,
+          };
+        });
+
+        setStudents(data);
+        if (data.length > 0) {
+          setSelectedStudentId(data[0].id);
+        }
+        return;
+      }
+
       const { data, error } = await supabase
         .from('students')
         .select('id, full_name, student_id, classes(name, section)')
@@ -183,10 +292,12 @@ export function AcademicReports() {
         setSelectedStudentId(data[0].id);
       }
     } catch (error) {
-      console.error('Error loading students:', error);
+      const notice = handleSupabaseError('Load academic report students', error, {
+        context: { schoolId: profile?.school_id },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load students',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -197,10 +308,12 @@ export function AcademicReports() {
       const report = await fetchStudentDetailedReport(studentId);
       setStudentReport(report);
     } catch (error) {
-      console.error('Error loading student report:', error);
+      const notice = handleSupabaseError('Load student academic report', error, {
+        context: { studentId },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load student report',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     }
@@ -212,6 +325,31 @@ export function AcademicReports() {
       loadStudents();
     }
   }, [students.length, loadStudents]);
+
+  // Load classes and reports after callbacks are initialized so hook dependencies stay explicit.
+  useEffect(() => {
+    if (profile?.school_id) {
+      loadClasses();
+    }
+  }, [profile?.school_id, loadClasses]);
+
+  useEffect(() => {
+    if (selectedClassId && activeTab === 'class') {
+      loadClassReport(selectedClassId);
+    }
+  }, [selectedClassId, activeTab, loadClassReport]);
+
+  useEffect(() => {
+    if (selectedSubjectId && activeTab === 'subject') {
+      loadSubjectReport(selectedSubjectId);
+    }
+  }, [selectedSubjectId, activeTab, loadSubjectReport]);
+
+  useEffect(() => {
+    if (selectedStudentId && activeTab === 'student') {
+      loadStudentReport(selectedStudentId);
+    }
+  }, [selectedStudentId, activeTab, loadStudentReport]);
 
   if (loading) {
     return (

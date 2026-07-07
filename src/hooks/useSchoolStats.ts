@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 
 export interface SchoolStats {
   totalStudents: number;
@@ -8,6 +10,11 @@ export interface SchoolStats {
   totalClasses: number;
   totalSubjects: number;
   recentAdmissions: number;
+}
+
+interface RpcResponse<T> {
+  data: T | null;
+  error: unknown;
 }
 
 /**
@@ -37,8 +44,45 @@ export function useSchoolStats() {
       }
 
       try {
+        if (isPhpBackend) {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+          const [
+            totalStudents,
+            activeStudents,
+            totalTeachers,
+            totalClasses,
+            totalSubjects,
+            recentAdmissions,
+          ] = await Promise.all([
+            phpApi.table('students').count({ school_id: schoolId }),
+            phpApi.table('students').count({ school_id: schoolId, status: 'active' }),
+            phpApi.table('teachers').count({ school_id: schoolId }),
+            phpApi.table('classes').count({ school_id: schoolId }),
+            phpApi.table('subjects').count({ school_id: schoolId }),
+            phpApi.table('students').count({
+              school_id: schoolId,
+              admission_date__gte: thirtyDaysAgo.toISOString().split('T')[0],
+            }),
+          ]);
+
+          return {
+            totalStudents: totalStudents.count,
+            activeStudents: activeStudents.count,
+            totalTeachers: totalTeachers.count,
+            totalClasses: totalClasses.count,
+            totalSubjects: totalSubjects.count,
+            recentAdmissions: recentAdmissions.count,
+          };
+        }
+
         // Call RPC function and cast response to SchoolStats
-        const { data, error } = await (supabase.rpc as any)(
+        const rpc = supabase.rpc as unknown as (
+          fn: 'get_school_stats',
+          args: { p_school_id: string }
+        ) => Promise<RpcResponse<SchoolStats>>;
+        const { data, error } = await rpc(
           'get_school_stats',
           { p_school_id: schoolId }
         );

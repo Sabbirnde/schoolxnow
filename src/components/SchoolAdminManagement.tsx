@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { useThrottledFetch } from '@/hooks/useThrottledFetch';
+import type { RealtimeChannel } from '@/integrations/php-api/compat-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Edit, Users, Eye, Shield } from 'lucide-react';
+import { handleSupabaseError } from '@/lib/api-error-handler';
 
 interface SchoolAdmin {
   id: string;
@@ -23,6 +27,12 @@ interface SchoolAdmin {
   school_id: string | null;
   created_at: string;
   schools?: { name: string; school_type: string };
+}
+
+interface SchoolOption {
+  id: string;
+  name: string;
+  school_type: string;
 }
 
 const SchoolAdminManagement = () => {
@@ -41,6 +51,55 @@ const SchoolAdminManagement = () => {
     school_id: '',
   });
 
+  const fetchSchoolAdmins = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const [admins, schools] = await Promise.all([
+          phpApi.table<SchoolAdmin>('user_profiles').list({
+            role: 'school_admin',
+            sort: 'created_at',
+            order: 'desc',
+            limit: 500,
+          }),
+          phpApi.table<SchoolOption>('schools').list({
+            sort: 'name',
+            order: 'asc',
+            limit: 500,
+          }),
+        ]);
+        const schoolById = new Map(schools.map((school) => [school.id, school]));
+        setSchoolAdmins((admins || []).map((admin) => ({
+          ...admin,
+          is_active: Boolean(admin.is_active),
+          schools: admin.school_id ? schoolById.get(admin.school_id) : undefined,
+        })));
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select(`
+          *,
+          schools (name, school_type)
+        `)
+        .eq('role', 'school_admin')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      setSchoolAdmins((data || []) as unknown as SchoolAdmin[]);
+    } catch (error) {
+      const notice = handleSupabaseError('Load school admins', error);
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
   // Move useThrottledFetch to top level (outside useEffect)
   const [throttledFetch] = useThrottledFetch(
     () => fetchSchoolAdmins(),
@@ -50,9 +109,13 @@ const SchoolAdminManagement = () => {
   useEffect(() => {
     fetchSchoolAdmins();
 
+    if (isPhpBackend) {
+      return;
+    }
+
     // Split narrow subscriptions for school_admin profile changes
-    let updateChannel: any = null;
-    let insertChannel: any = null;
+    let updateChannel: RealtimeChannel | null = null;
+    let insertChannel: RealtimeChannel | null = null;
 
     try {
       // Channel for profile updates (changes to existing school admins)
@@ -66,7 +129,7 @@ const SchoolAdminManagement = () => {
             table: 'user_profiles',
             filter: 'role=eq.school_admin',
           },
-          (payload: any) => {
+          (payload) => {
             const nextRole = payload?.new?.role;
             
             // Guard: only refetch if the row is a school_admin
@@ -89,7 +152,7 @@ const SchoolAdminManagement = () => {
             table: 'user_profiles',
             filter: 'role=eq.school_admin',
           },
-          (payload: any) => {
+          (payload) => {
             console.log('[SchoolAdmins] New school admin inserted:', payload.new?.id);
             throttledFetch();
           }
@@ -104,41 +167,31 @@ const SchoolAdminManagement = () => {
       console.error('[SchoolAdmins] Error setting up subscriptions:', error);
       return () => {};
     }
-  }, [throttledFetch]);
-
-  const fetchSchoolAdmins = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select(`
-          *,
-          schools (name, school_type)
-        `)
-        .eq('role', 'school_admin')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching school admins:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch school admins',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setSchoolAdmins(data || []);
-    } catch (error) {
-      console.error('Error in fetchSchoolAdmins:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchSchoolAdmins, throttledFetch]);
 
   const handleUpdateAdmin = async () => {
     if (!selectedAdmin) return;
 
     try {
+      if (isPhpBackend) {
+        await phpApi.table<SchoolAdmin>('user_profiles').update(selectedAdmin.id, {
+          full_name: formData.full_name,
+          approval_status: formData.approval_status,
+          is_active: formData.is_active,
+          phone: formData.phone,
+          school_id: formData.school_id || null,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'School admin updated successfully',
+        });
+
+        setIsEditDialogOpen(false);
+        fetchSchoolAdmins();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -150,15 +203,7 @@ const SchoolAdminManagement = () => {
         })
         .eq('id', selectedAdmin.id);
 
-      if (error) {
-        console.error('Error updating school admin:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to update school admin',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -168,26 +213,37 @@ const SchoolAdminManagement = () => {
       setIsEditDialogOpen(false);
       fetchSchoolAdmins();
     } catch (error) {
-      console.error('Error in handleUpdateAdmin:', error);
+      const notice = handleSupabaseError('Update school admin', error, {
+        context: { adminId: selectedAdmin.id, schoolId: formData.school_id || null },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     }
   };
 
   const handleDeactivateAdmin = async (adminId: string) => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<SchoolAdmin>('user_profiles').update(adminId, { is_active: false });
+
+        toast({
+          title: 'Success',
+          description: 'School admin deactivated successfully',
+        });
+
+        fetchSchoolAdmins();
+        return;
+      }
+
       const { error } = await supabase
         .from('user_profiles')
         .update({ is_active: false })
         .eq('id', adminId);
 
-      if (error) {
-        console.error('Error deactivating school admin:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to deactivate school admin',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -196,7 +252,14 @@ const SchoolAdminManagement = () => {
 
       fetchSchoolAdmins();
     } catch (error) {
-      console.error('Error in handleDeactivateAdmin:', error);
+      const notice = handleSupabaseError('Deactivate school admin', error, {
+        context: { adminId },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     }
   };
 

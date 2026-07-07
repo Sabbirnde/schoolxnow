@@ -1,6 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import {
+  loadNotificationPreferences,
+  saveNotificationPreferences,
+} from '@/lib/notifications-feedback';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +35,7 @@ interface UserProfile {
   full_name: string;
   full_name_bangla: string | null;
   phone: string | null;
+  avatar_url?: string | null;
   address: string | null;
   address_bangla: string | null;
   role: string;
@@ -44,20 +51,24 @@ interface UserPreferences {
   two_factor_enabled: boolean;
 }
 
+const DEFAULT_USER_PREFERENCES: UserPreferences = {
+  theme: 'system',
+  language: 'en',
+  notifications_email: true,
+  notifications_sms: false,
+  notifications_push: true,
+  show_profile_picture: true,
+  two_factor_enabled: false,
+};
+
 export default function UserSettings() {
   const { profile, user } = useAuth();
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [preferences, setPreferences] = useState<UserPreferences>({
-    theme: 'system',
-    language: 'en',
-    notifications_email: true,
-    notifications_sms: false,
-    notifications_push: true,
-    show_profile_picture: true,
-    two_factor_enabled: false,
-  });
+  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_PREFERENCES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [notificationSettingsId, setNotificationSettingsId] = useState<string | null>(null);
   const [passwordData, setPasswordData] = useState({
     current_password: '',
     new_password: '',
@@ -65,10 +76,33 @@ export default function UserSettings() {
   });
 
   useEffect(() => {
-    if (profile) {
+    let isMounted = true;
+
+    const loadSettings = async () => {
+      if (!profile) return;
+
       setUserProfile(profile);
+      const { id, preferences: loadedPreferences } = await loadNotificationPreferences(
+        profile.user_id,
+        DEFAULT_USER_PREFERENCES
+      );
+
+      if (!isMounted) return;
+      setNotificationSettingsId(id);
+      setPreferences(loadedPreferences as UserPreferences);
       setLoading(false);
-    }
+    };
+
+    loadSettings().catch((error) => {
+      console.error('Error loading notification preferences:', error);
+      if (isMounted) {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [profile]);
 
   const handleSaveProfile = async () => {
@@ -76,18 +110,32 @@ export default function UserSettings() {
 
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from('user_profiles')
-        .update({
+
+      if (isPhpBackend) {
+        const updatedProfile = await phpApi.updateProfile({
           full_name: userProfile.full_name,
           full_name_bangla: userProfile.full_name_bangla,
           phone: userProfile.phone,
+          avatar_url: userProfile.avatar_url,
           address: userProfile.address,
           address_bangla: userProfile.address_bangla,
-        })
-        .eq('user_id', profile?.user_id);
+        });
+        setUserProfile(updatedProfile);
+      } else {
+        const { error } = await supabase
+          .from('user_profiles')
+          .update({
+            full_name: userProfile.full_name,
+            full_name_bangla: userProfile.full_name_bangla,
+            phone: userProfile.phone,
+            address: userProfile.address,
+            address_bangla: userProfile.address_bangla,
+          })
+          .eq('user_id', profile?.user_id);
 
-      if (error) throw error;
+        if (error) throw error;
+      }
+
       toast.success('Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -103,6 +151,11 @@ export default function UserSettings() {
       return;
     }
 
+    if (isPhpBackend && !passwordData.current_password) {
+      toast.error('Current password is required');
+      return;
+    }
+
     if (passwordData.new_password.length < 6) {
       toast.error('Password must be at least 6 characters long');
       return;
@@ -110,11 +163,15 @@ export default function UserSettings() {
 
     try {
       setSaving(true);
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.new_password
-      });
+      if (isPhpBackend) {
+        await phpApi.changePassword(passwordData.current_password, passwordData.new_password);
+      } else {
+        const { error } = await supabase.auth.updateUser({
+          password: passwordData.new_password
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+      }
       
       setPasswordData({
         current_password: '',
@@ -131,8 +188,57 @@ export default function UserSettings() {
   };
 
   const handleSavePreferences = async () => {
-    // In a real implementation, save these to a user_preferences table
-    toast.success('Preferences saved successfully');
+    if (!profile?.user_id) {
+      toast.error('Unable to save preferences: user context missing.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      await saveNotificationPreferences(profile.user_id, preferences, notificationSettingsId);
+      if (!notificationSettingsId) {
+        const { id } = await loadNotificationPreferences(profile.user_id, preferences);
+        setNotificationSettingsId(id);
+      }
+      toast.success('Preferences saved successfully');
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+      toast.error('Failed to save preferences');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file || !userProfile) return;
+
+    if (!isPhpBackend) {
+      toast.error('Photo uploads are available after switching to the PHP/MySQL backend.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const upload = await phpApi.uploadFile('avatars', file);
+      const updatedProfile = await phpApi.updateProfile({
+        full_name: userProfile.full_name,
+        full_name_bangla: userProfile.full_name_bangla,
+        phone: userProfile.phone,
+        avatar_url: upload.url,
+        address: userProfile.address,
+        address_bangla: userProfile.address_bangla,
+      });
+      setUserProfile(updatedProfile);
+      toast.success('Profile photo updated successfully');
+    } catch (error) {
+      console.error('Error uploading profile photo:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload profile photo');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) {
@@ -204,7 +310,7 @@ export default function UserSettings() {
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <Avatar className="h-16 w-16 lg:h-20 lg:w-20">
-                      <AvatarImage src="/placeholder-avatar.jpg" />
+                      <AvatarImage src={userProfile.avatar_url || "/placeholder-avatar.jpg"} />
                       <AvatarFallback className="text-lg lg:text-xl">
                         {userProfile.full_name.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>
@@ -212,7 +318,20 @@ export default function UserSettings() {
                     <div className="flex-1 space-y-2">
                       <h3 className="text-base lg:text-lg font-medium">{userProfile.full_name}</h3>
                       <p className="text-xs lg:text-sm text-muted-foreground capitalize">{userProfile.role.replace('_', ' ')}</p>
-                      <Button variant="outline" size="sm" className="touch-target">
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handleChangePhoto}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="touch-target"
+                        disabled={saving}
+                        onClick={() => photoInputRef.current?.click()}
+                      >
                         Change Photo
                       </Button>
                     </div>

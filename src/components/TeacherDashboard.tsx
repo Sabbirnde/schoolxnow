@@ -28,23 +28,20 @@ import {
   Zap,
   BarChart3
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-
-interface TeacherStats {
-  myClasses: number;
-  totalStudents: number;
-  mySubjects: number;
-  pendingTasks: number;
-}
+import { useTeacherDashboardData, type TodayClass } from '@/hooks/useTeacherDashboardData';
+import { handleSupabaseError } from '@/lib/api-error-handler';
 
 // Swipeable Class Card Component
 const SwipeableClassCard = ({ classItem, onSwipe, getClassStatusIcon, onTakeAttendance }: { 
-  classItem: any; 
-  onSwipe: (classItem: any, direction: 'left' | 'right') => void;
+  classItem: TodayClass; 
+  onSwipe: (classItem: TodayClass, direction: 'left' | 'right') => void;
   getClassStatusIcon: (status: string) => JSX.Element;
-  onTakeAttendance: (classItem: any) => void;
+  onTakeAttendance: (classItem: TodayClass) => void;
 }) => {
   const [startX, setStartX] = useState(0);
   const [currentX, setCurrentX] = useState(0);
@@ -187,18 +184,17 @@ interface TeacherDashboardProps {
 
 const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
   const { profile } = useAuth();
-  const [stats, setStats] = useState<TeacherStats>({
-    myClasses: 0,
-    totalStudents: 0,
-    mySubjects: 0,
-    pendingTasks: 0,
-  });
-  const [teacherInfo, setTeacherInfo] = useState<any>(null);
-  const [schoolInfo, setSchoolInfo] = useState<any>(null);
-  const [todayClasses, setTodayClasses] = useState<any[]>([]);
-  const [recentStudents, setRecentStudents] = useState<any[]>([]);
-  const [upcomingDeadlines, setUpcomingDeadlines] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    stats,
+    teacherInfo,
+    schoolInfo,
+    todayClasses,
+    recentStudents,
+    upcomingDeadlines,
+    loading,
+    error: dashboardError,
+    refetch,
+  } = useTeacherDashboardData(profile);
   const { toast } = useToast();
   
   // Mobile interaction states
@@ -214,11 +210,108 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pullToRefreshRef = useRef<HTMLDivElement>(null);
 
+  // Mobile interactions
+  useEffect(() => {
+    const handleScroll = () => {
+      if (scrollRef.current) {
+        const scrolled = scrollRef.current.scrollTop > 100;
+        setShowFab(scrolled);
+      }
+    };
+
+    const scrollElement = scrollRef.current;
+    if (scrollElement) {
+      scrollElement.addEventListener('scroll', handleScroll);
+      return () => scrollElement.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
+
+  // Pull to refresh handler
+  const handlePullToRefresh = async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      const result = await refetch();
+      if (result.error) throw result.error;
+
+      toast({
+        title: "Dashboard Updated",
+        description: "Latest data has been loaded",
+      });
+    } catch (error) {
+      const notice = handleSupabaseError('Refresh teacher dashboard', error, {
+        context: { schoolId: profile?.school_id, userId: profile?.user_id },
+        log: false,
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Swipe handler for class cards
+  const handleClassSwipe = (classItem: TodayClass, direction: 'left' | 'right') => {
+    if (direction === 'left') {
+      // Quick action: Take attendance
+      openQuickAttendance(classItem);
+    } else if (direction === 'right') {
+      // Quick action: View class details
+      setActiveModule?.('classes');
+      toast({
+        title: "Opening Classes",
+        description: `Viewing details for ${classItem.subject} - ${classItem.class}`,
+      });
+    }
+  };
+
+  const openQuickAttendance = (classItem: TodayClass) => {
+    if (!classItem.class_id) {
+      toast({
+        title: "Cannot Take Attendance",
+        description: "Class information is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedClassForAttendance({
+      id: classItem.class_id,
+      name: `${classItem.subject} - ${classItem.class}`,
+    });
+    setQuickAttendanceOpen(true);
+  };
+
+  useEffect(() => {
+    if (!dashboardError) return;
+
+    const notice = handleSupabaseError('Load teacher dashboard', dashboardError, {
+      context: { schoolId: profile?.school_id, userId: profile?.user_id },
+      log: false,
+    });
+
+    toast({
+      title: notice.title,
+      description: notice.description,
+      variant: "destructive",
+    });
+  }, [dashboardError, profile?.school_id, profile?.user_id, toast]);
+
   // Show pending approval screen if teacher is not approved yet
   if (profile?.approval_status === 'pending' || !profile?.school_id) {
     const handleRefreshStatus = async () => {
       setStatusCheckRefreshing(true);
       try {
+        if (isPhpBackend) {
+          await phpApi.me();
+          window.location.reload();
+          return;
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data } = await supabase
@@ -256,309 +349,6 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
       />
     );
   }
-
-  useEffect(() => {
-    if (profile?.user_id) {
-      fetchDashboardData();
-    }
-  }, [profile]);
-
-  // Mobile interactions
-  useEffect(() => {
-    const handleScroll = () => {
-      if (scrollRef.current) {
-        const scrolled = scrollRef.current.scrollTop > 100;
-        setShowFab(scrolled);
-      }
-    };
-
-    const scrollElement = scrollRef.current;
-    if (scrollElement) {
-      scrollElement.addEventListener('scroll', handleScroll);
-      return () => scrollElement.removeEventListener('scroll', handleScroll);
-    }
-  }, []);
-
-  // Pull to refresh handler
-  const handlePullToRefresh = async () => {
-    if (isRefreshing) return;
-    
-    setIsRefreshing(true);
-    try {
-      await fetchDashboardData();
-      toast({
-        title: "Dashboard Updated",
-        description: "Latest data has been loaded",
-      });
-    } catch (error) {
-      toast({
-        title: "Refresh Failed",
-        description: "Could not update dashboard data",
-        variant: "destructive",
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // Swipe handler for class cards
-  const handleClassSwipe = (classItem: any, direction: 'left' | 'right') => {
-    if (direction === 'left') {
-      // Quick action: Take attendance
-      openQuickAttendance(classItem);
-    } else if (direction === 'right') {
-      // Quick action: View class details
-      setActiveModule?.('classes');
-      toast({
-        title: "Opening Classes",
-        description: `Viewing details for ${classItem.subject} - ${classItem.class}`,
-      });
-    }
-  };
-
-  const openQuickAttendance = (classItem: any) => {
-    if (!classItem.class_id) {
-      toast({
-        title: "Cannot Take Attendance",
-        description: "Class information is missing",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSelectedClassForAttendance({
-      id: classItem.class_id,
-      name: `${classItem.subject} - ${classItem.class}`,
-    });
-    setQuickAttendanceOpen(true);
-  };
-
-  const fetchDashboardData = async () => {
-    if (!profile?.user_id || !profile?.school_id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Fetch teacher info
-      const { data: teacher, error: teacherError } = await supabase
-        .from('teachers')
-        .select('*')
-        .eq('user_id', profile.user_id)
-        .single();
-
-      if (teacherError && teacherError.code !== 'PGRST116') {
-        throw teacherError;
-      }
-      setTeacherInfo(teacher);
-
-      // Fetch school info
-      const { data: school, error: schoolError } = await supabase
-        .from('schools')
-        .select('*')
-        .eq('id', profile.school_id)
-        .single();
-
-      if (schoolError) throw schoolError;
-      setSchoolInfo(school);
-
-      if (!teacher) {
-        // If no teacher record found, show zeros
-        setStats({
-          myClasses: 0,
-          totalStudents: 0,
-          mySubjects: 0,
-          pendingTasks: 0,
-        });
-        setTodayClasses([]);
-        return;
-      }
-
-      // Get teacher-specific classes from timetable
-      const { data: teacherTimetable, error: timetableError } = await supabase
-        .from('timetable')
-        .select('*')
-        .eq('teacher_id', teacher.id)
-        .eq('school_id', profile.school_id);
-
-      if (timetableError) throw timetableError;
-
-      // Get unique classes and subjects for this teacher
-      const uniqueClassIds = [...new Set(teacherTimetable?.map(t => t.class_id) || [])];
-      const uniqueSubjectIds = [...new Set(teacherTimetable?.map(t => t.subject_id) || [])];
-
-      // Fetch class details for teacher's classes
-      let classesData: any[] = [];
-      if (uniqueClassIds.length > 0) {
-        const { data: classes, error: classesError } = await supabase
-          .from('classes')
-          .select('*')
-          .in('id', uniqueClassIds);
-        
-        if (classesError) throw classesError;
-        classesData = classes || [];
-      }
-
-      // Fetch subject details for teacher's subjects
-      let subjectsData: any[] = [];
-      if (uniqueSubjectIds.length > 0) {
-        const { data: subjects, error: subjectsError } = await supabase
-          .from('subjects')
-          .select('*')
-          .in('id', uniqueSubjectIds);
-        
-        if (subjectsError) throw subjectsError;
-        subjectsData = subjects || [];
-      }
-
-      // Count students in teacher's classes
-      let totalStudentsInMyClasses = 0;
-      if (uniqueClassIds.length > 0) {
-        const { count: studentsCount } = await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true })
-          .in('class_id', uniqueClassIds)
-          .eq('status', 'active');
-        
-        totalStudentsInMyClasses = studentsCount || 0;
-      }
-
-      // Get today's day name
-      const today = new Date();
-      const daysOfWeek = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const todayName = daysOfWeek[today.getDay()];
-
-      // Get today's classes from timetable
-      const todaySchedule = teacherTimetable?.filter(t => 
-        t.day_of_week?.toLowerCase() === todayName
-      ).map(t => {
-        const classInfo = classesData.find(c => c.id === t.class_id);
-        const subjectInfo = subjectsData.find(s => s.id === t.subject_id);
-        
-        const currentTime = new Date();
-        const [timeStr] = t.time_slot?.split('-') || [''];
-        if (!timeStr) return null;
-        
-        const [hours, minutes] = timeStr.trim().split(':');
-        if (!hours || !minutes) return null;
-        
-        const classTime = new Date();
-        classTime.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
-        
-        let status = 'upcoming';
-        const timeDiff = classTime.getTime() - currentTime.getTime();
-        const minutesDiff = timeDiff / (1000 * 60);
-
-        if (minutesDiff < -60) {
-          status = 'completed';
-        } else if (minutesDiff >= -60 && minutesDiff <= 0) {
-          status = 'current';
-        }
-
-        return {
-          time: t.time_slot,
-          subject: subjectInfo?.name || 'Unknown Subject',
-          class: `${classInfo?.name || 'Unknown'} ${classInfo?.section || ''}`.trim(),
-          students: 0, // Will be filled later with actual count
-          status,
-          room_number: t.room_number,
-          class_id: t.class_id
-        };
-      }).filter(Boolean) || [];
-
-      // Get student counts for today's classes
-      for (const classItem of todaySchedule) {
-        if (classItem.class_id) {
-          const { count: classStudentCount } = await supabase
-            .from('students')
-            .select('*', { count: 'exact', head: true })
-            .eq('class_id', classItem.class_id)
-            .eq('status', 'active');
-          
-          classItem.students = classStudentCount || 0;
-        }
-      }
-
-      // Calculate pending tasks
-      let pendingTasks = 0;
-
-      // Check for classes today that haven't had attendance taken
-      if (todaySchedule.length > 0) {
-        const todayDateStr = today.toISOString().split('T')[0];
-        
-        for (const classItem of todaySchedule) {
-          if (classItem.class_id && classItem.status === 'completed') {
-            const { count: attendanceCount } = await supabase
-              .from('attendance')
-              .select('*', { count: 'exact', head: true })
-              .eq('class_id', classItem.class_id)
-              .eq('date', todayDateStr);
-            
-            if (!attendanceCount) {
-              pendingTasks += 1;
-            }
-          }
-        }
-      }
-
-      setStats({
-        myClasses: uniqueClassIds.length,
-        totalStudents: totalStudentsInMyClasses,
-        mySubjects: uniqueSubjectIds.length,
-        pendingTasks,
-      });
-
-      // Sort today's classes by time
-      todaySchedule.sort((a, b) => {
-        const timeA = a.time.split('-')[0].trim();
-        const timeB = b.time.split('-')[0].trim();
-        return timeA.localeCompare(timeB);
-      });
-
-      setTodayClasses(todaySchedule);
-
-      // Fetch recent students (from teacher's classes, ordered by admission date)
-      if (uniqueClassIds.length > 0) {
-        const { data: students, error: studentsError } = await supabase
-          .from('students')
-          .select('id, full_name, student_id, class_id, admission_date, status, classes(name, section)')
-          .in('class_id', uniqueClassIds)
-          .eq('status', 'active')
-          .order('admission_date', { ascending: false })
-          .limit(5);
-
-        if (!studentsError && students) {
-          setRecentStudents(students);
-        }
-      }
-
-      // Fetch upcoming exams as deadlines
-      const { data: upcomingExams, error: examsError } = await supabase
-        .from('exams')
-        .select('id, name, exam_date, class_level')
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true)
-        .gte('exam_date', new Date().toISOString().split('T')[0])
-        .order('exam_date', { ascending: true })
-        .limit(3);
-
-      if (!examsError && upcomingExams) {
-        setUpcomingDeadlines(upcomingExams);
-      }
-
-    } catch (error: any) {
-      console.error('Error fetching dashboard data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load dashboard data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
@@ -934,7 +724,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </CardHeader>
               <CardContent className="p-3 md:p-4">
                 <div className="space-y-2">
-                  {recentStudents.map((student: any) => (
+                  {recentStudents.map((student) => (
                     <div
                       key={student.id}
                       className="flex items-center gap-3 p-2 md:p-3 bg-muted/30 hover:bg-muted/50 rounded-lg transition-colors cursor-pointer border border-border/50"
@@ -976,7 +766,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               </CardHeader>
               <CardContent className="p-3 md:p-4">
                 <div className="space-y-2">
-                  {upcomingDeadlines.map((exam: any) => (
+                  {upcomingDeadlines.map((exam) => (
                     <div
                       key={exam.id}
                       className="flex items-center gap-3 p-2 md:p-3 bg-red-500/5 hover:bg-red-500/10 rounded-lg transition-colors cursor-pointer border border-red-500/20"

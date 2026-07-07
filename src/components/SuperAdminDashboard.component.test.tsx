@@ -5,9 +5,29 @@ import { mockSupabase, mockToast, mockUseToast, mockUseAuth, mockUseFeatureAcces
 import { mockSchools, mockStats, mockAuditLogs } from '../test/mockData';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+type MockQueryResult = {
+  data: unknown;
+  count?: number;
+  error: Error | null;
+};
+
+type MockQuery = {
+  select: ReturnType<typeof vi.fn>;
+  order: ReturnType<typeof vi.fn>;
+  gte: ReturnType<typeof vi.fn>;
+  eq: ReturnType<typeof vi.fn>;
+  lt: ReturnType<typeof vi.fn>;
+  limit: ReturnType<typeof vi.fn>;
+  insert: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  delete: ReturnType<typeof vi.fn>;
+  then: Promise<MockQueryResult>['then'];
+};
 
 // Mock dependencies
-vi.mock('@/integrations/supabase/client', () => ({
+vi.mock('@/integrations/php-api/compat-client', () => ({
   supabase: mockSupabase,
 }));
 
@@ -43,60 +63,75 @@ vi.mock('@/components/SystemSettings', () => ({
 // Import after mocks
 import SuperAdminDashboard from './SuperAdminDashboard';
 
+const createTestQueryClient = () => new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      gcTime: 0,
+    },
+    mutations: {
+      retry: false,
+    },
+  },
+});
+
+const renderSuperAdminDashboard = () => render(
+  <QueryClientProvider client={createTestQueryClient()}>
+    <BrowserRouter>
+      <SuperAdminDashboard />
+    </BrowserRouter>
+  </QueryClientProvider>
+);
+
 describe('SuperAdminDashboard - Component Rendering', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Setup default mock return for queries - properly typed for Supabase
-    const mockTableResponse = {
-      _fields: undefined as string | undefined,
-      select: vi.fn(function(this: any, fields?: string) {
-        return {
-          _fields: fields,
-          select: this,
-          order: vi.fn(() => Promise.resolve({ data: mockSchools, error: null })),
-          eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
-          gte: vi.fn(function(this: any) { return this; }),
-          lt: vi.fn(() => Promise.resolve({ count: 0, error: null })),
-          insert: vi.fn(function(this: any, data: any) {
-            return Promise.resolve({ data, error: null });
-          }),
-          update: vi.fn(function(this: any, data: any) {
-            return { eq: vi.fn(() => Promise.resolve({ data, error: null })) };
-          }),
-          delete: vi.fn(function(this: any) {
-            return { eq: vi.fn(() => Promise.resolve({ error: null })) };
-          }),
-          limit: vi.fn(() => Promise.resolve({ data: [], error: null })),
-          subscribe: vi.fn(),
-        };
-      }),
-      insert: vi.fn(function(this: any, data: any) {
-        return Promise.resolve({ data, error: null });
-      }),
-      update: vi.fn(function(this: any, data: any) {
-        return { eq: vi.fn(() => Promise.resolve({ data, error: null })) };
-      }),
-      delete: vi.fn(function(this: any) {
-        return { eq: vi.fn(() => Promise.resolve({ error: null })) };
-      }),
-      eq: vi.fn(() => Promise.resolve({ data: [], error: null })),
-      order: vi.fn(() => ({ lt: vi.fn(() => Promise.resolve({ data: mockSchools, error: null })) })),
-      limit: vi.fn(() => Promise.resolve({ data: [], error: null })),
-      gte: vi.fn(function(this: any) { return this; }),
-      lt: vi.fn(() => Promise.resolve({ count: 0, error: null })),
-      subscribe: vi.fn(),
-    } as any;
+    const countByTable: Record<string, number> = {
+      schools: mockSchools.length,
+      students: mockStats.totalStudents,
+      teachers: mockStats.totalTeachers,
+      classes: mockStats.totalClasses,
+      subjects: mockStats.totalSubjects,
+      teacher_applications: mockStats.pendingApplications,
+      user_roles: mockStats.totalSchoolAdmins,
+    };
 
-    mockSupabase.from.mockReturnValue(mockTableResponse);
+    const createQueryMock = (table: string) => {
+      const resolveQuery = (): Promise<MockQueryResult> => Promise.resolve({
+        data: table === 'schools' ? mockSchools : [],
+        count: countByTable[table] ?? 0,
+        error: null,
+      });
+
+      const query: MockQuery = {
+        select: vi.fn(() => query),
+        order: vi.fn(() => query),
+        gte: vi.fn(() => query),
+        eq: vi.fn(() => resolveQuery()),
+        lt: vi.fn(() => resolveQuery()),
+        limit: vi.fn(() => Promise.resolve({
+          data: table === 'audit_logs' ? mockAuditLogs : [],
+          error: null,
+        })),
+        insert: vi.fn((data: unknown) => Promise.resolve({ data, error: null })),
+        update: vi.fn((data: unknown) => ({
+          eq: vi.fn(() => Promise.resolve({ data, error: null })),
+        })),
+        delete: vi.fn(() => ({
+          eq: vi.fn(() => Promise.resolve({ error: null })),
+        })),
+        then: (resolve, reject) => resolveQuery().then(resolve, reject),
+      };
+
+      return query;
+    };
+
+    mockSupabase.from.mockImplementation((table: string) => createQueryMock(table));
   });
 
   describe('Dashboard Loading & Initial Render', () => {
     it('should render dashboard header', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByText('Super Admin Dashboard')).toBeInTheDocument();
@@ -105,11 +140,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should display all dashboard tabs', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByRole('tab', { name: /overview/i })).toBeInTheDocument();
@@ -123,15 +154,11 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
   describe('Statistics Cards Display', () => {
     it('should render all 9 statistics cards in Overview tab', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByText('Total Schools')).toBeInTheDocument();
-        expect(screen.getByText('School Admins')).toBeInTheDocument();
+        expect(screen.getByText('Platform administrators')).toBeInTheDocument();
         expect(screen.getByText('Total Students')).toBeInTheDocument();
         expect(screen.getByText('Total Teachers')).toBeInTheDocument();
         expect(screen.getByText('Platform Growth')).toBeInTheDocument();
@@ -143,11 +170,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should display stat values correctly', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         // These values would come from mocked API
@@ -159,13 +182,9 @@ describe('SuperAdminDashboard - Component Rendering', () => {
   describe('Tab Navigation', () => {
     it('should switch tabs when clicked', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
-      const schoolsTab = screen.getByRole('tab', { name: /schools/i });
+      const schoolsTab = await screen.findByRole('tab', { name: /^schools$/i });
       await user.click(schoolsTab);
 
       await waitFor(() => {
@@ -174,11 +193,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should display Overview tab content by default', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByText('Recent Platform Activity')).toBeInTheDocument();
@@ -187,13 +202,9 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
     it('should display School Admins tab content when clicked', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
-      const adminsTab = screen.getByRole('tab', { name: /school admins/i });
+      const adminsTab = await screen.findByRole('tab', { name: /school admins/i });
       await user.click(adminsTab);
 
       await waitFor(() => {
@@ -203,13 +214,9 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
     it('should display Audit Trail tab content when clicked', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
-      const auditTab = screen.getByRole('tab', { name: /audit trail/i });
+      const auditTab = await screen.findByRole('tab', { name: /audit trail/i });
       await user.click(auditTab);
 
       await waitFor(() => {
@@ -219,13 +226,9 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
     it('should display Settings tab content when clicked', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
-      const settingsTab = screen.getByRole('tab', { name: /settings/i });
+      const settingsTab = await screen.findByRole('tab', { name: /settings/i });
       await user.click(settingsTab);
 
       await waitFor(() => {
@@ -236,11 +239,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
   describe('Recent Schools Section', () => {
     it('should display "Add New School" button', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /add new school/i })).toBeInTheDocument();
@@ -248,11 +247,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should display search input for schools', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/search schools/i)).toBeInTheDocument();
@@ -266,13 +261,13 @@ describe('SuperAdminDashboard - Component Rendering', () => {
       const errorTableResponse = {
         _fields: undefined as string | undefined,
         select: vi.fn(() => Promise.resolve({ data: null, error: new Error('Fetch failed') })),
-        insert: vi.fn(function(this: any, data: any) {
+        insert: vi.fn((data: unknown) => {
           return Promise.resolve({ data: null, error: new Error('Fetch failed') });
         }),
-        update: vi.fn(function(this: any, data: any) {
+        update: vi.fn((data: unknown) => {
           return { eq: vi.fn(() => Promise.resolve({ data: null, error: new Error('Fetch failed') })) };
         }),
-        delete: vi.fn(function(this: any) {
+        delete: vi.fn(() => {
           return { eq: vi.fn(() => Promise.resolve({ error: new Error('Fetch failed') })) };
         }),
         eq: vi.fn(() => Promise.resolve({ data: null, error: new Error('Fetch failed') })),
@@ -281,15 +276,11 @@ describe('SuperAdminDashboard - Component Rendering', () => {
         gte: vi.fn(() => Promise.resolve({ data: null, error: new Error('Fetch failed') })),
         lt: vi.fn(() => Promise.resolve({ data: null, error: new Error('Fetch failed') })),
         subscribe: vi.fn(),
-      } as any;
+      };
       
       mockSupabase.from.mockReturnValue(errorTableResponse);
 
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       // Would show error in dev console (testing library limitation for toasts)
     });
@@ -297,11 +288,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
   describe('Real-time Subscriptions', () => {
     it('should setup schools_changes subscription', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(mockSupabase.channel).toHaveBeenCalledWith('schools_changes');
@@ -309,11 +296,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should setup students_changes subscription', async () => {
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(mockSupabase.channel).toHaveBeenCalledWith('students_changes');
@@ -321,11 +304,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
 
     it('should cleanup subscriptions on unmount', async () => {
-      const { unmount } = render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      const { unmount } = renderSuperAdminDashboard();
 
       await waitFor(() => {
         expect(mockSupabase.channel).toHaveBeenCalled();
@@ -339,11 +318,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
   describe('Dialog Management', () => {
     it('should open Add School dialog when button clicked', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         const addButton = screen.getByRole('button', { name: /add new school/i });
@@ -353,11 +328,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
 
     it('should display school form fields in Add School dialog', async () => {
       const user = userEvent.setup();
-      render(
-        <BrowserRouter>
-          <SuperAdminDashboard />
-        </BrowserRouter>
-      );
+      renderSuperAdminDashboard();
 
       await waitFor(() => {
         const addButtons = screen.getAllByRole('button', { name: /add new school/i });

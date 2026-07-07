@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import { handleSupabaseError } from '@/lib/api-error-handler';
 import { 
   School, 
   Users, 
@@ -63,15 +66,16 @@ export default function SchoolSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchSchoolInfo();
-    }
-  }, [profile?.school_id]);
-
-  const fetchSchoolInfo = async () => {
+  const fetchSchoolInfo = useCallback(async () => {
     try {
       setLoading(true);
+      if (isPhpBackend) {
+        if (!profile?.school_id) return;
+        const data = await phpApi.table<SchoolInfo>('schools').get(profile.school_id);
+        setSchoolInfo(data);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('schools')
         .select('*')
@@ -81,18 +85,42 @@ export default function SchoolSettings() {
       if (error) throw error;
       setSchoolInfo(data);
     } catch (error) {
-      console.error('Error fetching school info:', error);
-      toast.error('Failed to load school information');
+      const notice = handleSupabaseError('Load school settings', error, {
+        context: { schoolId: profile?.school_id },
+      });
+      toast.error(notice.title, { description: notice.description });
     } finally {
       setLoading(false);
     }
-  };
+  }, [profile?.school_id]);
+
+  useEffect(() => {
+    if (profile?.school_id) {
+      fetchSchoolInfo();
+    }
+  }, [profile?.school_id, fetchSchoolInfo]);
 
   const handleSaveSchoolInfo = async () => {
     if (!schoolInfo) return;
     
     try {
       setSaving(true);
+      if (isPhpBackend) {
+        if (!profile?.school_id) return;
+        await phpApi.table<SchoolInfo>('schools').update(profile.school_id, {
+          name: schoolInfo.name,
+          name_bangla: schoolInfo.name_bangla,
+          address: schoolInfo.address,
+          address_bangla: schoolInfo.address_bangla,
+          phone: schoolInfo.phone,
+          email: schoolInfo.email,
+          eiin_number: schoolInfo.eiin_number,
+          established_year: schoolInfo.established_year,
+        });
+        toast.success('School information updated successfully');
+        return;
+      }
+
       const { error } = await supabase
         .from('schools')
         .update({
@@ -110,8 +138,10 @@ export default function SchoolSettings() {
       if (error) throw error;
       toast.success('School information updated successfully');
     } catch (error) {
-      console.error('Error updating school info:', error);
-      toast.error('Failed to update school information');
+      const notice = handleSupabaseError('Update school settings', error, {
+        context: { schoolId: profile?.school_id },
+      });
+      toast.error(notice.title, { description: notice.description });
     } finally {
       setSaving(false);
     }

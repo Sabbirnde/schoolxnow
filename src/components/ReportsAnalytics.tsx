@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import { supabase } from "@/integrations/php-api/compat-client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +24,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 import {
   BarChart,
   Bar,
@@ -48,6 +51,17 @@ interface Student {
     section: string;
     class_level: string;
   };
+}
+
+interface ClassOption {
+  id: string;
+  name: string;
+  section: string;
+}
+
+interface ExamOption {
+  id: string;
+  name: string;
 }
 
 interface AttendanceStats {
@@ -77,6 +91,95 @@ interface ClassAnalytics {
   avg_marks: number;
 }
 
+interface AttendanceRecord {
+  student_id: string;
+  is_present: boolean;
+  students: {
+    full_name: string;
+  } | null;
+}
+
+interface ExamPerformanceRecord {
+  student_id: string;
+  obtained_marks: number;
+  total_marks: number;
+  grade: string | null;
+  students: {
+    full_name: string;
+  } | null;
+  exams: {
+    name: string;
+  } | null;
+  subjects: {
+    name: string;
+  } | null;
+}
+
+interface GradeDistribution {
+  grade: string;
+  count: number;
+}
+
+interface AttendancePhpRow {
+  student_id: string;
+  class_id: string;
+  is_present: boolean | number | null;
+}
+
+interface ExamResultPhpRow {
+  student_id: string;
+  exam_id: string;
+  subject_id: string;
+  obtained_marks: number;
+  total_marks: number;
+  grade: string | null;
+}
+
+interface SubjectPhpRow {
+  id: string;
+  name: string;
+}
+
+const PHP_PAGE_SIZE = 200;
+
+async function phpListAll<T extends object>(
+  table: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  sort = 'created_at',
+  order: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await phpApi.table<T>(table).list({
+      ...params,
+      sort,
+      order,
+      limit: PHP_PAGE_SIZE,
+      offset,
+    });
+    rows.push(...page);
+    if (page.length < PHP_PAGE_SIZE) break;
+    offset += PHP_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+function isTruthy(value: boolean | number | string | null | undefined) {
+  return value === true || value === 1 || value === '1';
+}
+
+function calculateGrade(percentage: number) {
+  if (percentage >= 90) return 'A+';
+  if (percentage >= 80) return 'A';
+  if (percentage >= 70) return 'B';
+  if (percentage >= 60) return 'C';
+  if (percentage >= 40) return 'D';
+  return 'F';
+}
+
 export function ReportsAnalytics() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -88,26 +191,374 @@ export function ReportsAnalytics() {
   const [selectedStudent, setSelectedStudent] = useState<string>("all");
   
   // Data
-  const [classes, setClasses] = useState<any[]>([]);
-  const [exams, setExams] = useState<any[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
+  const [exams, setExams] = useState<ExamOption[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [attendanceStats, setAttendanceStats] = useState<AttendanceStats[]>([]);
   const [examPerformance, setExamPerformance] = useState<ExamPerformance[]>([]);
   const [classAnalytics, setClassAnalytics] = useState<ClassAnalytics[]>([]);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  const loadClassAnalytics = useCallback(async (classList: ClassOption[]) => {
+    try {
+      if (isPhpBackend) {
+        const [activeStudents, attendanceData, marksData] = await Promise.all([
+          phpListAll<Student>('students', { school_id: profile?.school_id, status: 'active' }),
+          phpListAll<AttendancePhpRow>('attendance', { school_id: profile?.school_id }),
+          phpListAll<ExamResultPhpRow>('exam_results', { school_id: profile?.school_id }),
+        ]);
 
-  useEffect(() => {
-    if (selectedClass !== "all" || selectedExam !== "all") {
-      loadReportData();
+        const analytics = classList.map(classItem => {
+          const classStudents = activeStudents.filter(student => student.class_id === classItem.id);
+          const studentIds = new Set(classStudents.map(student => student.id));
+          const classAttendance = attendanceData.filter(record => record.class_id === classItem.id);
+          const classMarks = marksData.filter(mark => studentIds.has(mark.student_id));
+          const avgAttendance = classAttendance.length > 0
+            ? Math.round((classAttendance.filter(a => isTruthy(a.is_present)).length / classAttendance.length) * 100)
+            : 0;
+          const avgMarks = classMarks.length > 0
+            ? Math.round(
+                classMarks.reduce((sum, mark) => {
+                  return sum + (mark.total_marks > 0 ? (mark.obtained_marks / mark.total_marks) * 100 : 0);
+                }, 0) / classMarks.length
+              )
+            : 0;
+
+          return {
+            class_name: `${classItem.name} - ${classItem.section}`,
+            total_students: classStudents.length,
+            avg_attendance: avgAttendance,
+            avg_marks: avgMarks,
+          };
+        });
+
+        setClassAnalytics(analytics);
+        return;
+      }
+
+      // Get class-wise analytics
+      const analytics: ClassAnalytics[] = [];
+
+      for (const classItem of classList) {
+        // Get students count
+        const { count: studentCount } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true })
+          .eq('class_id', classItem.id)
+          .eq('status', 'active');
+
+        // Get average attendance
+        const { data: attendanceData } = await supabase
+          .from('attendance')
+          .select('is_present')
+          .eq('class_id', classItem.id);
+
+        const avgAttendance = attendanceData && attendanceData.length > 0
+          ? Math.round((attendanceData.filter(a => a.is_present).length / attendanceData.length) * 100)
+          : 0;
+
+        // Get average marks
+        const { data: marksData } = await supabase
+          .from('exam_results')
+          .select('obtained_marks, total_marks')
+          .eq('school_id', profile?.school_id);
+
+        const avgMarks = marksData && marksData.length > 0
+          ? Math.round(
+              marksData.reduce((sum, m) => sum + (m.total_marks > 0 ? (m.obtained_marks / m.total_marks) * 100 : 0), 0) / 
+              marksData.length
+            )
+          : 0;
+
+        analytics.push({
+          class_name: `${classItem.name} - ${classItem.section}`,
+          total_students: studentCount || 0,
+          avg_attendance: avgAttendance,
+          avg_marks: avgMarks
+        });
+      }
+
+      setClassAnalytics(analytics);
+    } catch (error) {
+      handleSupabaseError('Load class analytics', error, {
+        context: { schoolId: profile?.school_id, classCount: classList.length },
+      });
     }
-  }, [selectedClass, selectedExam, selectedStudent]);
+  }, [profile?.school_id]);
 
-  const loadInitialData = async () => {
+  const loadAttendanceStats = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const [attendanceRows, studentRows] = await Promise.all([
+          phpListAll<AttendancePhpRow>('attendance', {
+            school_id: profile?.school_id,
+            ...(selectedClass !== "all" ? { class_id: selectedClass } : {}),
+          }),
+          phpListAll<Student>('students', {
+            school_id: profile?.school_id,
+            status: 'active',
+            ...(selectedClass !== "all" ? { class_id: selectedClass } : {}),
+          }, 'full_name', 'asc'),
+        ]);
+        const studentsById = new Map(studentRows.map(student => [student.id, student]));
+        const statsMap = new Map<string, AttendanceStats>();
+
+        attendanceRows.forEach((record) => {
+          const studentId = record.student_id;
+          const studentName = studentsById.get(studentId)?.full_name || 'Unknown';
+
+          if (!statsMap.has(studentId)) {
+            statsMap.set(studentId, {
+              student_id: studentId,
+              student_name: studentName,
+              total_days: 0,
+              present_days: 0,
+              absent_days: 0,
+              attendance_percentage: 0,
+            });
+          }
+
+          const stats = statsMap.get(studentId)!;
+          stats.total_days++;
+          if (isTruthy(record.is_present)) {
+            stats.present_days++;
+          } else {
+            stats.absent_days++;
+          }
+        });
+
+        const statsArray = Array.from(statsMap.values()).map(stat => ({
+          ...stat,
+          attendance_percentage: stat.total_days > 0
+            ? Math.round((stat.present_days / stat.total_days) * 100)
+            : 0,
+        }));
+
+        setAttendanceStats(statsArray.sort((a, b) =>
+          b.attendance_percentage - a.attendance_percentage
+        ));
+        return;
+      }
+
+      let query = supabase
+        .from('attendance')
+        .select(`
+          *,
+          students (
+            id,
+            student_id,
+            full_name
+          )
+        `);
+
+      if (profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
+
+      if (selectedClass !== "all") {
+        query = query.eq('class_id', selectedClass);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      // Process attendance data
+      const statsMap = new Map<string, AttendanceStats>();
+      
+      (data as AttendanceRecord[] | null)?.forEach((record) => {
+        const studentId = record.student_id;
+        const studentName = record.students?.full_name || 'Unknown';
+        
+        if (!statsMap.has(studentId)) {
+          statsMap.set(studentId, {
+            student_id: studentId,
+            student_name: studentName,
+            total_days: 0,
+            present_days: 0,
+            absent_days: 0,
+            attendance_percentage: 0
+          });
+        }
+        
+        const stats = statsMap.get(studentId)!;
+        stats.total_days++;
+        if (record.is_present) {
+          stats.present_days++;
+        } else {
+          stats.absent_days++;
+        }
+      });
+
+      // Calculate percentages
+      const statsArray = Array.from(statsMap.values()).map(stat => ({
+        ...stat,
+        attendance_percentage: stat.total_days > 0 
+          ? Math.round((stat.present_days / stat.total_days) * 100)
+          : 0
+      }));
+
+      setAttendanceStats(statsArray.sort((a, b) => 
+        b.attendance_percentage - a.attendance_percentage
+      ));
+    } catch (error) {
+      const notice = handleSupabaseError('Load attendance analytics', error, {
+        context: { schoolId: profile?.school_id, selectedClass },
+      });
+      toast.error(notice.title, { description: notice.description });
+    }
+  }, [profile?.school_id, selectedClass]);
+
+  const loadExamPerformance = useCallback(async () => {
+    try {
+      if (isPhpBackend) {
+        const [results, studentRows, examRows, subjectRows] = await Promise.all([
+          phpListAll<ExamResultPhpRow>('exam_results', {
+            school_id: profile?.school_id,
+            ...(selectedExam !== "all" ? { exam_id: selectedExam } : {}),
+            ...(selectedStudent !== "all" ? { student_id: selectedStudent } : {}),
+          }),
+          phpListAll<Student>('students', { school_id: profile?.school_id, status: 'active' }, 'full_name', 'asc'),
+          phpListAll<ExamOption>('exams', { school_id: profile?.school_id, is_active: 1 }, 'exam_date', 'desc'),
+          phpListAll<SubjectPhpRow>('subjects', { school_id: profile?.school_id, is_active: 1 }, 'name', 'asc'),
+        ]);
+        const studentsById = new Map(studentRows.map(student => [student.id, student]));
+        const examsById = new Map(examRows.map(exam => [exam.id, exam]));
+        const subjectsById = new Map(subjectRows.map(subject => [subject.id, subject]));
+
+        const performance = results
+          .map((result) => {
+            const percentage = result.total_marks > 0
+              ? Math.round((result.obtained_marks / result.total_marks) * 100)
+              : 0;
+
+            return {
+              student_id: result.student_id,
+              student_name: studentsById.get(result.student_id)?.full_name || 'Unknown',
+              exam_name: examsById.get(result.exam_id)?.name || 'Unknown',
+              subject_name: subjectsById.get(result.subject_id)?.name || 'Unknown',
+              obtained_marks: result.obtained_marks,
+              total_marks: result.total_marks,
+              percentage,
+              grade: result.grade || calculateGrade(percentage),
+            };
+          })
+          .sort((a, b) => b.obtained_marks - a.obtained_marks);
+
+        setExamPerformance(performance);
+        return;
+      }
+
+      let query = supabase
+        .from('exam_results')
+        .select(`
+          *,
+          students (
+            student_id,
+            full_name
+          ),
+          exams (
+            name
+          ),
+          subjects (
+            name
+          )
+        `);
+
+      if (profile?.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
+
+      if (selectedExam !== "all") {
+        query = query.eq('exam_id', selectedExam);
+      }
+
+      if (selectedStudent !== "all") {
+        query = query.eq('student_id', selectedStudent);
+      }
+
+      const { data, error } = await query.order('obtained_marks', { ascending: false });
+      if (error) throw error;
+
+      const performance = (data as ExamPerformanceRecord[] | null)?.map((result) => ({
+        student_id: result.student_id,
+        student_name: result.students?.full_name || 'Unknown',
+        exam_name: result.exams?.name || 'Unknown',
+        subject_name: result.subjects?.name || 'Unknown',
+        obtained_marks: result.obtained_marks,
+        total_marks: result.total_marks,
+        percentage: result.total_marks > 0
+          ? Math.round((result.obtained_marks / result.total_marks) * 100)
+          : 0,
+        grade: result.grade || 'N/A'
+      })) || [];
+
+      setExamPerformance(performance);
+    } catch (error) {
+      const notice = handleSupabaseError('Load exam performance analytics', error, {
+        context: { schoolId: profile?.school_id, selectedExam, selectedStudent },
+      });
+      toast.error(notice.title, { description: notice.description });
+    }
+  }, [profile?.school_id, selectedExam, selectedStudent]);
+
+  const loadReportData = useCallback(async () => {
     try {
       setLoading(true);
+      
+      // Load attendance statistics
+      await loadAttendanceStats();
+      
+      // Load exam performance
+      await loadExamPerformance();
+      
+    } catch (error) {
+      const notice = handleSupabaseError('Load report data', error, {
+        context: { schoolId: profile?.school_id, selectedClass, selectedExam, selectedStudent },
+      });
+      toast.error(notice.title, { description: notice.description });
+    } finally {
+      setLoading(false);
+    }
+  }, [loadAttendanceStats, loadExamPerformance, profile?.school_id, selectedClass, selectedExam, selectedStudent]);
+
+  const loadInitialData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      if (isPhpBackend) {
+        const [classesData, examsData, studentsData] = await Promise.all([
+          phpListAll<ClassOption>('classes', {
+            school_id: profile?.school_id,
+            is_active: 1,
+          }, 'name', 'asc'),
+          phpListAll<ExamOption>('exams', {
+            school_id: profile?.school_id,
+            is_active: 1,
+          }, 'exam_date', 'desc'),
+          phpListAll<Student>('students', {
+            school_id: profile?.school_id,
+            status: 'active',
+          }, 'full_name', 'asc'),
+        ]);
+
+        const classesById = new Map(classesData.map(classItem => [classItem.id, classItem]));
+        const normalizedStudents = studentsData.map(student => {
+          const classItem = classesById.get(student.class_id);
+          return {
+            ...student,
+            classes: classItem ? {
+              name: classItem.name,
+              section: classItem.section,
+              class_level: '',
+            } : undefined,
+          };
+        });
+
+        setClasses(classesData);
+        setExams(examsData);
+        setStudents(normalizedStudents);
+        await loadClassAnalytics(classesData);
+        return;
+      }
       
       // Load classes
       let classQuery = supabase
@@ -159,200 +610,27 @@ export function ReportsAnalytics() {
       setStudents(studentsData || []);
 
       // Load class analytics
-      await loadClassAnalytics();
+      await loadClassAnalytics(classesData || []);
       
     } catch (error) {
-      console.error('Error loading data:', error);
-      toast.error('Failed to load report data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadReportData = async () => {
-    try {
-      setLoading(true);
-      
-      // Load attendance statistics
-      await loadAttendanceStats();
-      
-      // Load exam performance
-      await loadExamPerformance();
-      
-    } catch (error) {
-      console.error('Error loading report data:', error);
-      toast.error('Failed to load reports');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadAttendanceStats = async () => {
-    try {
-      let query = supabase
-        .from('attendance')
-        .select(`
-          *,
-          students (
-            id,
-            student_id,
-            full_name
-          )
-        `);
-
-      if (profile?.school_id) {
-        query = query.eq('school_id', profile.school_id);
-      }
-
-      if (selectedClass !== "all") {
-        query = query.eq('class_id', selectedClass);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Process attendance data
-      const statsMap = new Map<string, AttendanceStats>();
-      
-      data?.forEach((record: any) => {
-        const studentId = record.student_id;
-        const studentName = record.students?.full_name || 'Unknown';
-        
-        if (!statsMap.has(studentId)) {
-          statsMap.set(studentId, {
-            student_id: studentId,
-            student_name: studentName,
-            total_days: 0,
-            present_days: 0,
-            absent_days: 0,
-            attendance_percentage: 0
-          });
-        }
-        
-        const stats = statsMap.get(studentId)!;
-        stats.total_days++;
-        if (record.is_present) {
-          stats.present_days++;
-        } else {
-          stats.absent_days++;
-        }
+      const notice = handleSupabaseError('Load reports dashboard data', error, {
+        context: { schoolId: profile?.school_id },
       });
-
-      // Calculate percentages
-      const statsArray = Array.from(statsMap.values()).map(stat => ({
-        ...stat,
-        attendance_percentage: stat.total_days > 0 
-          ? Math.round((stat.present_days / stat.total_days) * 100)
-          : 0
-      }));
-
-      setAttendanceStats(statsArray.sort((a, b) => 
-        b.attendance_percentage - a.attendance_percentage
-      ));
-    } catch (error) {
-      console.error('Error loading attendance stats:', error);
+      toast.error(notice.title, { description: notice.description });
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [loadClassAnalytics, profile?.school_id]);
 
-  const loadExamPerformance = async () => {
-    try {
-      let query = supabase
-        .from('exam_results')
-        .select(`
-          *,
-          students (
-            student_id,
-            full_name
-          ),
-          exams (
-            name
-          ),
-          subjects (
-            name
-          )
-        `);
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
 
-      if (profile?.school_id) {
-        query = query.eq('school_id', profile.school_id);
-      }
-
-      if (selectedExam !== "all") {
-        query = query.eq('exam_id', selectedExam);
-      }
-
-      if (selectedStudent !== "all") {
-        query = query.eq('student_id', selectedStudent);
-      }
-
-      const { data, error } = await query.order('obtained_marks', { ascending: false });
-      if (error) throw error;
-
-      const performance = data?.map((result: any) => ({
-        student_id: result.student_id,
-        student_name: result.students?.full_name || 'Unknown',
-        exam_name: result.exams?.name || 'Unknown',
-        subject_name: result.subjects?.name || 'Unknown',
-        obtained_marks: result.obtained_marks,
-        total_marks: result.total_marks,
-        percentage: Math.round((result.obtained_marks / result.total_marks) * 100),
-        grade: result.grade
-      })) || [];
-
-      setExamPerformance(performance);
-    } catch (error) {
-      console.error('Error loading exam performance:', error);
+  useEffect(() => {
+    if (selectedClass !== "all" || selectedExam !== "all") {
+      loadReportData();
     }
-  };
-
-  const loadClassAnalytics = async () => {
-    try {
-      // Get class-wise analytics
-      const analytics: ClassAnalytics[] = [];
-
-      for (const classItem of classes) {
-        // Get students count
-        const { count: studentCount } = await supabase
-          .from('students')
-          .select('*', { count: 'exact', head: true })
-          .eq('class_id', classItem.id)
-          .eq('status', 'active');
-
-        // Get average attendance
-        const { data: attendanceData } = await supabase
-          .from('attendance')
-          .select('is_present')
-          .eq('class_id', classItem.id);
-
-        const avgAttendance = attendanceData && attendanceData.length > 0
-          ? Math.round((attendanceData.filter(a => a.is_present).length / attendanceData.length) * 100)
-          : 0;
-
-        // Get average marks
-        const { data: marksData } = await supabase
-          .from('exam_results')
-          .select('obtained_marks, total_marks')
-          .eq('school_id', profile?.school_id);
-
-        const avgMarks = marksData && marksData.length > 0
-          ? Math.round(
-              marksData.reduce((sum, m) => sum + (m.obtained_marks / m.total_marks) * 100, 0) / 
-              marksData.length
-            )
-          : 0;
-
-        analytics.push({
-          class_name: `${classItem.name} - ${classItem.section}`,
-          total_students: studentCount || 0,
-          avg_attendance: avgAttendance,
-          avg_marks: avgMarks
-        });
-      }
-
-      setClassAnalytics(analytics);
-    } catch (error) {
-      console.error('Error loading class analytics:', error);
-    }
-  };
+  }, [selectedClass, selectedExam, selectedStudent, loadReportData]);
 
   const getGradeColor = (grade: string) => {
     switch (grade) {
@@ -375,7 +653,7 @@ export function ReportsAnalytics() {
   };
 
   // Chart data preparations
-  const gradeDistribution = examPerformance.reduce((acc: any[], perf) => {
+  const gradeDistribution = examPerformance.reduce<GradeDistribution[]>((acc, perf) => {
     const existing = acc.find(item => item.grade === perf.grade);
     if (existing) {
       existing.count++;

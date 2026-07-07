@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { supabase } from '@/integrations/supabase/client';
-import type { Database, Json } from '@/integrations/supabase/types';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import type { Database, Json } from '@/integrations/database/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +35,9 @@ interface SystemConfigState {
 }
 
 type AuditLogRow = Database['public']['Tables']['audit_logs']['Row'];
+type AuditLogPhpRow = Pick<AuditLogRow, 'id' | 'action' | 'user_id' | 'entity_type' | 'timestamp'> & {
+  metadata: string | Json | null;
+};
 
 interface AuditLogView {
   id: string;
@@ -74,6 +79,17 @@ const parseMetadataDetails = (metadata: Json | null, entityType: string) => {
   return entityType || 'No additional details';
 };
 
+const parseJsonField = (value: string | Json | null): Json | null => {
+  if (value === null) return null;
+  if (typeof value !== 'string') return value;
+
+  try {
+    return JSON.parse(value) as Json;
+  } catch {
+    return value;
+  }
+};
+
 const SystemSettings = () => {
   const { profile } = useAuth();
   const { canFull } = useFeatureAccess();
@@ -108,6 +124,27 @@ const SystemSettings = () => {
 
   const fetchSystemStats = async () => {
     try {
+      if (isPhpBackend) {
+        const [schoolsResult, activeSchoolsResult, usersResult, studentsResult, teachersResult, pendingResult] = await Promise.all([
+          phpApi.table('schools').count(),
+          phpApi.table('schools').count({ is_active: 1 }),
+          phpApi.table('user_profiles').count(),
+          phpApi.table('students').count(),
+          phpApi.table('teachers').count(),
+          phpApi.table('teacher_applications').count({ status: 'pending' }),
+        ]);
+
+        setStats({
+          totalSchools: schoolsResult.count,
+          totalUsers: usersResult.count,
+          totalStudents: studentsResult.count,
+          totalTeachers: teachersResult.count,
+          activeSchools: activeSchoolsResult.count,
+          pendingApplications: pendingResult.count,
+        });
+        return;
+      }
+
       const [schoolsResult, activeSchoolsResult, usersResult, studentsResult, teachersResult, pendingResult] = await Promise.all([
         supabase.from('schools').select('*', { count: 'exact', head: true }),
         supabase.from('schools').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -132,6 +169,24 @@ const SystemSettings = () => {
 
   const fetchAuditLogs = async () => {
     try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<AuditLogPhpRow>('audit_logs').list({
+          sort: 'timestamp',
+          order: 'desc',
+          limit: 20,
+        });
+        const mappedLogs: AuditLogView[] = data.map((log) => ({
+          id: log.id,
+          action: log.action,
+          user_id: log.user_id,
+          details: parseMetadataDetails(parseJsonField(log.metadata), log.entity_type),
+          timestamp: log.timestamp,
+        }));
+
+        setAuditLogs(mappedLogs);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('audit_logs')
         .select('id, action, user_id, metadata, entity_type, timestamp')
@@ -159,6 +214,35 @@ const SystemSettings = () => {
 
   const fetchSystemConfig = async () => {
     try {
+      if (isPhpBackend) {
+        const rows = await phpApi.table<{
+          id: string;
+          setting_key: string;
+          setting_value: string | Json | null;
+        }>('system_settings').list({ setting_key: 'global', limit: 1 });
+        const row = rows[0];
+
+        if (!row) {
+          setSystemConfig(getDefaultSystemConfig());
+          return;
+        }
+
+        const value = parseJsonField(row.setting_value);
+        const config = value && typeof value === 'object' && !Array.isArray(value)
+          ? value as Record<string, Json>
+          : {};
+
+        setSystemConfig({
+          maintenanceMode: Boolean(config.maintenanceMode),
+          allowRegistrations: config.allowRegistrations !== false,
+          defaultSchoolType: typeof config.defaultSchoolType === 'string' ? config.defaultSchoolType : 'secondary',
+          maxStudentsPerClass: Number(config.maxStudentsPerClass || 40),
+          academicYearStart: typeof config.academicYearStart === 'string' ? formatDateForInput(config.academicYearStart) : getDefaultSystemConfig().academicYearStart,
+          academicYearEnd: typeof config.academicYearEnd === 'string' ? formatDateForInput(config.academicYearEnd) : getDefaultSystemConfig().academicYearEnd,
+        });
+        return;
+      }
+
       const { data, error } = await supabase
         .from('system_settings')
         .select('*')
@@ -212,6 +296,41 @@ const SystemSettings = () => {
         academic_year_end: nextConfig.academicYearEnd,
         updated_by: profile.user_id,
       };
+
+      if (isPhpBackend) {
+        const existingRows = await phpApi.table<{
+          id: string;
+          setting_key: string;
+        }>('system_settings').list({ setting_key: 'global', limit: 1 });
+        const phpPayload = {
+          setting_key: 'global',
+          setting_value: nextConfig,
+          description: 'Global system settings',
+        };
+
+        if (existingRows[0]) {
+          await phpApi.table<typeof phpPayload>('system_settings').update(existingRows[0].id, phpPayload);
+        } else {
+          await phpApi.table<typeof phpPayload>('system_settings').create(phpPayload);
+        }
+
+        await phpApi.table('audit_logs').create({
+          user_id: profile.user_id,
+          action,
+          entity_type: 'system_settings',
+          entity_id: 'global',
+          success: 1,
+          metadata: {
+            details: 'System settings updated by super admin',
+            maintenanceMode: nextConfig.maintenanceMode,
+            allowRegistrations: nextConfig.allowRegistrations,
+          },
+        });
+
+        await fetchAuditLogs();
+        setSystemConfig(nextConfig);
+        return true;
+      }
 
       const { error } = await supabase
         .from('system_settings')

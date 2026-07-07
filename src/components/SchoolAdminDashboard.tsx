@@ -3,12 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useSchoolStats } from "@/hooks/useSchoolStats";
+import { useSchoolAdminDashboardData } from "@/hooks/useSchoolAdminDashboardData";
 import { useToast } from "@/hooks/use-toast";
 import { PendingAssignmentCard } from "@/components/PendingAssignmentCard";
-import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardSkeleton } from "@/components/ui/skeleton-loader";
 import { TeacherApplicationsManager } from "@/components/TeacherApplicationsManager";
 import { AttendanceManagement } from "@/components/AttendanceManagement";
@@ -17,6 +18,7 @@ import { EnhancedActivityFeed } from "@/components/SchoolAdmin/EnhancedActivityF
 import { TodaysTasksOverview } from "@/components/SchoolAdmin/TodaysTasksOverview";
 import { StatsCardWithTrends } from "@/components/SchoolAdmin/StatsCardWithTrends";
 import { StatsDetailModal } from "@/components/SchoolAdmin/StatsDetailModal";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 import { 
   Users, 
   GraduationCap, 
@@ -34,95 +36,42 @@ import {
   Activity
 } from "lucide-react";
 
-interface SchoolStats {
-  totalStudents: number;
-  activeStudents: number;
-  totalTeachers: number;
-  totalClasses: number;
-  totalSubjects: number;
-  recentAdmissions: number;
-}
-
 interface SchoolAdminDashboardProps {
   setActiveModule?: (moduleId: string) => void;
 }
 
 const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) => {
   const { profile } = useAuth();
-  const fetchSchoolStats = useSchoolStats();
-  const [stats, setStats] = useState<SchoolStats>({
-    totalStudents: 0,
-    activeStudents: 0,
-    totalTeachers: 0,
-    totalClasses: 0,
-    totalSubjects: 0,
-    recentAdmissions: 0,
-  });
-  const [schoolInfo, setSchoolInfo] = useState<any>(null);
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    stats,
+    schoolInfo,
+    loading,
+    error: dashboardError,
+  } = useSchoolAdminDashboardData(profile?.school_id);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [filterType, setFilterType] = useState<string | null>(null);
   
   // Modal state for stats drill-down
   const [statsModalOpen, setStatsModalOpen] = useState(false);
   const [selectedStatType, setSelectedStatType] = useState<string | null>(null);
-  const [statsModalData, setStatsModalData] = useState<any[]>([]);
+  const [statsModalData, setStatsModalData] = useState<Record<string, unknown>[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
   
   const { toast } = useToast();
 
   useEffect(() => {
-    if (profile?.school_id) {
-      fetchDashboardData();
-    }
-  }, [profile?.school_id]);
+    if (!dashboardError) return;
 
-  const fetchDashboardData = async () => {
-    if (!profile?.school_id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Fetch school info
-      const { data: school, error: schoolError } = await supabase
-        .from('schools')
-        .select('*')
-        .eq('id', profile.school_id)
-        .single();
-
-      if (schoolError) throw schoolError;
-      setSchoolInfo(school);
-
-      // Fetch all dashboard stats using consolidated RPC function
-      const statsData = await fetchSchoolStats(profile.school_id);
-      setStats(statsData);
-
-      // Fetch recent activities (recent students)
-      const { data: recentStudents, error: studentsError } = await supabase
-        .from('students')
-        .select('full_name, admission_date, class_id, classes(name)')
-        .eq('school_id', profile.school_id)
-        .order('admission_date', { ascending: false })
-        .limit(5);
-
-      if (studentsError) throw studentsError;
-      setRecentActivities(recentStudents || []);
-
-    } catch (error: any) {
-      console.error('Error fetching dashboard data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load dashboard data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    const notice = handleSupabaseError('Load school admin dashboard', dashboardError, {
+      context: { schoolId: profile?.school_id },
+      log: false,
+    });
+    toast({
+      title: notice.title,
+      description: notice.description,
+      variant: "destructive",
+    });
+  }, [dashboardError, profile?.school_id, toast]);
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
@@ -145,76 +94,160 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
     try {
       if (!profile?.school_id) throw new Error('School ID not found');
 
-      let data: any[] = [];
+      let data: Record<string, unknown>[] = [];
+
+      if (isPhpBackend) {
+        switch (statType) {
+          case 'totalStudents':
+          case 'activeStudents':
+          case 'recentAdmissions': {
+            const filters: Record<string, string | number | boolean> = {
+              school_id: profile.school_id,
+              sort: 'admission_date',
+              order: 'desc',
+              limit: 200,
+            };
+
+            if (statType !== 'totalStudents') {
+              filters.status = 'active';
+            }
+
+            if (statType === 'recentAdmissions') {
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              filters.admission_date__gte = thirtyDaysAgo.toISOString();
+            }
+
+            const [students, classes] = await Promise.all([
+              phpApi.table<Record<string, unknown>>('students').list(filters),
+              phpApi.table<{ id: string; name: string }>('classes').list({
+                school_id: profile.school_id,
+                limit: 200,
+              }),
+            ]);
+            const classesById = new Map(classes.map((classItem) => [classItem.id, classItem]));
+            data = students.map((student) => ({
+              ...student,
+              classes: classesById.get(String(student.class_id || '')) || null,
+            }));
+            break;
+          }
+
+          case 'totalTeachers':
+            data = await phpApi.table<Record<string, unknown>>('teachers').list({
+              school_id: profile.school_id,
+              sort: 'created_at',
+              order: 'desc',
+              limit: 200,
+            });
+            break;
+
+          case 'totalClasses':
+            data = await phpApi.table<Record<string, unknown>>('classes').list({
+              school_id: profile.school_id,
+              sort: 'name',
+              order: 'asc',
+              limit: 200,
+            });
+            break;
+
+          case 'totalSubjects':
+            data = await phpApi.table<Record<string, unknown>>('subjects').list({
+              school_id: profile.school_id,
+              sort: 'name',
+              order: 'asc',
+              limit: 200,
+            });
+            break;
+        }
+
+        setStatsModalData(data);
+        setStatsModalOpen(true);
+        return;
+      }
 
       switch (statType) {
-        case 'totalStudents':
-          const { data: allStudents } = await supabase
+        case 'totalStudents': {
+          const { data: allStudents, error } = await supabase
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
             .order('admission_date', { ascending: false });
-          data = allStudents || [];
+          if (error) throw error;
+          data = (allStudents || []) as unknown as Record<string, unknown>[];
           break;
+        }
 
-        case 'activeStudents':
-          const { data: active } = await supabase
+        case 'activeStudents': {
+          const { data: active, error } = await supabase
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
             .eq('status', 'active')
             .order('admission_date', { ascending: false });
-          data = active || [];
+          if (error) throw error;
+          data = (active || []) as unknown as Record<string, unknown>[];
           break;
+        }
 
-        case 'totalTeachers':
-          const { data: teachers } = await supabase
+        case 'totalTeachers': {
+          const { data: teachers, error } = await supabase
             .from('teachers')
             .select('id, full_name, email, phone, is_active, created_at')
             .eq('school_id', profile.school_id)
             .order('created_at', { ascending: false });
-          data = teachers || [];
+          if (error) throw error;
+          data = (teachers || []) as Record<string, unknown>[];
           break;
+        }
 
-        case 'totalClasses':
-          const { data: classes } = await supabase
+        case 'totalClasses': {
+          const { data: classes, error } = await supabase
             .from('classes')
             .select('id, name, section, is_active, created_at')
             .eq('school_id', profile.school_id)
             .order('name', { ascending: true });
-          data = classes || [];
+          if (error) throw error;
+          data = (classes || []) as Record<string, unknown>[];
           break;
+        }
 
-        case 'totalSubjects':
-          const { data: subjects } = await supabase
+        case 'totalSubjects': {
+          const { data: subjects, error } = await supabase
             .from('subjects')
             .select('id, name, is_active, created_at')
             .eq('school_id', profile.school_id)
             .order('name', { ascending: true });
-          data = subjects || [];
+          if (error) throw error;
+          data = (subjects || []) as Record<string, unknown>[];
           break;
+        }
 
-        case 'recentAdmissions':
+        case 'recentAdmissions': {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          const { data: recent } = await supabase
+          const { data: recent, error } = await supabase
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
             .eq('status', 'active')
             .gte('admission_date', thirtyDaysAgo.toISOString())
             .order('admission_date', { ascending: false });
-          data = recent || [];
+          if (error) throw error;
+          data = (recent || []) as unknown as Record<string, unknown>[];
           break;
+        }
       }
 
       setStatsModalData(data);
       setStatsModalOpen(true);
-    } catch (error: any) {
-      console.error('Error fetching drill-down data:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Load dashboard detail data', error, {
+        context: { schoolId: profile?.school_id, statType },
+      });
       toast({
-        title: 'Error',
-        description: 'Failed to load detailed data',
+        title: notice.title,
+        description: notice.description,
         variant: 'destructive',
       });
     } finally {
@@ -231,6 +264,12 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
     const handleRefreshStatus = async () => {
       setIsRefreshing(true);
       try {
+        if (isPhpBackend) {
+          await phpApi.me();
+          window.location.reload();
+          return;
+        }
+
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const { data } = await supabase
@@ -320,7 +359,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid h-auto w-full grid-flow-col auto-cols-max justify-start overflow-x-auto p-1 sm:grid-flow-row sm:grid-cols-4 sm:justify-center">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="exams">Exams</TabsTrigger>

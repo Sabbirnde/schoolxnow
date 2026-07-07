@@ -1,4 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 
 /**
  * Teacher Portal Auto-Login Utilities
@@ -32,20 +34,35 @@ export async function generateTeacherMagicLink(
 ): Promise<GeneratedLink> {
   try {
     const { teacherEmail, redirectPath = '/teacher-portal', expiresIn = 86400 } = options;
+    const plainLink = `${window.location.origin}${redirectPath}`;
+
+    if (isPhpBackend) {
+      const result = await phpApi.createTeacherPortalLink({
+        email: teacherEmail,
+        redirect_to: plainLink,
+        expires_in: expiresIn,
+      });
+
+      return {
+        magicLink: result.portal_url,
+        plainLink: result.plain_url,
+        expiresAt: new Date(result.expires_at),
+      };
+    }
 
     // Generate magic link via Supabase
     const { data, error } = await supabase.auth.signInWithOtp({
       email: teacherEmail,
       options: {
         shouldCreateUser: false, // Only allow existing users
-        emailRedirectTo: `${window.location.origin}${redirectPath}`,
+        emailRedirectTo: plainLink,
       },
     });
 
     if (error) {
       return {
         magicLink: '',
-        plainLink: `${window.location.origin}${redirectPath}`,
+        plainLink,
         expiresAt: new Date(),
         error: `Failed to generate magic link: ${error.message}`,
       };
@@ -56,7 +73,7 @@ export async function generateTeacherMagicLink(
 
     return {
       magicLink: `${window.location.origin}${redirectPath}`,
-      plainLink: `${window.location.origin}${redirectPath}`,
+      plainLink,
       expiresAt,
     };
   } catch (err) {
@@ -131,6 +148,13 @@ export async function sendTeacherPortalLink(email: string, teacherName: string):
  */
 export async function isTeacherSession(): Promise<boolean> {
   try {
+    if (isPhpBackend) {
+      const token = localStorage.getItem(phpApi.tokenKey);
+      if (!token) return false;
+      const user = await phpApi.me();
+      return user.role === 'teacher';
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) return false;
@@ -160,6 +184,13 @@ export async function isTeacherSession(): Promise<boolean> {
  */
 export async function recoverTeacherSession(): Promise<{ success: boolean; teacherId?: string }> {
   try {
+    if (isPhpBackend) {
+      const token = localStorage.getItem(phpApi.tokenKey);
+      if (!token) return { success: false };
+      const user = await phpApi.me();
+      return user.role === 'teacher' ? { success: true, teacherId: user.id } : { success: false };
+    }
+
     // Check for stored teacher session token
     const storedToken = localStorage.getItem('teacher_session_token');
     

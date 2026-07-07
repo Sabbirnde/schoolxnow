@@ -3,7 +3,10 @@
  * Tracks all changes to school data for compliance, debugging, and accountability
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import type { Json } from '@/integrations/database/types';
 
 // ============================================================================
 // Type Definitions
@@ -36,13 +39,13 @@ export interface AuditLog {
   action: AuditAction;
   entity_type: AuditEntityType;
   entity_id: string;
-  old_values?: any;
-  new_values?: any;
+  old_values?: Json;
+  new_values?: Json;
   success: boolean;
   error_message?: string | null;
   ip_address?: unknown;
   user_agent?: string | null;
-  metadata?: any;
+  metadata?: Json;
   timestamp: string;
 }
 
@@ -50,6 +53,47 @@ export interface ValidationError {
   field: string;
   message: string;
   code: string;
+}
+
+type AuditLogPhpRow = Omit<AuditLog, 'success' | 'old_values' | 'new_values' | 'metadata'> & {
+  old_values?: string | Json | null;
+  new_values?: string | Json | null;
+  metadata?: string | Json | null;
+  success: boolean | number;
+  school_id?: string | null;
+  details?: string | Json | null;
+};
+
+type AuditLogPhpCreate = {
+  user_id: string;
+  action: AuditAction;
+  entity_type: AuditEntityType;
+  entity_id: string;
+  new_values?: Json | null;
+  metadata?: Json | null;
+  success: boolean | number;
+  error_message?: string | null;
+};
+
+function parseJsonField(value: string | Json | null | undefined): Json | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value !== 'string') return value;
+
+  try {
+    return JSON.parse(value) as Json;
+  } catch {
+    return value;
+  }
+}
+
+function normalizeAuditLog(row: AuditLogPhpRow): AuditLog {
+  return {
+    ...row,
+    success: row.success === true || row.success === 1,
+    old_values: parseJsonField(row.old_values),
+    new_values: parseJsonField(row.new_values),
+    metadata: parseJsonField(row.metadata),
+  };
 }
 
 // ============================================================================
@@ -65,11 +109,24 @@ export async function logAuditEvent(
   entityType: AuditEntityType,
   entityId: string,
   options?: {
-    newValues?: any;
-    metadata?: Record<string, any>;
+    newValues?: Json;
+    metadata?: Json;
   }
 ): Promise<boolean> {
   try {
+    if (isPhpBackend) {
+      await phpApi.table<AuditLogPhpCreate>('audit_logs').create({
+        user_id: userId,
+        action,
+        entity_type: entityType,
+        entity_id: entityId,
+        new_values: options?.newValues || null,
+        metadata: options?.metadata || null,
+        success: 1,
+      });
+      return true;
+    }
+
     const { error } = await supabase.from('audit_logs').insert([
       {
         user_id: userId,
@@ -104,6 +161,18 @@ export async function logFailedAuditEvent(
   errorMessage: string
 ): Promise<boolean> {
   try {
+    if (isPhpBackend) {
+      await phpApi.table<AuditLogPhpCreate>('audit_logs').create({
+        user_id: userId,
+        action,
+        entity_type: entityType,
+        entity_id: entityId,
+        success: 0,
+        error_message: errorMessage,
+      });
+      return true;
+    }
+
     const { error } = await supabase.from('audit_logs').insert([
       {
         user_id: userId,
@@ -135,6 +204,18 @@ export async function fetchAuditLogs(
   limit: number = 100
 ): Promise<AuditLog[]> {
   try {
+    if (isPhpBackend) {
+      const data = await phpApi.table<AuditLogPhpRow>('audit_logs').list({
+        ...(entityType ? { entity_type: entityType } : {}),
+        ...(entityId ? { entity_id: entityId } : {}),
+        sort: 'timestamp',
+        order: 'desc',
+        limit,
+      });
+
+      return data.map(normalizeAuditLog);
+    }
+
     let baseQuery = supabase
       .from('audit_logs')
       .select('*');
@@ -176,6 +257,28 @@ export async function fetchUserActivitySummary(
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+
+    if (isPhpBackend) {
+      const logs = (await phpApi.table<AuditLogPhpRow>('audit_logs').list({
+        user_id: userId,
+        timestamp__gte: startDate.toISOString().slice(0, 19).replace('T', ' '),
+        sort: 'timestamp',
+        order: 'desc',
+        limit: 200,
+      })).map(normalizeAuditLog);
+      const actionsByType: Record<string, number> = {};
+
+      logs.forEach(log => {
+        actionsByType[log.action] = (actionsByType[log.action] || 0) + 1;
+      });
+
+      return {
+        totalActions: logs.length,
+        actionsByType,
+        lastAction: logs[0],
+        recentFailures: logs.filter(l => !l.success).length,
+      };
+    }
 
     const baseQuery = supabase
       .from('audit_logs')
@@ -222,6 +325,20 @@ export async function fetchUserActivitySummary(
  */
 export async function validateClassDeletion(classId: string): Promise<ValidationError | null> {
   try {
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('students').count({ class_id: classId, status: 'active' });
+
+      if (count > 0) {
+        return {
+          field: 'class_id',
+          message: `Cannot delete class with ${count} enrolled student${count !== 1 ? 's' : ''}. Please transfer or deactivate students first.`,
+          code: 'CLASS_HAS_ENROLLED_STUDENTS',
+        };
+      }
+
+      return null;
+    }
+
     const baseQuery = supabase
       .from('students')
       .select('id')
@@ -252,6 +369,20 @@ export async function validateClassDeletion(classId: string): Promise<Validation
  */
 export async function validateTeacherDeletion(teacherId: string): Promise<ValidationError | null> {
   try {
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('timetable').count({ teacher_id: teacherId });
+
+      if (count > 0) {
+        return {
+          field: 'teacher_id',
+          message: `Cannot delete teacher with ${count} class assignment${count !== 1 ? 's' : ''}. Please reassign classes first.`,
+          code: 'TEACHER_HAS_ASSIGNMENTS',
+        };
+      }
+
+      return null;
+    }
+
     const baseQuery = supabase
       .from('timetable')
       .select('id')
@@ -281,8 +412,33 @@ export async function validateTeacherDeletion(teacherId: string): Promise<Valida
  */
 export async function validateSubjectDeletion(subjectId: string): Promise<ValidationError | null> {
   try {
-    const examsResult = await (supabase.from('exams') as any).select('id').eq('subject_id', subjectId);
-    const assignmentsResult = await (supabase.from('timetable') as any).select('id').eq('subject_id', subjectId);
+    if (isPhpBackend) {
+      const [exams, assignments] = await Promise.all([
+        phpApi.table('exam_results').count({ subject_id: subjectId }),
+        phpApi.table('timetable').count({ subject_id: subjectId }),
+      ]);
+
+      if (exams.count > 0) {
+        return {
+          field: 'subject_id',
+          message: `Cannot delete subject with ${exams.count} exam result${exams.count !== 1 ? 's' : ''}. Please archive or remove results first.`,
+          code: 'SUBJECT_HAS_EXAMS',
+        };
+      }
+
+      if (assignments.count > 0) {
+        return {
+          field: 'subject_id',
+          message: `Cannot delete subject with ${assignments.count} teacher assignment${assignments.count !== 1 ? 's' : ''}. Please remove assignments first.`,
+          code: 'SUBJECT_HAS_ASSIGNMENTS',
+        };
+      }
+
+      return null;
+    }
+
+    const examsResult = await supabase.from('exam_results').select('id').eq('subject_id', subjectId);
+    const assignmentsResult = await supabase.from('timetable').select('id').eq('subject_id', subjectId);
     
     const exams = examsResult.data || [];
     const assignments = assignmentsResult.data || [];
@@ -290,7 +446,7 @@ export async function validateSubjectDeletion(subjectId: string): Promise<Valida
     if (exams && exams.length > 0) {
       return {
         field: 'subject_id',
-        message: `Cannot delete subject with ${exams.length} exam${exams.length !== 1 ? 's' : ''}. Please archive exams first.`,
+        message: `Cannot delete subject with ${exams.length} exam result${exams.length !== 1 ? 's' : ''}. Please archive or remove results first.`,
         code: 'SUBJECT_HAS_EXAMS',
       };
     }
@@ -319,6 +475,24 @@ export async function checkStudentIDDuplicate(
   excludeId?: string
 ): Promise<ValidationError | null> {
   try {
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('students').count({
+        school_id: schoolId,
+        student_id: studentId,
+        ...(excludeId ? { id__ne: excludeId } : {}),
+      });
+
+      if (count > 0) {
+        return {
+          field: 'student_id',
+          message: `Student ID "${studentId}" is already in use. Please use a unique ID.`,
+          code: 'STUDENT_ID_DUPLICATE',
+        };
+      }
+
+      return null;
+    }
+
     let query = supabase
       .from('students')
       .select('id')
@@ -357,6 +531,24 @@ export async function checkTeacherEmailDuplicate(
   excludeId?: string
 ): Promise<ValidationError | null> {
   try {
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('teachers').count({
+        school_id: schoolId,
+        email: email.toLowerCase(),
+        ...(excludeId ? { id__ne: excludeId } : {}),
+      });
+
+      if (count > 0) {
+        return {
+          field: 'email',
+          message: `Email "${email}" is already registered. Please use a different email.`,
+          code: 'EMAIL_DUPLICATE',
+        };
+      }
+
+      return null;
+    }
+
     let query = supabase
       .from('teachers')
       .select('id')
@@ -395,10 +587,28 @@ export async function checkStudentEmailDuplicate(
   excludeId?: string
 ): Promise<ValidationError | null> {
   try {
-    const queryResult = await (supabase.from('students') as any)
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('students').count({
+        school_id: schoolId,
+        guardian_email: email.toLowerCase(),
+        ...(excludeId ? { id__ne: excludeId } : {}),
+      });
+
+      if (count > 0) {
+        return {
+          field: 'email',
+          message: `Email "${email}" is already registered. Please use a different email.`,
+          code: 'EMAIL_DUPLICATE',
+        };
+      }
+
+      return null;
+    }
+
+    const queryResult = await supabase.from('students')
       .select('id')
       .eq('school_id', schoolId)
-      .eq('email', email.toLowerCase());
+      .eq('guardian_email', email.toLowerCase());
 
     const { data, error } = queryResult;
 
@@ -429,6 +639,25 @@ export async function checkClassNameDuplicate(
   excludeId?: string
 ): Promise<ValidationError | null> {
   try {
+    if (isPhpBackend) {
+      const { count } = await phpApi.table('classes').count({
+        school_id: schoolId,
+        name,
+        section,
+        ...(excludeId ? { id__ne: excludeId } : {}),
+      });
+
+      if (count > 0) {
+        return {
+          field: 'name',
+          message: `Class "${name} - Section ${section}" already exists.`,
+          code: 'CLASS_DUPLICATE',
+        };
+      }
+
+      return null;
+    }
+
     let query = supabase
       .from('classes')
       .select('id')
@@ -463,7 +692,7 @@ export async function checkClassNameDuplicate(
  * Validate required fields
  */
 export function validateRequiredFields(
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   requiredFields: string[]
 ): ValidationError | null {
   for (const field of requiredFields) {

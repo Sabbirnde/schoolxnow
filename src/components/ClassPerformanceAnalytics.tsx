@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import { supabase } from '@/integrations/php-api/compat-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { 
@@ -48,6 +50,70 @@ interface ClassPerformanceProps {
   dateRange?: { start: Date; end: Date };
 }
 
+interface StudentAnalyticsRow {
+  id: string;
+  class_id: string | null;
+  status: string;
+}
+
+interface AttendanceAnalyticsRow {
+  id?: string;
+  class_id: string;
+  date: string;
+  is_present: boolean | number | null;
+}
+
+interface ExamResultAnalyticsRow {
+  student_id: string;
+  subject_id: string;
+  obtained_marks: number;
+  total_marks: number;
+}
+
+interface TeacherAnalyticsRow {
+  id: string;
+}
+
+interface TimetableAnalyticsRow {
+  class_id: string;
+}
+
+const PHP_PAGE_SIZE = 200;
+
+async function phpListAll<T extends object>(
+  table: string,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  sort = 'created_at',
+  order: 'asc' | 'desc' = 'desc'
+): Promise<T[]> {
+  const rows: T[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await phpApi.table<T>(table).list({
+      ...params,
+      sort,
+      order,
+      limit: PHP_PAGE_SIZE,
+      offset,
+    });
+
+    rows.push(...page);
+    if (page.length < PHP_PAGE_SIZE) break;
+    offset += PHP_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+function isTruthy(value: boolean | number | string | null | undefined) {
+  return value === true || value === 1 || value === '1';
+}
+
+function markPercentage(result: Pick<ExamResultAnalyticsRow, 'obtained_marks' | 'total_marks'>) {
+  return result.total_marks > 0 ? (result.obtained_marks / result.total_marks) * 100 : 0;
+}
+
 export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: ClassPerformanceProps) {
   const { profile } = useAuth();
   const { canFull } = useFeatureAccess();
@@ -71,6 +137,159 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
 
     try {
       setLoading(true);
+
+      if (isPhpBackend) {
+        let teacherClassIds: string[] = [];
+        if (!canFull('analytics.view')) {
+          const teachers = await phpListAll<TeacherAnalyticsRow>('teachers', {
+            school_id: profile.school_id,
+            user_id: profile.user_id,
+          });
+          const teacher = teachers[0];
+
+          if (teacher) {
+            const timetableData = await phpListAll<TimetableAnalyticsRow>('timetable', {
+              school_id: profile.school_id,
+              teacher_id: teacher.id,
+            });
+            teacherClassIds = [...new Set(timetableData.map(t => t.class_id))];
+          }
+        }
+
+        const targetClassIds = classId
+          ? [classId]
+          : !canFull('analytics.view')
+          ? teacherClassIds
+          : [];
+
+        if (targetClassIds.length === 0 && !canFull('analytics.view')) {
+          setLoading(false);
+          return;
+        }
+
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const startDate = dateRange?.start || thirtyDaysAgo;
+        const endDate = dateRange?.end || new Date();
+        const startDateString = startDate.toISOString().split('T')[0];
+        const endDateString = endDate.toISOString().split('T')[0];
+
+        const [studentRows, attendanceRows, examResultRows] = await Promise.all([
+          phpListAll<StudentAnalyticsRow>('students', {
+            school_id: profile.school_id,
+          }),
+          phpListAll<AttendanceAnalyticsRow>('attendance', {
+            school_id: profile.school_id,
+            date__gte: startDateString,
+            date__lte: endDateString,
+            ...(classId ? { class_id: classId } : {}),
+          }, 'date', 'asc'),
+          phpListAll<ExamResultAnalyticsRow>('exam_results', {
+            school_id: profile.school_id,
+            ...(subjectId ? { subject_id: subjectId } : {}),
+          }),
+        ]);
+
+        const targetClassSet = new Set(targetClassIds);
+        const students = targetClassIds.length > 0
+          ? studentRows.filter(student => student.class_id && targetClassSet.has(student.class_id))
+          : studentRows;
+        const totalStudents = students.length;
+        const activeStudents = students.filter(s => s.status === 'active').length;
+        const attendanceData = targetClassIds.length > 0
+          ? attendanceRows.filter(record => targetClassSet.has(record.class_id))
+          : attendanceRows;
+
+        const totalAttendanceRecords = attendanceData.length;
+        const presentRecords = attendanceData.filter(a => isTruthy(a.is_present)).length;
+        const attendanceRate = totalAttendanceRecords > 0
+          ? (presentRecords / totalAttendanceRecords) * 100
+          : 0;
+
+        const attendanceByDate = new Map<string, { present: number; total: number }>();
+        attendanceData.forEach(record => {
+          const date = record.date;
+          const current = attendanceByDate.get(date) || { present: 0, total: 0 };
+          current.total += 1;
+          if (isTruthy(record.is_present)) current.present += 1;
+          attendanceByDate.set(date, current);
+        });
+
+        const attendanceHistory = Array.from(attendanceByDate.entries())
+          .map(([date, data]) => ({
+            date,
+            present: data.present,
+            total: data.total,
+            rate: (data.present / data.total) * 100,
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .slice(-14);
+
+        let attendanceTrend: 'up' | 'down' | 'stable' = 'stable';
+        if (attendanceHistory.length >= 7) {
+          const recentAvg = attendanceHistory.slice(-7).reduce((sum, d) => sum + d.rate, 0) / 7;
+          const previousAvg = attendanceHistory.slice(0, 7).reduce((sum, d) => sum + d.rate, 0) / 7;
+          const diff = recentAvg - previousAvg;
+          if (diff > 5) attendanceTrend = 'up';
+          else if (diff < -5) attendanceTrend = 'down';
+        }
+
+        const targetStudentIds = new Set(students.map(s => s.id));
+        const filteredResults = examResultRows.filter(r => targetStudentIds.has(r.student_id));
+        const totalMarks = filteredResults.reduce((sum, result) => sum + markPercentage(result), 0);
+        const averageGrade = filteredResults.length > 0
+          ? totalMarks / filteredResults.length
+          : 0;
+
+        const gradeRanges = [
+          { range: '90-100', min: 90, max: 100, count: 0 },
+          { range: '80-89', min: 80, max: 89, count: 0 },
+          { range: '70-79', min: 70, max: 79, count: 0 },
+          { range: '60-69', min: 60, max: 69, count: 0 },
+          { range: '50-59', min: 50, max: 59, count: 0 },
+          { range: '<50', min: 0, max: 49, count: 0 },
+        ];
+
+        filteredResults.forEach(result => {
+          const percentage = markPercentage(result);
+          const range = gradeRanges.find(r => percentage >= r.min && percentage <= r.max);
+          if (range) range.count++;
+        });
+
+        const gradeDistribution = gradeRanges.map(r => ({
+          range: r.range,
+          count: r.count,
+          percentage: filteredResults.length > 0 ? (r.count / filteredResults.length) * 100 : 0,
+        }));
+
+        const studentGrades = new Map<string, number[]>();
+        filteredResults.forEach(result => {
+          const grades = studentGrades.get(result.student_id) || [];
+          grades.push(markPercentage(result));
+          studentGrades.set(result.student_id, grades);
+        });
+
+        const studentAverages = Array.from(studentGrades.entries()).map(([studentId, grades]) => ({
+          studentId,
+          average: grades.reduce((sum, grade) => sum + grade, 0) / grades.length,
+        }));
+
+        setMetrics({
+          attendanceRate: Math.round(attendanceRate * 10) / 10,
+          attendanceTrend,
+          averageGrade: Math.round(averageGrade * 10) / 10,
+          gradeTrend: 'stable',
+          totalStudents,
+          activeStudents,
+          atRiskStudents: studentAverages.filter(s => s.average < 50).length,
+          topPerformers: studentAverages.filter(s => s.average >= 80).length,
+        });
+
+        setAttendanceHistory(attendanceHistory);
+        setGradeDistribution(gradeDistribution);
+        setError(null);
+        return;
+      }
 
       // Get teacher's classes if teacher role
       let teacherClassIds: string[] = [];
@@ -259,7 +478,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
     } finally {
       setLoading(false);
     }
-  }, [profile?.school_id, profile?.role, profile?.user_id, classId, subjectId, dateRange]);
+  }, [profile?.school_id, profile?.user_id, classId, subjectId, dateRange, canFull]);
 
   useEffect(() => {
     if (profile?.school_id) {

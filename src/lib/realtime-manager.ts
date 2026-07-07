@@ -1,10 +1,29 @@
 // Realtime subscription management utilities
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
+import { RealtimeChannel, RealtimePostgresChangesPayload } from '@/integrations/php-api/compat-types';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import type { Database } from '@/integrations/database/types';
 
 type Tables = Database['public']['Tables'];
 type TableName = keyof Tables;
+type RealtimeSubscribeOptions<T extends TableName> = {
+  event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
+  filter?: string;
+  schema?: string;
+  onInsert?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+  onUpdate?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+  onDelete?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+  onChange?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+};
+type PresenceCallback = (
+  key: string,
+  currentPresences: unknown,
+  changedPresences: unknown
+) => void;
+
+function createNoopChannel(channelName: string): RealtimeChannel {
+  return { topic: channelName } as RealtimeChannel;
+}
 
 /**
  * Subscription manager to handle realtime connections
@@ -20,16 +39,15 @@ class SubscriptionManager {
   subscribe<T extends TableName>(
     channelName: string,
     table: T,
-    options: {
-      event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
-      filter?: string;
-      schema?: string;
-      onInsert?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-      onUpdate?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-      onDelete?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-      onChange?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-    }
+    options: RealtimeSubscribeOptions<T>
   ): RealtimeChannel {
+    if (isPhpBackend) {
+      const channel = createNoopChannel(channelName);
+      this.subscriptions.set(channelName, channel);
+      this.subscriptionStatus.set(channelName, 'POLLING');
+      return channel;
+    }
+
     // Check if already subscribed
     if (this.subscriptions.has(channelName)) {
       console.warn(`⚠️  Channel ${channelName} already exists. Removing old subscription.`);
@@ -42,7 +60,7 @@ class SubscriptionManager {
     const channel = supabase
       .channel(channelName)
       .on(
-        'postgres_changes' as any,
+        'postgres_changes',
         {
           event,
           schema,
@@ -103,11 +121,18 @@ class SubscriptionManager {
   subscribeToPresence(
     channelName: string,
     options: {
-      onJoin?: (key: string, currentPresences: any, newPresences: any) => void;
-      onLeave?: (key: string, currentPresences: any, leftPresences: any) => void;
+      onJoin?: PresenceCallback;
+      onLeave?: PresenceCallback;
       onSync?: () => void;
     }
   ): RealtimeChannel {
+    if (isPhpBackend) {
+      const channel = createNoopChannel(channelName);
+      this.subscriptions.set(channelName, channel);
+      this.subscriptionStatus.set(channelName, 'UNAVAILABLE_IN_PHP_MODE');
+      return channel;
+    }
+
     if (this.subscriptions.has(channelName)) {
       console.warn(`⚠️  Presence channel ${channelName} already exists.`);
       this.unsubscribe(channelName);
@@ -123,15 +148,15 @@ class SubscriptionManager {
 
     // Use the correct presence event API for Supabase 2.58.0
     if (options.onJoin) {
-      (channel as any).on('presence', { event: 'join' }, options.onJoin);
+      channel.on('presence', { event: 'join' }, options.onJoin);
     }
 
     if (options.onLeave) {
-      (channel as any).on('presence', { event: 'leave' }, options.onLeave);
+      channel.on('presence', { event: 'leave' }, options.onLeave);
     }
 
     if (options.onSync) {
-      (channel as any).on('presence', { event: 'sync' }, options.onSync);
+      channel.on('presence', { event: 'sync' }, options.onSync);
     }
 
     channel.subscribe((status) => {
@@ -153,8 +178,15 @@ class SubscriptionManager {
   subscribeToBroadcast(
     channelName: string,
     event: string,
-    callback: (payload: any) => void
+    callback: (payload: unknown) => void
   ): RealtimeChannel {
+    if (isPhpBackend) {
+      const channel = createNoopChannel(channelName);
+      this.subscriptions.set(channelName, channel);
+      this.subscriptionStatus.set(channelName, 'UNAVAILABLE_IN_PHP_MODE');
+      return channel;
+    }
+
     if (this.subscriptions.has(channelName)) {
       console.warn(`⚠️  Broadcast channel ${channelName} already exists.`);
       this.unsubscribe(channelName);
@@ -182,7 +214,7 @@ class SubscriptionManager {
   private handleReconnect<T extends TableName>(
     channelName: string,
     table: T,
-    options: any
+    options: RealtimeSubscribeOptions<T>
   ): void {
     const attempts = this.reconnectAttempts.get(channelName) || 0;
     const maxAttempts = 5;
@@ -210,7 +242,9 @@ class SubscriptionManager {
   async unsubscribe(channelName: string): Promise<void> {
     const channel = this.subscriptions.get(channelName);
     if (channel) {
-      await supabase.removeChannel(channel);
+      if (!isPhpBackend) {
+        await supabase.removeChannel(channel);
+      }
       this.subscriptions.delete(channelName);
       this.reconnectAttempts.delete(channelName);
       this.subscriptionStatus.delete(channelName);
@@ -305,8 +339,12 @@ export function useRealtimeSubscription<T extends TableName>(
 export async function trackPresence(
   channelName: string,
   userId: string,
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
 ): Promise<void> {
+  if (isPhpBackend) {
+    return;
+  }
+
   const channel = subscriptionManager.subscribeToPresence(channelName, {
     onJoin: (key, current, newPresences) => {
       console.log('User joined:', key, newPresences);
@@ -333,8 +371,12 @@ export async function trackPresence(
 export async function sendBroadcast(
   channelName: string,
   event: string,
-  payload: any
+  payload: unknown
 ): Promise<void> {
+  if (isPhpBackend) {
+    return;
+  }
+
   try {
     // Use public method instead of accessing private property
     let channel = subscriptionManager.getChannel(channelName);
@@ -365,6 +407,7 @@ export async function sendBroadcast(
  * Get connection status
  */
 export function getRealtimeStatus(): {
+  mode: 'supabase-realtime' | 'php-polling';
   connected: boolean;
   activeSubscriptions: number;
   subscriptionNames: string[];
@@ -372,7 +415,8 @@ export function getRealtimeStatus(): {
   const activeSubscriptions = subscriptionManager.getActiveSubscriptions();
   
   return {
-    connected: activeSubscriptions.length > 0,
+    mode: isPhpBackend ? 'php-polling' : 'supabase-realtime',
+    connected: !isPhpBackend && activeSubscriptions.length > 0,
     activeSubscriptions: activeSubscriptions.length,
     subscriptionNames: activeSubscriptions,
   };

@@ -9,7 +9,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import logo from "@/assets/logo.png";
 
 const AdminAuth = () => {
@@ -148,6 +150,54 @@ const AdminAuth = () => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    const email = loginForm.email || prompt("Enter your email address:");
+    if (!email) return;
+
+    setLoading(true);
+    try {
+      if (isPhpBackend) {
+        const result = await phpApi.requestPasswordReset(
+          email,
+          `${window.location.origin}/reset-password?mode=reset`
+        );
+
+        toast({
+          title: "Reset Link Generated",
+          description: result.reset_url
+            ? `Open this reset link: ${result.reset_url}`
+            : "If this account exists, password reset instructions are available.",
+        });
+        return;
+      }
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password?mode=reset`,
+      });
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message,
+        });
+      } else {
+        toast({
+          title: "Reset Email Sent",
+          description: "Check your email for password reset instructions.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -235,27 +285,8 @@ const AdminAuth = () => {
                     type="button"
                     variant="link"
                     className="text-sm text-primary hover:underline"
-                    onClick={() => {
-                      const email = loginForm.email || prompt("Enter your email address:");
-                      if (email) {
-                        supabase.auth.resetPasswordForEmail(email, {
-                          redirectTo: `${window.location.origin}/reset-password?mode=reset`,
-                        }).then(({ error }) => {
-                          if (error) {
-                            toast({
-                              variant: "destructive",
-                              title: "Error",
-                              description: error.message,
-                            });
-                          } else {
-                            toast({
-                              title: "Reset Email Sent",
-                              description: "Check your email for password reset instructions.",
-                            });
-                          }
-                        });
-                      }
-                    }}
+                    onClick={handleForgotPassword}
+                    disabled={loading}
                   >
                     Forgot your password?
                   </Button>

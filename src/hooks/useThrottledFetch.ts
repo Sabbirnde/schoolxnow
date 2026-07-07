@@ -8,11 +8,11 @@ import { useCallback, useRef } from 'react';
  * @param delayMs - Minimum milliseconds between fetch calls (default: 1000ms)
  * @returns An array: [throttledFetch, resetThrottle, lastFetchTime]
  */
-export function useThrottledFetch<T extends (...args: any[]) => Promise<any>>(
-  fetchFn: T,
+export function useThrottledFetch<TArgs extends unknown[]>(
+  fetchFn: (...args: TArgs) => Promise<unknown>,
   delayMs: number = 1000
 ): [
-  throttledFetch: (...args: Parameters<T>) => Promise<void>,
+  throttledFetch: (...args: TArgs) => Promise<void>,
   resetThrottle: () => void,
   lastFetchTime: number
 ] {
@@ -20,7 +20,7 @@ export function useThrottledFetch<T extends (...args: any[]) => Promise<any>>(
   const pendingRef = useRef<boolean>(false);
 
   const throttledFetch = useCallback(
-    async (...args: Parameters<T>) => {
+    async (...args: TArgs) => {
       const now = Date.now();
       const timeSinceLastFetch = now - lastFetchTimeRef.current;
 

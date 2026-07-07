@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import type { Database } from "@/integrations/database/types";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
 import logo from "@/assets/logo.png";
@@ -34,6 +37,7 @@ const schoolRegistrationSchema = z.object({
 });
 
 type SchoolRegistrationForm = z.infer<typeof schoolRegistrationSchema>;
+type SchoolInsert = Database["public"]["Tables"]["schools"]["Insert"];
 
 const SchoolRegistration = () => {
   const navigate = useNavigate();
@@ -47,6 +51,25 @@ const SchoolRegistration = () => {
   // Test Supabase connection on mount
   useEffect(() => {
     const testSupabaseConnection = async () => {
+      if (isPhpBackend) {
+        try {
+          await phpApi.health();
+          toast({
+            title: 'Connection Test Successful',
+            description: 'Ready to register your school.',
+            variant: 'default'
+          });
+        } catch (error) {
+          console.error('PHP API connection error:', error);
+          toast({
+            title: 'Connection Error',
+            description: 'Unable to connect to the PHP API. Please try again later or contact support.',
+            variant: 'destructive'
+          });
+        }
+        return;
+      }
+
       console.log('Testing Supabase connection...');
       
       try {
@@ -142,12 +165,9 @@ const SchoolRegistration = () => {
         let errorMessage = 'An unexpected error occurred. Please try again later.';
 
         if (err instanceof Error) {
-          if (err.message.includes('SUPABASE_URL')) {
+          if (err.message.includes('VITE_API_URL')) {
             errorTitle = 'Configuration Error';
-            errorMessage = 'Supabase URL is not properly configured. Please contact support.';
-          } else if (err.message.includes('SUPABASE_ANON_KEY')) {
-            errorTitle = 'Configuration Error';
-            errorMessage = 'Supabase API key is not properly configured. Please contact support.';
+            errorMessage = 'PHP API URL is not properly configured. Please contact support.';
           } else if (err.message.includes('Failed to fetch')) {
             errorTitle = 'Network Error';
             errorMessage = 'Unable to connect to the server. Please check your internet connection.';
@@ -167,9 +187,9 @@ const SchoolRegistration = () => {
         if (Object.keys(err).length > 1) {
           console.log('Troubleshooting tips:');
           console.log('1. Check your internet connection');
-          console.log('2. Verify Supabase configuration in .env file');
+          console.log('2. Verify PHP API configuration in .env file');
           console.log('3. Ensure the database is running');
-          console.log('4. Check if the Supabase service is operational');
+          console.log('4. Check if the PHP API service is operational');
         }
       }
     };
@@ -198,21 +218,53 @@ const SchoolRegistration = () => {
       const validatedData = schoolRegistrationSchema.parse(formData);
       console.log("Form validation passed:", validatedData);
 
+      if (isPhpBackend) {
+        await phpApi.registerSchool({
+          school: {
+            name: validatedData.schoolName,
+            name_bangla: validatedData.schoolNameBangla || null,
+            school_type: validatedData.schoolType,
+            address: validatedData.address,
+            address_bangla: validatedData.addressBangla || null,
+            phone: validatedData.phone,
+            email: validatedData.email,
+            eiin_number: validatedData.eiinNumber || null,
+            established_year: validatedData.establishedYear || null,
+          },
+          admin: {
+            full_name: validatedData.adminFullName,
+            email: validatedData.adminEmail,
+            phone: validatedData.adminPhone,
+            password: validatedData.adminPassword,
+          },
+        });
+
+        toast({
+          title: "Registration Successful!",
+          description: "Your school and admin account were created. Please sign in while your registration is reviewed.",
+        });
+
+        setTimeout(() => navigate("/auth"), 2000);
+        return;
+      }
+
       // Step 1: Create the school with error handling
+      const newSchool: SchoolInsert = {
+        name: validatedData.schoolName,
+        name_bangla: validatedData.schoolNameBangla || null,
+        school_type: validatedData.schoolType,
+        address: validatedData.address,
+        address_bangla: validatedData.addressBangla || null,
+        phone: validatedData.phone,
+        email: validatedData.email,
+        eiin_number: validatedData.eiinNumber || null,
+        established_year: validatedData.establishedYear || null,
+        is_active: true,
+      };
+
       const { data: schoolData, error: schoolError } = await supabase
         .from("schools")
-        .insert({
-          name: validatedData.schoolName,
-          name_bangla: validatedData.schoolNameBangla || null,
-          school_type: validatedData.schoolType,
-          address: validatedData.address,
-          address_bangla: validatedData.addressBangla || null,
-          phone: validatedData.phone,
-          email: validatedData.email,
-          eiin_number: validatedData.eiinNumber || null,
-          established_year: validatedData.establishedYear || null,
-          is_active: true,
-        } as any)
+        .insert(newSchool)
         .select()
         .single();
 
@@ -242,10 +294,7 @@ const SchoolRegistration = () => {
         return;
       }
 
-      // At this point, schoolData is guaranteed to be non-null due to the check above
-      // Use type assertion to work around complex Supabase type inference
-      const createdSchool: any = schoolData;
-      console.log('School created successfully:', createdSchool);
+      console.log('School created successfully:', schoolData);
 
       // Step 2: Sign up the admin user with school_id in metadata
       const { data: userData, error: signUpError } = await supabase.auth.signUp({
@@ -255,7 +304,7 @@ const SchoolRegistration = () => {
           data: {
             full_name: validatedData.adminFullName,
             role: "school_admin",
-            school_id: createdSchool.id,
+            school_id: schoolData.id,
           },
           emailRedirectTo: `${window.location.origin}/auth`,
         },
@@ -264,10 +313,10 @@ const SchoolRegistration = () => {
       if (signUpError) {
         console.error('User signup error:', signUpError);
         // If user signup fails, delete the school
-        const deleteResult: any = await (supabase as any)
+        const deleteResult = await supabase
           .from('schools')
           .delete()
-          .eq('id', createdSchool.id);
+          .eq('id', schoolData.id);
           
         if (deleteResult.error) {
           console.error('Failed to delete school after user signup failed:', deleteResult.error);

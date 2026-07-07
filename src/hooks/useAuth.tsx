@@ -1,22 +1,77 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useRef, useCallback } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { AuthError, RealtimeChannel, User, Session } from '@/integrations/php-api/compat-types';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { phpApi, type PhpApiUser } from '@/integrations/php-api/client';
 import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 
 interface UserProfile {
   id: string;
   user_id: string;
   school_id: string | null;
-  role: 'super_admin' | 'school_admin' | 'teacher';
+  role: 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'guardian';
   full_name: string;
   full_name_bangla: string | null;
   phone: string | null;
+  avatar_url?: string | null;
   address: string | null;
   address_bangla: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
   approval_status: string | null;
+}
+
+const usePhpBackend = import.meta.env.VITE_BACKEND_PROVIDER === 'php';
+
+function phpUserToSupabaseUser(apiUser: PhpApiUser): User {
+  return {
+    id: apiUser.id,
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: apiUser.email,
+    app_metadata: {},
+    user_metadata: {
+      full_name: apiUser.full_name,
+      role: apiUser.role,
+      school_id: apiUser.school_id,
+    },
+    created_at: '',
+  } as User;
+}
+
+function phpUserToSession(apiUser: PhpApiUser, token: string): Session {
+  return {
+    access_token: token,
+    refresh_token: '',
+    expires_in: 86400,
+    token_type: 'bearer',
+    user: phpUserToSupabaseUser(apiUser),
+  } as Session;
+}
+
+function phpUserToProfile(apiUser: PhpApiUser): UserProfile {
+  return {
+    id: apiUser.id,
+    user_id: apiUser.id,
+    school_id: apiUser.school_id,
+    role: apiUser.role,
+    full_name: apiUser.full_name,
+    full_name_bangla: apiUser.full_name_bangla ?? null,
+    phone: apiUser.phone ?? null,
+    avatar_url: apiUser.avatar_url ?? null,
+    address: apiUser.address ?? null,
+    address_bangla: apiUser.address_bangla ?? null,
+    is_active: Boolean(apiUser.is_active),
+    created_at: '',
+    updated_at: '',
+    approval_status: apiUser.approval_status ?? null,
+  };
+}
+
+function toAuthError(error: unknown): AuthError {
+  return {
+    message: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
+  } as AuthError;
 }
 
 type ProfileStateStatus = 'idle' | 'loading' | 'ready' | 'missing' | 'error';
@@ -34,11 +89,11 @@ interface AuthContextType {
   profile: UserProfile | null;
   profileState: ProfileState;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string, role?: string, schoolId?: string) => Promise<{ error: any }>;
-  signInWithOtp: (email: string, options?: { redirectTo?: string }) => Promise<{ error: any }>;
-  verifyOtp: (email: string, token: string, type: 'email' | 'sms') => Promise<{ error: any }>;
-  signOut: () => Promise<{ error: any }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, fullName: string, role?: string, schoolId?: string) => Promise<{ error: AuthError | null }>;
+  signInWithOtp: (email: string, options?: { redirectTo?: string }) => Promise<{ error: AuthError | null }>;
+  verifyOtp: (email: string, token: string, type: 'email' | 'sms') => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -137,6 +192,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (usePhpBackend) {
+      const initializePhpSession = async () => {
+        const token = localStorage.getItem(phpApi.tokenKey);
+
+        if (!token) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          currentUserIdRef.current = null;
+          transitionProfileState('idle', null, null);
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const apiUser = await phpApi.me();
+          const mappedUser = phpUserToSupabaseUser(apiUser);
+          const mappedSession = phpUserToSession(apiUser, token);
+
+          setSession(mappedSession);
+          setUser(mappedUser);
+          setProfile(phpUserToProfile(apiUser));
+          currentUserIdRef.current = apiUser.id;
+          transitionProfileState('ready', apiUser.id, null);
+        } catch (error) {
+          console.error('PHP API session initialization error:', error);
+          localStorage.removeItem(phpApi.tokenKey);
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          currentUserIdRef.current = null;
+          profileFetchSeqRef.current += 1;
+          transitionProfileState('idle', null, null);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      initializePhpSession();
+      return;
+    }
+
     // Set up auth state listener with improved error handling
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -227,8 +324,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initializeSession();
 
     // Set up separate narrow real-time subscriptions for profile and role changes
-    let profileChannel: any = null;
-    let roleChannel: any = null;
+    let profileChannel: RealtimeChannel | null = null;
+    let roleChannel: RealtimeChannel | null = null;
     
     const setupRealtimeSubscriptions = (userId: string) => {
       try {
@@ -313,9 +410,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         supabase.removeChannel(roleChannel);
       }
     };
-  }, [user?.id, fetchProfile, transitionProfileState]);
+  }, [user?.id, fetchProfile, throttledFetchProfile, transitionProfileState]);
 
   const signIn = async (email: string, password: string) => {
+    if (usePhpBackend) {
+      try {
+        const { user: apiUser, session: apiSession } = await phpApi.login(email, password);
+        const mappedUser = phpUserToSupabaseUser(apiUser);
+        const mappedSession = phpUserToSession(apiUser, apiSession.access_token);
+
+        setUser(mappedUser);
+        setSession(mappedSession);
+        setProfile(phpUserToProfile(apiUser));
+        currentUserIdRef.current = apiUser.id;
+        transitionProfileState('ready', apiUser.id, null);
+
+        return { error: null };
+      } catch (error) {
+        console.error('PHP API sign in error:', error);
+        return { error: toAuthError(error) };
+      }
+    }
+
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedPassword = password;
@@ -339,13 +455,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       return { error };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign in error:', error);
       return { error: { message: 'An unexpected error occurred. Please try again.' } };
     }
   };
 
   const signUp = async (email: string, password: string, fullName: string, role?: string, schoolId?: string) => {
+    if (usePhpBackend) {
+      if (role === 'super_admin') {
+        return {
+          error: {
+            message: 'Super admin creation uses the protected bootstrap page in PHP/MySQL mode.',
+          } as AuthError,
+        };
+      }
+
+      try {
+        await phpApi.register({
+          email,
+          password,
+          full_name: fullName,
+          role: role || 'teacher',
+          school_id: schoolId || null,
+        });
+
+        return { error: null };
+      } catch (error) {
+        console.error('PHP API sign up error:', error);
+        return { error: toAuthError(error) };
+      }
+    }
+
     const redirectUrl = `${window.location.origin}/`;
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedFullName = fullName.trim();
@@ -419,6 +560,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (usePhpBackend) {
+      await phpApi.logout();
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      currentUserIdRef.current = null;
+      profileFetchSeqRef.current += 1;
+      transitionProfileState('idle', null, null);
+      return { error: null };
+    }
+
     try {
       const { error } = await supabase.auth.signOut();
       
@@ -436,7 +588,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       
       return { error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign out error:', error);
       // Still clear local state on error
       setUser(null);
@@ -450,6 +602,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithOtp = async (email: string, options?: { redirectTo?: string }) => {
+    if (usePhpBackend) {
+      return {
+        error: {
+          message: 'Magic-link login is not available on the PHP/MySQL backend yet.',
+        } as AuthError,
+      };
+    }
+
     try {
       const redirectUrl = options?.redirectTo || `${window.location.origin}/teacher-portal`;
       
@@ -468,13 +628,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('OTP sent to:', email);
       return { error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Sign in with OTP error:', error);
       return { error };
     }
   };
 
   const verifyOtp = async (email: string, token: string, type: 'email' | 'sms' = 'email') => {
+    if (usePhpBackend) {
+      return {
+        error: {
+          message: 'OTP verification is not available on the PHP/MySQL backend yet.',
+        } as AuthError,
+      };
+    }
+
     try {
       const { error } = await supabase.auth.verifyOtp({
         email,
@@ -489,7 +657,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('OTP verified for:', email);
       return { error: null };
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('OTP verification error:', error);
       return { error };
     }

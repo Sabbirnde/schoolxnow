@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,15 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { useToast } from "@/hooks/use-toast";
 import { useThrottledFetch } from "@/hooks/useThrottledFetch";
+import { usePollingRefresh } from "@/hooks/usePollingRefresh";
 import { AdvancedFilter, FilterField, FilterValue } from "@/components/AdvancedFilter";
 import { useAdvancedFilter } from "@/hooks/useAdvancedFilter";
 import { 
@@ -25,9 +28,12 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
+import type { RealtimeChannel } from "@/integrations/php-api/compat-types";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 
 interface Class {
   id: string;
+  school_id?: string;
   name: string;
   name_bangla: string | null;
   section: string;
@@ -35,6 +41,14 @@ interface Class {
   capacity: number;
   is_active: boolean;
   student_count?: number;
+}
+
+interface ClassFormData {
+  name: string;
+  name_bangla: string;
+  section: string;
+  class_level: string;
+  capacity: number;
 }
 
 const CLASS_LEVELS = [
@@ -53,6 +67,13 @@ const CLASS_LEVELS = [
   { value: 'class_11', label: 'Class 11' },
   { value: 'class_12', label: 'Class 12' }
 ];
+
+const normalizeClass = (classItem: Class): Class => ({
+  ...classItem,
+  is_active: Boolean(classItem.is_active),
+  capacity: Number(classItem.capacity || 0),
+  student_count: Number(classItem.student_count || 0),
+});
 
 export function ClassManagement() {
   const { profile } = useAuth();
@@ -80,13 +101,7 @@ export function ClassManagement() {
 
   const isAdmin = canFull('classes.manage');
 
-  const form = useForm<{
-    name: string;
-    name_bangla: string;
-    section: string;
-    class_level: string;
-    capacity: number;
-  }>({
+  const form = useForm<ClassFormData>({
     defaultValues: {
       name: "",
       name_bangla: "",
@@ -96,20 +111,93 @@ export function ClassManagement() {
     }
   });
 
+  const fetchClasses = useCallback(async () => {
+    if (!profile?.school_id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      if (isPhpBackend) {
+        const classRows = await phpApi.table<Class>('classes').list({
+          school_id: profile.school_id,
+          sort: 'name',
+          order: 'asc',
+          limit: 200,
+        });
+
+        const classesWithCount = await Promise.all(
+          (classRows || []).map(async (classItem) => {
+            const { count } = await phpApi.table('students').count({
+              school_id: profile.school_id,
+              class_id: classItem.id,
+            });
+            return normalizeClass({ ...classItem, student_count: count });
+          })
+        );
+
+        setClasses(classesWithCount);
+        return;
+      }
+
+      // Fetch classes with student count
+      const { data: classesData, error } = await supabase
+        .from('classes')
+        .select(`
+          *,
+          students:students(count)
+        `)
+        .eq('school_id', profile.school_id)
+        .order('name');
+
+      if (error) throw error;
+
+      const classesWithCount = classesData?.map(classItem => ({
+        ...classItem,
+        student_count: classItem.students?.[0]?.count || 0
+      })) || [];
+
+      setClasses(classesWithCount);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Load classes', error, {
+        context: { schoolId: profile?.school_id },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [profile?.school_id, toast]);
+
   // Move useThrottledFetch to top level (outside useEffect)
   const [throttledFetch] = useThrottledFetch(
     () => fetchClasses(),
     1000
   );
 
+  usePollingRefresh({
+    enabled: isPhpBackend && Boolean(profile?.school_id),
+    intervalMs: 10000,
+    onRefresh: throttledFetch,
+  });
+
   useEffect(() => {
     if (profile?.school_id) {
       fetchClasses();
     }
 
+    if (isPhpBackend) {
+      return;
+    }
+
     // Set up narrow real-time subscriptions for classes (INSERT/UPDATE only, no DELETE)
-    let insertChannel: any = null;
-    let updateChannel: any = null;
+    let insertChannel: RealtimeChannel | null = null;
+    let updateChannel: RealtimeChannel | null = null;
 
     try {
       insertChannel = supabase
@@ -155,48 +243,9 @@ export function ClassManagement() {
       if (insertChannel) supabase.removeChannel(insertChannel);
       if (updateChannel) supabase.removeChannel(updateChannel);
     };
-  }, [profile]);
+  }, [profile?.school_id, fetchClasses, throttledFetch]);
 
-  const fetchClasses = async () => {
-    if (!profile?.school_id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Fetch classes with student count
-      const { data: classesData, error } = await supabase
-        .from('classes')
-        .select(`
-          *,
-          students:students(count)
-        `)
-        .eq('school_id', profile.school_id)
-        .order('name');
-
-      if (error) throw error;
-
-      const classesWithCount = classesData?.map(classItem => ({
-        ...classItem,
-        student_count: classItem.students?.[0]?.count || 0
-      })) || [];
-
-      setClasses(classesWithCount);
-    } catch (error: any) {
-      console.error('Error fetching classes:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load classes data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleAddClass = async (values: any) => {
+  const handleAddClass = async (values: ClassFormData) => {
     if (!profile?.school_id) return;
     if (!isAdmin) {
       toast({
@@ -229,6 +278,25 @@ export function ClassManagement() {
         return;
       }
 
+      if (isPhpBackend) {
+        const createdClass = await phpApi.table<Class>('classes').create({
+          ...values,
+          school_id: profile.school_id,
+          is_active: true,
+        });
+
+        toast({
+          title: "Success",
+          description: "Class added successfully",
+        });
+
+        setClasses((current) => [normalizeClass(createdClass), ...current]);
+        setIsAddDialogOpen(false);
+        form.reset();
+        fetchClasses();
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .insert({
@@ -252,29 +320,32 @@ export function ClassManagement() {
       setIsAddDialogOpen(false);
       form.reset();
       fetchClasses();
-    } catch (error: any) {
-      console.error('Error adding class:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Create class', error, {
+        context: {
+          schoolId: profile.school_id,
+          className: values.name,
+          section: values.section,
+          classLevel: values.class_level,
+        },
+      });
       
       await auditLog.logFailedAction('new', {
         entityName: `${values.name} - Section ${values.section}`,
         action: 'CREATE',
-        error: error.message || 'Unknown error',
+        error: notice.description,
       });
 
-      const message = error?.code === '42501'
-        ? "You don't have permission to add classes. Please contact your school admin."
-        : error?.message || "Failed to add class";
-      
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
   };
 
-  const handleEditClass = async (values: any) => {
+  const handleEditClass = async (values: ClassFormData) => {
     if (!editingClass) return;
 
     try {
@@ -297,6 +368,20 @@ export function ClassManagement() {
           description: errorMsg,
           variant: "destructive",
         });
+        return;
+      }
+
+      if (isPhpBackend) {
+        await phpApi.table<Class>('classes').update(editingClass.id, values);
+
+        toast({
+          title: "Success",
+          description: "Class updated successfully",
+        });
+
+        setEditingClass(null);
+        form.reset();
+        fetchClasses();
         return;
       }
 
@@ -325,20 +410,26 @@ export function ClassManagement() {
       setEditingClass(null);
       form.reset();
       fetchClasses();
-    } catch (error: any) {
-      console.error('Error updating class:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Update class', error, {
+        context: {
+          classId: editingClass.id,
+          className: values.name,
+          section: values.section,
+          classLevel: values.class_level,
+        },
+      });
       
       await auditLog.logFailedAction(editingClass.id, {
         entityName: `${values.name} - Section ${values.section}`,
         action: 'UPDATE',
-        error: error.message || 'Unknown error',
+        error: notice.description,
       });
 
-      const message = error?.message || "Failed to update class";
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }
@@ -370,6 +461,18 @@ export function ClassManagement() {
         return;
       }
 
+      if (isPhpBackend) {
+        await phpApi.table<Class>('classes').update(classId, { is_active: false });
+
+        toast({
+          title: "Success",
+          description: "Class deactivated successfully",
+        });
+
+        fetchClasses();
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .update({ is_active: false })
@@ -389,23 +492,24 @@ export function ClassManagement() {
       });
 
       fetchClasses();
-    } catch (error: any) {
-      console.error('Error deactivating class:', error);
+    } catch (error: unknown) {
+      const notice = handleSupabaseError('Deactivate class', error, {
+        context: { classId },
+      });
       
       const classToDelete = classes.find(c => c.id === classId);
       if (classToDelete) {
         await auditLog.logFailedAction(classId, {
           entityName: `${classToDelete.name} - Section ${classToDelete.section}`,
           action: 'DELETE',
-          error: error.message || 'Unknown error',
+          error: notice.description,
         });
       }
 
-      const message = error?.message || "Failed to deactivate class";
-      setValidationError(message);
+      setValidationError(notice.description);
       toast({
-        title: "Error",
-        description: message,
+        title: notice.title,
+        description: notice.description,
         variant: "destructive",
       });
     }

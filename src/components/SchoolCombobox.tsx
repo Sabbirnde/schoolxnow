@@ -15,7 +15,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 
 interface SchoolComboboxProps {
   value: string;
@@ -34,6 +36,12 @@ export function SchoolCombobox({ value, onValueChange, disabled }: SchoolCombobo
   useEffect(() => {
     if (value && !selectedSchool) {
       const fetchSelectedSchool = async () => {
+        if (isPhpBackend) {
+          const data = await phpApi.table<{ id: string; name: string }>('schools').get(value);
+          setSelectedSchool(data);
+          return;
+        }
+
         const { data } = await supabase
           .from('schools')
           .select('id, name')
@@ -60,6 +68,26 @@ export function SchoolCombobox({ value, onValueChange, disabled }: SchoolCombobo
 
       setLoading(true);
       try {
+        if (isPhpBackend) {
+          const query = searchQuery.trim().toLowerCase();
+          const data = await phpApi.table<{ id: string; name: string; name_bangla?: string | null }>('schools').list({
+            is_active: 1,
+            sort: 'name',
+            order: 'asc',
+            limit: 200,
+          });
+
+          setSchools(
+            data
+              .filter((school) =>
+                school.name.toLowerCase().includes(query) ||
+                (school.name_bangla || '').toLowerCase().includes(query)
+              )
+              .slice(0, 50)
+          );
+          return;
+        }
+
         const { data, error } = await supabase
           .from('schools')
           .select('id, name')

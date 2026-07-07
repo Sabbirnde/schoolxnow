@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, type ComponentProps } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/integrations/php-api/compat-client';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,12 +15,16 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Plus, Edit, Trash2, School, MapPin, Phone, Mail } from 'lucide-react';
+import { handleSupabaseError } from '@/lib/api-error-handler';
+
+type SchoolType = 'madrasha' | 'bangla_medium' | 'english_medium';
+type BadgeVariant = ComponentProps<typeof Badge>['variant'];
 
 interface School {
   id: string;
   name: string;
   name_bangla: string | null;
-  school_type: 'madrasha' | 'bangla_medium' | 'english_medium';
+  school_type: SchoolType;
   address: string;
   address_bangla: string | null;
   phone: string | null;
@@ -28,6 +34,11 @@ interface School {
   is_active: boolean;
   created_at: string;
 }
+
+const normalizeSchool = (school: School): School => ({
+  ...school,
+  is_active: Boolean(school.is_active),
+});
 
 const SchoolManagement = () => {
   const { profile } = useAuth();
@@ -42,7 +53,7 @@ const SchoolManagement = () => {
   const [formData, setFormData] = useState<{
     name: string;
     name_bangla: string;
-    school_type: 'madrasha' | 'bangla_medium' | 'english_medium';
+    school_type: SchoolType;
     address: string;
     address_bangla: string;
     phone: string;
@@ -63,39 +74,71 @@ const SchoolManagement = () => {
     is_active: true,
   });
 
-  useEffect(() => {
-    if (canFull('schools.view')) {
-      fetchSchools();
-    }
-  }, [profile, canFull]);
-
-  const fetchSchools = async () => {
+  const fetchSchools = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<School>('schools').list({
+          sort: 'created_at',
+          order: 'desc',
+          limit: 200,
+        });
+        setSchools((data || []).map(normalizeSchool));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('schools')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching schools:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch schools',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       setSchools(data || []);
     } catch (error) {
-      console.error('Error in fetchSchools:', error);
+      const notice = handleSupabaseError('Load schools', error);
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    if (canFull('schools.view')) {
+      fetchSchools();
+    }
+  }, [profile, canFull, fetchSchools]);
 
   const handleCreateSchool = async () => {
     try {
+      if (isPhpBackend) {
+        await phpApi.table<School>('schools').create({
+          name: formData.name,
+          name_bangla: formData.name_bangla || null,
+          school_type: formData.school_type,
+          address: formData.address,
+          address_bangla: formData.address_bangla || null,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          eiin_number: formData.eiin_number || null,
+          established_year: formData.established_year,
+          is_active: formData.is_active,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'School created successfully',
+        });
+
+        setIsDialogOpen(false);
+        resetForm();
+        fetchSchools();
+        return;
+      }
+
       const { error } = await supabase
         .from('schools')
         .insert([{
@@ -111,15 +154,7 @@ const SchoolManagement = () => {
           is_active: formData.is_active,
         }]);
 
-      if (error) {
-        console.error('Error creating school:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to create school',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -130,7 +165,14 @@ const SchoolManagement = () => {
       resetForm();
       fetchSchools();
     } catch (error) {
-      console.error('Error in handleCreateSchool:', error);
+      const notice = handleSupabaseError('Create school', error, {
+        context: { schoolName: formData.name, schoolType: formData.school_type },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -138,6 +180,30 @@ const SchoolManagement = () => {
     if (!selectedSchool) return;
 
     try {
+      if (isPhpBackend) {
+        await phpApi.table<School>('schools').update(selectedSchool.id, {
+          name: formData.name,
+          name_bangla: formData.name_bangla || null,
+          school_type: formData.school_type,
+          address: formData.address,
+          address_bangla: formData.address_bangla || null,
+          phone: formData.phone || null,
+          email: formData.email || null,
+          eiin_number: formData.eiin_number || null,
+          established_year: formData.established_year,
+          is_active: formData.is_active,
+        });
+
+        toast({
+          title: 'Success',
+          description: 'School updated successfully',
+        });
+
+        setIsDialogOpen(false);
+        fetchSchools();
+        return;
+      }
+
       const { error } = await supabase
         .from('schools')
         .update({
@@ -154,15 +220,7 @@ const SchoolManagement = () => {
         })
         .eq('id', selectedSchool.id);
 
-      if (error) {
-        console.error('Error updating school:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to update school',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -172,7 +230,14 @@ const SchoolManagement = () => {
       setIsDialogOpen(false);
       fetchSchools();
     } catch (error) {
-      console.error('Error in handleUpdateSchool:', error);
+      const notice = handleSupabaseError('Update school', error, {
+        context: { schoolId: selectedSchool.id, schoolName: formData.name },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -182,20 +247,24 @@ const SchoolManagement = () => {
     }
 
     try {
+      if (isPhpBackend) {
+        await phpApi.table<School>('schools').delete(schoolId);
+
+        toast({
+          title: 'Success',
+          description: 'School deleted successfully',
+        });
+
+        fetchSchools();
+        return;
+      }
+
       const { error } = await supabase
         .from('schools')
         .delete()
         .eq('id', schoolId);
 
-      if (error) {
-        console.error('Error deleting school:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to delete school',
-          variant: 'destructive',
-        });
-        return;
-      }
+      if (error) throw error;
 
       toast({
         title: 'Success',
@@ -204,7 +273,14 @@ const SchoolManagement = () => {
 
       fetchSchools();
     } catch (error) {
-      console.error('Error in handleDeleteSchool:', error);
+      const notice = handleSupabaseError('Delete school', error, {
+        context: { schoolId },
+      });
+      toast({
+        title: notice.title,
+        description: notice.description,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -256,8 +332,8 @@ const SchoolManagement = () => {
     return types[type] || type;
   };
 
-  const getSchoolTypeBadgeColor = (type: string) => {
-    const colors: Record<string, string> = {
+  const getSchoolTypeBadgeColor = (type: string): BadgeVariant => {
+    const colors: Record<string, BadgeVariant> = {
       madrasha: 'outline',
       bangla_medium: 'default',
       english_medium: 'secondary',
@@ -291,12 +367,12 @@ const SchoolManagement = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">School Management</h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight md:text-3xl">School Management</h2>
           <p className="text-muted-foreground">Manage schools across the platform</p>
         </div>
-        <Button onClick={openCreateDialog}>
+        <Button className="w-full sm:w-auto" onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
           Add School
         </Button>
@@ -354,14 +430,14 @@ const SchoolManagement = () => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getSchoolTypeBadgeColor(school.school_type) as any}>
+                        <Badge variant={getSchoolTypeBadgeColor(school.school_type)}>
                           {getSchoolTypeLabel(school.school_type)}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
+                        <div className="flex min-w-48 items-start gap-1 text-sm">
                           <MapPin className="h-3 w-3" />
-                          {school.address}
+                          <span className="break-words">{school.address}</span>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -421,7 +497,7 @@ const SchoolManagement = () => {
               {isCreateMode ? 'Add a new school to the platform' : 'Update school information'}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">School Name (English) *</Label>
               <Input
@@ -441,7 +517,7 @@ const SchoolManagement = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="school_type">School Type *</Label>
-              <Select value={formData.school_type} onValueChange={(value: any) => setFormData({ ...formData, school_type: value })}>
+              <Select value={formData.school_type} onValueChange={(value: SchoolType) => setFormData({ ...formData, school_type: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -460,7 +536,7 @@ const SchoolManagement = () => {
                 onChange={(e) => setFormData({ ...formData, eiin_number: e.target.value })}
               />
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="address">Address (English) *</Label>
               <Textarea
                 id="address"
@@ -469,7 +545,7 @@ const SchoolManagement = () => {
                 required
               />
             </div>
-            <div className="space-y-2 col-span-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="address_bangla">Address (Bangla)</Label>
               <Textarea
                 id="address_bangla"

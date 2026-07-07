@@ -6,7 +6,7 @@ export const mockSupabase = {
   channel: vi.fn(() => mockChannelResponse),
   removeChannel: vi.fn(),
   auth: {
-    onAuthStateChange: vi.fn((callback) => ({
+    onAuthStateChange: vi.fn((_callback: unknown) => ({
       data: { subscription: { unsubscribe: vi.fn() } },
     })),
   },
@@ -14,47 +14,47 @@ export const mockSupabase = {
 
 // Mock response for .from(table).select()
 export const mockFromResponse = {
-  select: vi.fn(function(this: any, fields?: string) {
+  select: vi.fn((fields?: string) => {
     return {
       ...mockFromResponse,
       _fields: fields,
     };
   }),
-  insert: vi.fn(function(this: any, data: any) {
+  insert: vi.fn((data: unknown) => {
     return Promise.resolve({ data, error: null });
   }),
-  update: vi.fn(function(this: any, data: any) {
+  update: vi.fn((data: unknown) => {
     return {
       eq: vi.fn(() => Promise.resolve({ data, error: null })),
     };
   }),
-  delete: vi.fn(function(this: any) {
+  delete: vi.fn(() => {
     return {
       eq: vi.fn(() => Promise.resolve({ error: null })),
     };
   }),
-  eq: vi.fn(function(this: any, column: string, value: any) {
+  eq: vi.fn((_column: string, _value: unknown) => {
     return Promise.resolve({ data: [], error: null });
   }),
-  order: vi.fn(function(this: any, column: string, options?: any) {
+  order: vi.fn((_column: string, _options?: unknown) => {
     return mockFromResponse;
   }),
-  limit: vi.fn(function(this: any, count: number) {
+  limit: vi.fn((_count: number) => {
     return Promise.resolve({ data: [], error: null });
   }),
-  gte: vi.fn(function(this: any, column: string, value: any) {
+  gte: vi.fn((_column: string, _value: unknown) => {
     return mockFromResponse;
   }),
-  lt: vi.fn(function(this: any, column: string, value: any) {
+  lt: vi.fn((_column: string, _value: unknown) => {
     return Promise.resolve({ data: [], error: null, count: 0 });
   }),
-  maybeSingle: vi.fn(function(this: any) {
+  maybeSingle: vi.fn(() => {
     return Promise.resolve({ data: null, error: null });
   }),
-  single: vi.fn(function(this: any) {
+  single: vi.fn(() => {
     return Promise.resolve({ data: null, error: null });
   }),
-  subscribe: vi.fn(function(this: any, event?: string | null, callback?: any) {
+  subscribe: vi.fn((_event?: string | null, _callback?: unknown) => {
     return { unsubscribe: vi.fn() };
   }),
 };
@@ -67,12 +67,12 @@ Object.assign(mockFromResponse, {
 
 // Mock channel response for real-time subscriptions
 export const mockChannelResponse = {
-  on: vi.fn(function(this: any, event: string, options: any, callback: any) {
-    return this;
+  on: vi.fn((_event: string, _options: unknown, _callback: unknown) => {
+    return mockChannelResponse;
   }),
-  subscribe: vi.fn(function(this: any, callback?: (status: string) => void) {
+  subscribe: vi.fn((callback?: (status: string) => void) => {
     if (callback) callback('SUBSCRIBED');
-    return this;
+    return mockChannelResponse;
   }),
   unsubscribe: vi.fn(),
 };

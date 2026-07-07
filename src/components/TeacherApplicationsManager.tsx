@@ -1,18 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Clock, CheckCircle, XCircle, Eye, Calendar, Phone, MapPin, GraduationCap, BookOpen } from "lucide-react";
 import { format } from "date-fns";
 
 interface TeacherApplication {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  school_id?: string | null;
   full_name: string;
   full_name_bangla: string | null;
   phone: string;
@@ -28,6 +32,13 @@ interface TeacherApplication {
   rejection_reason: string | null;
 }
 
+interface TeacherProfile {
+  id: string;
+  user_id: string;
+  approval_status: string | null;
+  role: 'super_admin' | 'school_admin' | 'teacher' | 'student' | 'guardian';
+}
+
 export function TeacherApplicationsManager() {
   const [applications, setApplications] = useState<TeacherApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,13 +46,20 @@ export function TeacherApplicationsManager() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { profile } = useAuth();
 
-  useEffect(() => {
-    fetchApplications();
-  }, []);
-
-  const fetchApplications = async () => {
+  const fetchApplications = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const data = await phpApi.table<TeacherApplication>('teacher_applications').list({
+          sort: 'application_date',
+          order: 'desc',
+          limit: 500,
+        });
+        setApplications(data || []);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('teacher_applications')
         .select('*')
@@ -59,11 +77,46 @@ export function TeacherApplicationsManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  const handleApproveApplication = async (applicationId: string, userId: string) => {
+  useEffect(() => {
+    fetchApplications();
+  }, [fetchApplications]);
+
+  const handleApproveApplication = async (applicationId: string, userId: string | null) => {
     setProcessingId(applicationId);
     try {
+      if (isPhpBackend) {
+        await phpApi.table<TeacherApplication>('teacher_applications').update(applicationId, {
+          status: 'approved',
+          reviewed_by: profile?.user_id || null,
+          reviewed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        });
+
+        if (userId) {
+          const profiles = await phpApi.table<TeacherProfile>('user_profiles').list({
+            user_id: userId,
+            limit: 1,
+          });
+          const teacherProfile = profiles[0];
+
+          if (teacherProfile) {
+            await phpApi.table<TeacherProfile>('user_profiles').update(teacherProfile.id, {
+              approval_status: 'approved',
+              role: 'teacher',
+            });
+          }
+        }
+
+        toast({
+          title: "Application Approved",
+          description: "The teacher application has been approved successfully.",
+        });
+
+        fetchApplications();
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -108,7 +161,7 @@ export function TeacherApplicationsManager() {
     }
   };
 
-  const handleRejectApplication = async (applicationId: string, userId: string) => {
+  const handleRejectApplication = async (applicationId: string, userId: string | null) => {
     if (!rejectionReason.trim()) {
       toast({
         title: "Rejection Reason Required",
@@ -120,6 +173,39 @@ export function TeacherApplicationsManager() {
 
     setProcessingId(applicationId);
     try {
+      if (isPhpBackend) {
+        await phpApi.table<TeacherApplication>('teacher_applications').update(applicationId, {
+          status: 'rejected',
+          reviewed_by: profile?.user_id || null,
+          reviewed_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          rejection_reason: rejectionReason,
+        });
+
+        if (userId) {
+          const profiles = await phpApi.table<TeacherProfile>('user_profiles').list({
+            user_id: userId,
+            limit: 1,
+          });
+          const teacherProfile = profiles[0];
+
+          if (teacherProfile) {
+            await phpApi.table<TeacherProfile>('user_profiles').update(teacherProfile.id, {
+              approval_status: 'rejected',
+            });
+          }
+        }
+
+        toast({
+          title: "Application Rejected",
+          description: "The teacher application has been rejected.",
+        });
+
+        setRejectionReason("");
+        setSelectedApp(null);
+        fetchApplications();
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 

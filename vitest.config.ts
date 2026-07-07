@@ -4,6 +4,9 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_BACKEND_PROVIDER': JSON.stringify('compat-test'),
+  },
   optimizeDeps: {
     rolldownOptions: {
       commonjsOptions: { transformMixedEsModules: true },

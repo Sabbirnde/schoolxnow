@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
 import { 
   subscriptionManager, 
   useRealtimeSubscription, 
@@ -26,6 +27,16 @@ export default function RealtimeTest() {
 
   // Test direct channel subscription
   const testDirectSubscription = async () => {
+    if (isPhpBackend) {
+      setError(null);
+      addMessage("PHP/MySQL mode uses polling refresh instead of Supabase realtime channels.");
+      toast({
+        title: "Polling Mode",
+        description: "Realtime channels are disabled for the PHP/MySQL backend.",
+      });
+      return;
+    }
+
     try {
       setError(null);
       addMessage("🔄 Testing direct channel subscription...");
@@ -33,7 +44,7 @@ export default function RealtimeTest() {
       const channel = supabase
         .channel('test-direct-channel')
         .on(
-          'postgres_changes' as any,
+          'postgres_changes',
           {
             event: '*',
             schema: 'public',
@@ -64,7 +75,7 @@ export default function RealtimeTest() {
       }, 30000);
       
       addMessage("✅ Channel setup complete");
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMsg = `❌ Error: ${err.message || 'Unknown error'}`;
       setError(errorMsg);
       addMessage(errorMsg);
@@ -103,7 +114,7 @@ export default function RealtimeTest() {
       }, 30000);
       
       addMessage("✅ Subscription manager setup complete");
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMsg = `❌ Error: ${err.message || 'Unknown error'}`;
       setError(errorMsg);
       addMessage(errorMsg);
@@ -150,6 +161,12 @@ export default function RealtimeTest() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Mode:</span>
+                      <Badge variant="outline">
+                        {realtimeStatus.mode === 'php-polling' ? 'PHP Polling' : 'Supabase Realtime'}
+                      </Badge>
+                    </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Connected:</span>
                       <Badge variant={realtimeStatus.connected ? "default" : "destructive"}>

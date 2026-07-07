@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "@/integrations/php-api/compat-client";
+import { isPhpBackend } from "@/integrations/backend/provider";
+import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { Button } from "@/components/ui/button";
@@ -17,9 +19,11 @@ import { UserCheck, Users, Calendar as CalendarIcon, FileText, CheckSquare, Aler
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { handleSupabaseError } from "@/lib/api-error-handler";
 
 interface Student {
   id: string;
+  school_id?: string;
   student_id: string;
   full_name: string;
   class_id: string;
@@ -32,6 +36,7 @@ interface Student {
 
 interface Class {
   id: string;
+  school_id?: string;
   name: string;
   section: string;
   class_level: string;
@@ -39,6 +44,7 @@ interface Class {
 
 interface AttendanceRecord {
   id?: string;
+  school_id?: string;
   student_id: string;
   class_id: string;
   date: string;
@@ -46,6 +52,41 @@ interface AttendanceRecord {
   remarks?: string;
   student?: Student;
 }
+
+interface TeacherRecord {
+  id: string;
+  user_id: string | null;
+  school_id: string;
+}
+
+interface TimetableRecord {
+  id: string;
+  school_id: string;
+  teacher_id: string | null;
+  class_id: string;
+}
+
+const attachClassesToStudents = (studentRows: Student[], classRows: Class[]): Student[] => {
+  const classById = new Map(classRows.map((classItem) => [classItem.id, classItem]));
+
+  return studentRows.map((student) => {
+    const classItem = classById.get(student.class_id);
+    return {
+      ...student,
+      classes: classItem ? { id: classItem.id, name: classItem.name, section: classItem.section } : undefined,
+    };
+  });
+};
+
+const attachStudentsToAttendance = (records: AttendanceRecord[], studentRows: Student[]): AttendanceRecord[] => {
+  const studentById = new Map(studentRows.map((student) => [student.id, student]));
+
+  return records.map((record) => ({
+    ...record,
+    is_present: Boolean(record.is_present),
+    student: studentById.get(record.student_id),
+  }));
+};
 
 export function AttendanceManagement() {
   const { profile } = useAuth();
@@ -58,21 +99,50 @@ export function AttendanceManagement() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("mark");
 
-  // Load classes on component mount
-  useEffect(() => {
-    loadClasses();
-  }, []);
-
-  // Load students when class is selected
-  useEffect(() => {
-    if (selectedClass) {
-      loadStudents();
-      loadAttendance();
-    }
-  }, [selectedClass, selectedDate]);
-
-  const loadClasses = async () => {
+  const loadClasses = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        if (!profile?.school_id) {
+          setClasses([]);
+          return;
+        }
+
+        const allClasses = await phpApi.table<Class>('classes').list({
+          school_id: profile.school_id,
+          is_active: 1,
+          sort: 'name',
+          order: 'asc',
+          limit: 200,
+        });
+
+        if (canFull('attendance.record')) {
+          const teachers = await phpApi.table<TeacherRecord>('teachers').list({
+            school_id: profile.school_id,
+            user_id: profile.user_id,
+            limit: 1,
+          });
+          const teacher = teachers[0];
+
+          if (!teacher) {
+            setClasses([]);
+            return;
+          }
+
+          const timetableRows = await phpApi.table<TimetableRecord>('timetable').list({
+            school_id: profile.school_id,
+            teacher_id: teacher.id,
+            limit: 200,
+          });
+          const classIds = new Set(timetableRows.map((row) => row.class_id));
+
+          setClasses((allClasses || []).filter((classItem) => classIds.has(classItem.id)));
+          return;
+        }
+
+        setClasses(allClasses || []);
+        return;
+      }
+
       let query = supabase
         .from('classes')
         .select('*')
@@ -116,13 +186,33 @@ export function AttendanceManagement() {
       if (error) throw error;
       setClasses(data || []);
     } catch (error) {
-      console.error('Error loading classes:', error);
-      toast.error('Failed to load classes');
+      const notice = handleSupabaseError('Load attendance classes', error, {
+        context: { schoolId: profile?.school_id, userId: profile?.user_id },
+      });
+      toast.error(notice.title, { description: notice.description });
     }
-  };
+  }, [canFull, profile?.school_id, profile?.user_id]);
 
-  const loadStudents = async () => {
+  const loadStudents = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const [studentRows, classRows] = await Promise.all([
+          phpApi.table<Student>('students').list({
+            class_id: selectedClass,
+            status: 'active',
+            sort: 'student_id',
+            order: 'asc',
+            limit: 300,
+          }),
+          phpApi.table<Class>('classes').list({
+            limit: 300,
+          }),
+        ]);
+
+        setStudents(attachClassesToStudents(studentRows || [], classRows || []));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('students')
         .select(`
@@ -140,13 +230,36 @@ export function AttendanceManagement() {
       if (error) throw error;
       setStudents(data || []);
     } catch (error) {
-      console.error('Error loading students:', error);
-      toast.error('Failed to load students');
+      const notice = handleSupabaseError('Load attendance students', error, {
+        context: { classId: selectedClass },
+      });
+      toast.error(notice.title, { description: notice.description });
     }
-  };
+  }, [selectedClass]);
 
-  const loadAttendance = async () => {
+  const loadAttendance = useCallback(async () => {
     try {
+      if (isPhpBackend) {
+        const date = format(selectedDate, 'yyyy-MM-dd');
+        const [attendanceRows, studentRows] = await Promise.all([
+          phpApi.table<AttendanceRecord>('attendance').list({
+            class_id: selectedClass,
+            date,
+            sort: 'created_at',
+            order: 'asc',
+            limit: 300,
+          }),
+          phpApi.table<Student>('students').list({
+            class_id: selectedClass,
+            status: 'active',
+            limit: 300,
+          }),
+        ]);
+
+        setAttendance(attachStudentsToAttendance(attendanceRows || [], studentRows || []));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('attendance')
         .select(`
@@ -164,10 +277,25 @@ export function AttendanceManagement() {
       if (error) throw error;
       setAttendance(data || []);
     } catch (error) {
-      console.error('Error loading attendance:', error);
-      toast.error('Failed to load attendance');
+      const notice = handleSupabaseError('Load attendance records', error, {
+        context: { classId: selectedClass, date: format(selectedDate, 'yyyy-MM-dd') },
+      });
+      toast.error(notice.title, { description: notice.description });
     }
-  };
+  }, [selectedClass, selectedDate]);
+
+  // Load classes on component mount
+  useEffect(() => {
+    loadClasses();
+  }, [loadClasses]);
+
+  // Load students when class is selected
+  useEffect(() => {
+    if (selectedClass) {
+      loadStudents();
+      loadAttendance();
+    }
+  }, [selectedClass, selectedDate, loadStudents, loadAttendance]);
 
   const handleAttendanceChange = (studentId: string, isPresent: boolean, remarks?: string) => {
     setAttendance(prev => {
@@ -195,19 +323,57 @@ export function AttendanceManagement() {
       toast.error('Please select a class and mark attendance');
       return;
     }
+    if (!profile?.school_id) {
+      toast.error('School assignment is required to save attendance');
+      return;
+    }
 
     setLoading(true);
     try {
+      if (isPhpBackend) {
+        const date = format(selectedDate, 'yyyy-MM-dd');
+        const existingRows = await phpApi.table<AttendanceRecord>('attendance').list({
+          class_id: selectedClass,
+          date,
+          limit: 500,
+        });
+
+        await Promise.all(
+          (existingRows || [])
+            .filter((record) => record.id)
+            .map((record) => phpApi.table<AttendanceRecord>('attendance').delete(record.id as string))
+        );
+
+        const attendanceData = attendance.map(a => ({
+          school_id: profile.school_id,
+          student_id: a.student_id,
+          class_id: a.class_id,
+          date: a.date,
+          is_present: a.is_present,
+          remarks: a.remarks || null,
+        }));
+
+        await Promise.all(
+          attendanceData.map((record) => phpApi.table<AttendanceRecord>('attendance').create(record))
+        );
+
+        toast.success('Attendance saved successfully');
+        loadAttendance();
+        return;
+      }
+
       // First, delete existing attendance for this date and class
-      await supabase
+      const { error: deleteError } = await supabase
         .from('attendance')
         .delete()
         .eq('class_id', selectedClass)
         .eq('date', format(selectedDate, 'yyyy-MM-dd'));
 
+      if (deleteError) throw deleteError;
+
       // Then insert new attendance records
       const attendanceData = attendance.map(a => ({
-        school_id: profile?.school_id,
+        school_id: profile.school_id,
         student_id: a.student_id,
         class_id: a.class_id,
         date: a.date,
@@ -224,8 +390,15 @@ export function AttendanceManagement() {
       toast.success('Attendance saved successfully');
       loadAttendance();
     } catch (error) {
-      console.error('Error saving attendance:', error);
-      toast.error('Failed to save attendance');
+      const notice = handleSupabaseError('Save attendance', error, {
+        context: {
+          schoolId: profile.school_id,
+          classId: selectedClass,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          recordCount: attendance.length,
+        },
+      });
+      toast.error(notice.title, { description: notice.description });
     } finally {
       setLoading(false);
     }

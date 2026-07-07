@@ -1,4 +1,4 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, UseQueryOptions, QueryKey } from '@tanstack/react-query';
 import { cacheConfig } from '@/lib/query-client';
 
 /**
@@ -7,7 +7,7 @@ import { cacheConfig } from '@/lib/query-client';
  */
 export function useCachedQuery<TData = unknown, TError = Error>(
   cacheType: 'static' | 'semiStatic' | 'dynamic' | 'realtime',
-  queryKey: any[],
+  queryKey: QueryKey,
   queryFn: () => Promise<TData>,
   options?: Omit<UseQueryOptions<TData, TError>, 'queryKey' | 'queryFn'>
 ) {

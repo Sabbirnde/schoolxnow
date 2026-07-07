@@ -1,21 +1,35 @@
 // Performance optimization utilities for Supabase operations
-import { supabase } from '@/integrations/supabase/client';
-import type { Database } from '@/integrations/supabase/types';
+import { isPhpBackend } from '@/integrations/backend/provider';
+import { phpApi } from '@/integrations/php-api/client';
+import type { Database } from '@/integrations/database/types';
 
 type Tables = Database['public']['Tables'];
 type TableName = keyof Tables;
+type CacheEntry = { data: unknown; timestamp: number; ttl: number };
+type SupabaseQueryResult<T> = { data: T[] | null; error: unknown; count?: number | null };
+type SupabaseQueryBuilder<T> = {
+  order: (column: string, options?: { ascending?: boolean }) => SupabaseQueryBuilder<T>;
+  then: Promise<SupabaseQueryResult<T>>['then'];
+};
+type BatchOperation = {
+  id: string;
+  fn: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+};
+type BulkOperationError = { chunk?: number; record?: unknown; error: unknown };
 
 /**
  * Query cache for reducing redundant database calls
  */
 class QueryCache {
-  private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
+  private cache: Map<string, CacheEntry> = new Map();
   private defaultTTL = 60000; // 1 minute default
 
   /**
    * Get cached data if available and not expired
    */
-  get(key: string): any | null {
+  get<T = unknown>(key: string): T | null {
     const cached = this.cache.get(key);
     
     if (!cached) return null;
@@ -30,13 +44,13 @@ class QueryCache {
       console.log(`✨ [Cache HIT] ${key}`);
     }
     
-    return cached.data;
+    return cached.data as T;
   }
 
   /**
    * Set cache data
    */
-  set(key: string, data: any, ttl: number = this.defaultTTL): void {
+  set(key: string, data: unknown, ttl: number = this.defaultTTL): void {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -90,7 +104,7 @@ export async function cachedQuery<T>(
   ttl: number = 60000
 ): Promise<T> {
   // Check cache first
-  const cached = queryCache.get(cacheKey);
+  const cached = queryCache.get<T>(cacheKey);
   if (cached !== null) {
     return cached;
   }
@@ -107,7 +121,7 @@ export async function cachedQuery<T>(
 /**
  * Batch query utility to combine multiple queries
  */
-export async function batchQueries<T extends Record<string, () => Promise<any>>>(
+export async function batchQueries<T extends Record<string, () => Promise<unknown>>>(
   queries: T
 ): Promise<{ [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
   const startTime = performance.now();
@@ -123,18 +137,18 @@ export async function batchQueries<T extends Record<string, () => Promise<any>>>
     console.log(`⚡ [Batch Query] Completed ${entries.length} queries in ${duration}ms`);
   }
 
-  const output: any = {};
+  const output: Partial<{ [K in keyof T]: Awaited<ReturnType<T[K]>> | null }> = {};
   entries.forEach(([key], index) => {
     const result = results[index];
     if (result.status === 'fulfilled') {
-      output[key] = result.value;
+      output[key as keyof T] = result.value as Awaited<ReturnType<T[keyof T]>>;
     } else {
       console.error(`❌ [Batch Query] ${key} failed:`, result.reason);
-      output[key] = null;
+      output[key as keyof T] = null;
     }
   });
 
-  return output;
+  return output as { [K in keyof T]: Awaited<ReturnType<T[K]>> };
 }
 
 /**
@@ -147,7 +161,7 @@ export async function paginatedQuery<T extends TableName>(
     pageSize: number;
     orderBy?: string;
     orderAscending?: boolean;
-    filter?: (query: any) => any;
+    filter?: (query: SupabaseQueryBuilder<Tables[T]['Row']>) => SupabaseQueryBuilder<Tables[T]['Row']>;
   }
 ): Promise<{
   data: Tables[T]['Row'][];
@@ -161,10 +175,41 @@ export async function paginatedQuery<T extends TableName>(
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  let query: any = supabase
-    .from(table as any)
+  if (isPhpBackend) {
+    if (filter) {
+      throw new Error('paginatedQuery filter callbacks are only supported with the Supabase backend.');
+    }
+
+    const params: Record<string, string | number> = {
+      limit: pageSize,
+      offset: from,
+    };
+
+    if (orderBy) {
+      params.sort = orderBy;
+      params.order = orderAscending ? 'asc' : 'desc';
+    }
+
+    const [data, count] = await Promise.all([
+      phpApi.table<Record<string, unknown>>(String(table)).list(params),
+      phpApi.table<Record<string, unknown>>(String(table)).count(),
+    ]);
+    const totalPages = count.count ? Math.ceil(count.count / pageSize) : 0;
+
+    return {
+      data: data as Tables[T]['Row'][],
+      count: count.count,
+      page,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  const { supabase } = await import('@/integrations/php-api/compat-client');
+  let query = supabase
+    .from(table as never)
     .select('*', { count: 'exact' })
-    .range(from, to);
+    .range(from, to) as unknown as SupabaseQueryBuilder<Tables[T]['Row']>;
 
   if (orderBy) {
     query = query.order(orderBy, { ascending: orderAscending });
@@ -181,7 +226,7 @@ export async function paginatedQuery<T extends TableName>(
   const totalPages = count ? Math.ceil(count / pageSize) : 0;
 
   return {
-    data: (data as any) || [],
+    data: data || [],
     count: count || 0,
     page,
     pageSize,
@@ -251,7 +296,7 @@ export class SearchOptimizer {
  * Connection pooling for multiple operations
  */
 export class OperationBatcher {
-  private operations: Array<{ id: string; fn: () => Promise<any>; resolve: any; reject: any }> = [];
+  private operations: BatchOperation[] = [];
   private processingTimeout: NodeJS.Timeout | null = null;
   private maxBatchSize = 10;
   private batchDelayMs = 50;
@@ -308,7 +353,7 @@ export class OperationBatcher {
  * Request deduplication
  */
 class RequestDeduplicator {
-  private pending: Map<string, Promise<any>> = new Map();
+  private pending: Map<string, Promise<unknown>> = new Map();
 
   /**
    * Execute request with deduplication
@@ -319,7 +364,7 @@ class RequestDeduplicator {
       if (import.meta.env.DEV) {
         console.log(`🔄 [Dedup] Reusing pending request: ${key}`);
       }
-      return this.pending.get(key)!;
+      return this.pending.get(key)! as Promise<T>;
     }
 
     // Execute new request
@@ -348,7 +393,7 @@ export async function bulkInsert<T extends TableName>(
   table: T,
   records: Tables[T]['Insert'][],
   chunkSize: number = 1000
-): Promise<{ success: number; failed: number; errors: any[] }> {
+): Promise<{ success: number; failed: number; errors: BulkOperationError[] }> {
   const chunks: Tables[T]['Insert'][][] = [];
   for (let i = 0; i < records.length; i += chunkSize) {
     chunks.push(records.slice(i, i + chunkSize));
@@ -356,7 +401,7 @@ export async function bulkInsert<T extends TableName>(
 
   let success = 0;
   let failed = 0;
-  const errors: any[] = [];
+  const errors: BulkOperationError[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -366,7 +411,7 @@ export async function bulkInsert<T extends TableName>(
     }
 
     try {
-      const { data, error } = await (supabase as any)
+      const { error } = await supabase
         .from(table)
         .insert(chunk);
 
@@ -389,7 +434,7 @@ export async function bulkUpdate<T extends TableName>(
   table: T,
   updates: Array<{ id: string; data: Partial<Tables[T]['Update']> }>,
   chunkSize: number = 100
-): Promise<{ success: number; failed: number; errors: any[] }> {
+): Promise<{ success: number; failed: number; errors: BulkOperationError[] }> {
   const chunks: typeof updates[] = [];
   for (let i = 0; i < updates.length; i += chunkSize) {
     chunks.push(updates.slice(i, i + chunkSize));
@@ -397,14 +442,14 @@ export async function bulkUpdate<T extends TableName>(
 
   let success = 0;
   let failed = 0;
-  const errors: any[] = [];
+  const errors: BulkOperationError[] = [];
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
     
     const results = await Promise.allSettled(
       chunk.map(({ id, data }) =>
-        (supabase as any)
+        supabase
           .from(table)
           .update(data)
           .eq('id', id)
@@ -418,7 +463,7 @@ export async function bulkUpdate<T extends TableName>(
         failed++;
         errors.push({
           record: chunk[index],
-          error: result.status === 'rejected' ? result.reason : (result.value as any).error,
+          error: result.status === 'rejected' ? result.reason : result.value.error,
         });
       }
     });
@@ -470,7 +515,7 @@ export class PerformanceMonitor {
    * Get performance report
    */
   getReport(): Record<string, { count: number; totalTime: number; avgTime: number }> {
-    const report: any = {};
+    const report: Record<string, { count: number; totalTime: number; avgTime: number }> = {};
     this.metrics.forEach((value, key) => {
       report[key] = value;
     });

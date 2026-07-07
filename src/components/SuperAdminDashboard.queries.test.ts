@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mockSupabase, mockToast } from '../test/mocks';
 import { mockSchools } from '../test/mockData';
@@ -362,8 +361,9 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
 
       try {
         await mockSupabase.from('schools').select('*');
-      } catch (error: any) {
-        expect(error.message).toContain('timeout');
+      } catch (error: unknown) {
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain('timeout');
       }
     });
   });
