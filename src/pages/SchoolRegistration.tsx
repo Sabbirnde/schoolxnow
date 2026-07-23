@@ -54,11 +54,6 @@ const SchoolRegistration = () => {
       if (isPhpBackend) {
         try {
           await phpApi.health();
-          toast({
-            title: 'Connection Test Successful',
-            description: 'Ready to register your school.',
-            variant: 'default'
-          });
         } catch (error) {
           console.error('SchoolXNow API connection error:', error);
           toast({
@@ -153,12 +148,6 @@ const SchoolRegistration = () => {
         console.log('- Auth service: OK');
         console.log('- User session: Not authenticated (expected)');
         
-        toast({
-          title: 'Connection Test Successful',
-          description: 'Ready to register your school.',
-          variant: 'default'
-        });
-
       } catch (err) {
         console.error('Unexpected error during connection test:', err);
         let errorTitle = 'Connection Error';
