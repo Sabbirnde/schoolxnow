@@ -113,7 +113,9 @@ function firstQueryValue(value: string | string[] | undefined) {
 
 function appendFilters(req: VercelRequest, where: string[], params: Record<string, unknown>) {
   for (const [rawKey, rawValue] of Object.entries(req.query)) {
-    if (['path', 'limit', 'offset', 'sort', 'order'].includes(rawKey)) {
+    // Vercel adds dynamic filesystem route parameters to req.query. They
+    // identify the route and must never be interpreted as database columns.
+    if (['path', 'table', 'id', 'limit', 'offset', 'sort', 'order'].includes(rawKey)) {
       continue;
     }
 
