@@ -30,6 +30,7 @@ const Landing = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [salesDialogOpen, setSalesDialogOpen] = useState(false);
+  const [annualBilling, setAnnualBilling] = useState(true);
   const [salesForm, setSalesForm] = useState({
     name: "",
     email: "",
@@ -99,6 +100,70 @@ const Landing = () => {
     "Kindergarten"
   ];
 
+  const pricingPlans = [
+    {
+      name: "Starter",
+      description: "Essential administration for smaller schools.",
+      monthlyPrice: 39,
+      annualPrice: 390,
+      studentLimit: "Up to 300 students",
+      features: [
+        "Student and teacher management",
+        "Classes, subjects, and timetable",
+        "Attendance, exams, and results",
+        "Standard dashboards",
+        "Email support",
+      ],
+      action: "Start free trial",
+    },
+    {
+      name: "Growth",
+      description: "The complete operating system for growing schools.",
+      monthlyPrice: 89,
+      annualPrice: 890,
+      studentLimit: "Up to 1,000 students",
+      features: [
+        "Everything in Starter",
+        "Guardian access and notifications",
+        "Reports and academic analytics",
+        "Teacher application management",
+        "Audit logs and assisted onboarding",
+      ],
+      action: "Choose Growth",
+      featured: true,
+    },
+    {
+      name: "Professional",
+      description: "Advanced control, support, and customization.",
+      monthlyPrice: 179,
+      annualPrice: 1790,
+      studentLimit: "Up to 3,000 students",
+      features: [
+        "Everything in Growth",
+        "Advanced reporting",
+        "Custom branding",
+        "Priority support",
+        "Bulk import and API access",
+      ],
+      action: "Choose Professional",
+    },
+    {
+      name: "Enterprise",
+      description: "Flexible deployment for school groups and districts.",
+      monthlyPrice: null,
+      annualPrice: null,
+      studentLimit: "3,000+ students",
+      features: [
+        "Multiple schools",
+        "Dedicated infrastructure options",
+        "SSO and custom integrations",
+        "Service-level agreement",
+        "Migration and implementation support",
+      ],
+      action: "Contact sales",
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -113,6 +178,10 @@ const Landing = () => {
             </div>
             <span className="text-base sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
           </div>
+          <nav className="hidden items-center gap-6 text-sm text-muted-foreground lg:flex" aria-label="Main navigation">
+            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
+          </nav>
           <div className="flex items-center gap-2 sm:gap-4">
             <Button variant="ghost" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" asChild>
               <Link to="/auth">Login</Link>
@@ -287,7 +356,7 @@ const Landing = () => {
       </section>
 
       {/* Features Section */}
-      <section className="container px-4 py-12 sm:py-16 lg:py-20">
+      <section id="features" className="container scroll-mt-20 px-4 py-12 sm:py-16 lg:py-20">
         <div className="text-center space-y-3 sm:space-y-4 mb-8 sm:mb-12">
           <Badge variant="secondary" className="text-xs sm:text-sm">Features</Badge>
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-4">
@@ -362,6 +431,121 @@ const Landing = () => {
               </CardContent>
             </Card>
           </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="relative scroll-mt-20 overflow-hidden border-y bg-muted/20">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-primary/5 to-transparent" />
+        <div className="container relative px-4 py-12 sm:py-16 lg:py-24">
+          <div className="mx-auto mb-8 max-w-3xl space-y-4 text-center sm:mb-12">
+            <Badge variant="secondary" className="text-xs sm:text-sm">Simple international pricing</Badge>
+            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
+              A plan that grows with your school
+            </h2>
+            <p className="px-4 text-sm text-muted-foreground sm:text-base lg:text-lg">
+              Start with the tools you need today. Upgrade as enrollment and operational needs grow.
+            </p>
+
+            <div
+              className="mx-auto inline-flex rounded-full border bg-background p-1 shadow-sm"
+              role="group"
+              aria-label="Billing period"
+            >
+              <Button
+                type="button"
+                size="sm"
+                variant={annualBilling ? "ghost" : "default"}
+                className="rounded-full px-4"
+                onClick={() => setAnnualBilling(false)}
+              >
+                Monthly
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={annualBilling ? "default" : "ghost"}
+                className="rounded-full px-4"
+                onClick={() => setAnnualBilling(true)}
+              >
+                Annual
+                <span className="ml-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  Save 2 months
+                </span>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {pricingPlans.map((plan) => (
+              <Card
+                key={plan.name}
+                className={`relative flex h-full flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-elegant ${
+                  plan.featured
+                    ? "border-primary shadow-lg shadow-primary/10 xl:-translate-y-2"
+                    : "border-border/80"
+                }`}
+              >
+                {plan.featured && (
+                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                    Most popular
+                  </Badge>
+                )}
+                <CardHeader className="space-y-4 pb-4">
+                  <div>
+                    <CardTitle className="text-xl">{plan.name}</CardTitle>
+                    <CardDescription className="mt-2 min-h-10">
+                      {plan.description}
+                    </CardDescription>
+                  </div>
+                  <div>
+                    {plan.monthlyPrice === null ? (
+                      <div className="text-3xl font-bold">Custom</div>
+                    ) : (
+                      <div className="flex items-end gap-1">
+                        <span className="text-4xl font-bold tracking-tight">
+                          ${annualBilling ? plan.annualPrice : plan.monthlyPrice}
+                        </span>
+                        <span className="pb-1 text-sm text-muted-foreground">
+                          /{annualBilling ? "year" : "month"}
+                        </span>
+                      </div>
+                    )}
+                    <p className="mt-2 text-sm font-medium text-primary">{plan.studentLimit}</p>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-6">
+                  <ul className="flex-1 space-y-3">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2.5 text-sm">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-success" aria-hidden="true" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    type="button"
+                    variant={plan.featured ? "default" : "outline"}
+                    className="w-full"
+                    onClick={() => {
+                      if (plan.name === "Enterprise") {
+                        setSalesDialogOpen(true);
+                      } else {
+                        navigate("/school-registration");
+                      }
+                    }}
+                  >
+                    {plan.action}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <p className="mt-8 text-center text-xs text-muted-foreground sm:text-sm">
+            Prices are in USD. Onboarding, SMS, payment processing, and custom development are quoted separately.
+          </p>
         </div>
       </section>
 
@@ -510,8 +694,8 @@ const Landing = () => {
             <div className="space-y-3 sm:space-y-4">
               <h3 className="font-semibold text-sm sm:text-base">Product</h3>
               <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <li className="hover:text-foreground cursor-pointer transition-colors">Features</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Pricing</li>
+                <li><a href="#features" className="hover:text-foreground transition-colors">Features</a></li>
+                <li><a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a></li>
                 <li className="hover:text-foreground cursor-pointer transition-colors">Security</li>
                 <li className="hover:text-foreground cursor-pointer transition-colors">Roadmap</li>
               </ul>
