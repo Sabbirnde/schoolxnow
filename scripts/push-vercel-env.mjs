@@ -13,7 +13,7 @@ const targets = (valueAfter('--targets') || 'production')
 const gitBranch = valueAfter('--git-branch');
 
 const requiredKeys = [
-  'VITE_BACKEND_PROVIDER',
+  'VITE_API_MODE',
   'VITE_API_URL',
   'DB_HOST',
   'DB_PORT',
@@ -28,6 +28,7 @@ const requiredKeys = [
 ];
 
 const optionalKeys = [
+  'VITE_BACKEND_PROVIDER',
   'APP_DEBUG',
   'DB_CONNECTION_LIMIT',
   'DB_SSL',
@@ -67,6 +68,10 @@ if (!env) {
   console.error(`MISS ${envPath}`);
   console.error('Create it from .env.vercel.example and fill production values first.');
   process.exit(1);
+}
+if (!env.VITE_API_MODE && env.VITE_BACKEND_PROVIDER === 'php') {
+  env.VITE_API_MODE = 'mysql';
+  console.warn('WARN VITE_BACKEND_PROVIDER=php is deprecated; pushing VITE_API_MODE=mysql');
 }
 if (args.includes('--force-db-ssl')) {
   env.DB_SSL = 'true';

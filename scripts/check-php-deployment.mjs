@@ -17,7 +17,7 @@ const requiredFiles = [
   'public/api/.htaccess',
 ];
 
-const frontendRequired = ['VITE_BACKEND_PROVIDER', 'VITE_API_URL'];
+const frontendRequired = ['VITE_API_URL'];
 const backendRequired = [
   'DB_HOST',
   'DB_DATABASE',
@@ -100,8 +100,13 @@ console.log('\nFrontend env');
 const frontendEnv = readEnv('.env');
 ok = checkEnv('.env', frontendEnv, frontendRequired) && ok;
 
-if (frontendEnv?.VITE_BACKEND_PROVIDER !== 'php') {
-  console.log('MISS .env:VITE_BACKEND_PROVIDER must be php for PHP/MySQL deployment');
+const frontendApiMode = frontendEnv?.VITE_API_MODE
+  || (frontendEnv?.VITE_BACKEND_PROVIDER === 'php' ? 'mysql' : '');
+if (!frontendEnv?.VITE_API_MODE && frontendEnv?.VITE_BACKEND_PROVIDER === 'php') {
+  console.log('WARN .env:VITE_BACKEND_PROVIDER=php is deprecated; migrate to VITE_API_MODE=mysql');
+}
+if (frontendApiMode !== 'mysql') {
+  console.log('MISS .env:VITE_API_MODE must be mysql');
   ok = false;
 }
 

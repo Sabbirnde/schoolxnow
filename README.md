@@ -48,11 +48,16 @@ is the source of truth for table exposure and role permissions. Node/Vercel is
 the primary production backend; PHP remains the shared-hosting compatibility
 adapter.
 
-### Compatibility-mode environment value
+### API mode configuration
 
-`VITE_BACKEND_PROVIDER=php` is a legacy name for the frontend's MySQL API
-compatibility path. Keep this value for **both PHP and Vercel Node deployments**.
-It does not mean that a Vercel deployment runs PHP.
+Use `VITE_API_MODE=mysql` for both Node/Vercel and PHP/shared-hosting
+deployments. The value describes the frontend data/API mode, not the backend
+runtime.
+
+Existing deployments with `VITE_BACKEND_PROVIDER=php` remain supported as a
+temporary deprecated fallback. When both variables exist, `VITE_API_MODE`
+takes precedence. Replace the legacy variable during the next environment
+configuration update.
 
 ## Database
 
@@ -282,7 +287,7 @@ updates become a requirement.
 Copy `.env.example` to `.env`:
 
 ```env
-VITE_BACKEND_PROVIDER=php
+VITE_API_MODE=mysql
 VITE_API_URL=/api
 VITE_ERROR_TELEMETRY_ENDPOINT=
 VITE_APP_VERSION=0.0.1
@@ -323,7 +328,7 @@ Required/recommended configuration:
 
 ```env
 # Frontend
-VITE_BACKEND_PROVIDER=php
+VITE_API_MODE=mysql
 VITE_API_URL=/api
 VITE_ERROR_TELEMETRY_ENDPOINT=
 VITE_APP_VERSION=0.0.1

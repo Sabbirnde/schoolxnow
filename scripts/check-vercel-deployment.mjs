@@ -25,7 +25,7 @@ const requiredFiles = [
 ];
 
 const requiredEnv = [
-  'VITE_BACKEND_PROVIDER',
+  'VITE_API_MODE',
   'VITE_API_URL',
   'DB_HOST',
   'DB_PORT',
@@ -51,15 +51,21 @@ function checkEnv(env) {
     return false;
   }
 
+  const normalizedEnv = { ...env };
+  if (!normalizedEnv.VITE_API_MODE && normalizedEnv.VITE_BACKEND_PROVIDER === 'php') {
+    normalizedEnv.VITE_API_MODE = 'mysql';
+    console.log(`WARN ${envPath}:VITE_BACKEND_PROVIDER=php is deprecated; migrate to VITE_API_MODE=mysql`);
+  }
+
   let ok = true;
   for (const key of requiredEnv) {
-    const valid = !isPlaceholder(env[key]);
+    const valid = !isPlaceholder(normalizedEnv[key]);
     console.log(`${valid ? 'OK  ' : 'MISS'} ${envPath}:${key}`);
     ok = ok && valid;
   }
 
-  if (env.VITE_BACKEND_PROVIDER !== 'php') {
-    console.log(`MISS ${envPath}:VITE_BACKEND_PROVIDER must be php for the compatibility API client`);
+  if (normalizedEnv.VITE_API_MODE !== 'mysql') {
+    console.log(`MISS ${envPath}:VITE_API_MODE must be mysql`);
     ok = false;
   }
 

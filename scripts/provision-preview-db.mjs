@@ -31,6 +31,10 @@ if (!source) {
   console.error(`MISS ${sourcePath}`);
   process.exit(1);
 }
+if (!source.VITE_API_MODE && source.VITE_BACKEND_PROVIDER === 'php') {
+  source.VITE_API_MODE = 'mysql';
+  console.warn('WARN VITE_BACKEND_PROVIDER=php is deprecated; writing VITE_API_MODE=mysql');
+}
 
 const sourceDatabase = envValue(source, 'DB_DATABASE', 'MYSQL_DATABASE', 'MYSQL_DATABASE_NAME');
 const previewDatabase = valueAfter('--database') || `${sourceDatabase}_preview`;
@@ -91,7 +95,7 @@ try {
 }
 
 const managedKeys = [
-  'VITE_BACKEND_PROVIDER', 'VITE_API_URL', 'VITE_ERROR_TELEMETRY_ENDPOINT', 'VITE_APP_VERSION',
+  'VITE_API_MODE', 'VITE_BACKEND_PROVIDER', 'VITE_API_URL', 'VITE_ERROR_TELEMETRY_ENDPOINT', 'VITE_APP_VERSION',
   'APP_DEBUG', 'DB_HOST', 'DB_PORT', 'DB_USERNAME', 'DB_PASSWORD', 'DB_CONNECTION_LIMIT',
   'JWT_TTL_SECONDS',
   'UPLOAD_MAX_BYTES', 'BLOB_READ_WRITE_TOKEN',

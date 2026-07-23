@@ -5,7 +5,9 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   define: {
-    'import.meta.env.VITE_BACKEND_PROVIDER': JSON.stringify('compat-test'),
+    // The new value wins over the legacy fallback; unit tests use their mocked adapter path.
+    'import.meta.env.VITE_API_MODE': JSON.stringify('compat-test'),
+    'import.meta.env.VITE_BACKEND_PROVIDER': JSON.stringify('php'),
   },
   optimizeDeps: {
     rolldownOptions: {

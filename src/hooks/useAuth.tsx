@@ -3,6 +3,7 @@ import { AuthError, RealtimeChannel, User, Session } from '@/integrations/php-ap
 import { apiClient } from '@/integrations/php-api/api-client';
 import { phpApi, type PhpApiUser } from '@/integrations/php-api/client';
 import { useThrottledFetch } from '@/hooks/useThrottledFetch';
+import { isMysqlApi } from '@/integrations/backend/provider';
 
 interface UserProfile {
   id: string;
@@ -20,8 +21,6 @@ interface UserProfile {
   updated_at: string;
   approval_status: string | null;
 }
-
-const usePhpBackend = import.meta.env.VITE_BACKEND_PROVIDER === 'php';
 
 function phpUserToApiUser(apiUser: PhpApiUser): User {
   return {
@@ -192,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       const initializePhpSession = async () => {
         const token = localStorage.getItem(phpApi.tokenKey);
 
@@ -413,7 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id, fetchProfile, throttledFetchProfile, transitionProfileState]);
 
   const signIn = async (email: string, password: string) => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       try {
         const { user: apiUser, session: apiSession } = await phpApi.login(email, password);
         const mappedUser = phpUserToApiUser(apiUser);
@@ -462,7 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string, fullName: string, role?: string, schoolId?: string) => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       if (role === 'super_admin') {
         return {
           error: {
@@ -560,7 +559,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       await phpApi.logout();
       setUser(null);
       setSession(null);
@@ -602,7 +601,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithOtp = async (email: string, options?: { redirectTo?: string }) => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       return {
         error: {
           message: 'Magic-link login is not available on the PHP/MySQL backend yet.',
@@ -635,7 +634,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyOtp = async (email: string, token: string, type: 'email' | 'sms' = 'email') => {
-    if (usePhpBackend) {
+    if (isMysqlApi) {
       return {
         error: {
           message: 'OTP verification is not available on the PHP/MySQL backend yet.',
