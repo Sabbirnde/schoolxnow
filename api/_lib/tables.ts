@@ -192,10 +192,8 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
     appendFilters(req, where, params);
     const limit = Math.min(Math.max(Number(firstQueryValue(req.query.limit) || 50), 1), 200);
     const offset = Math.max(Number(firstQueryValue(req.query.offset) || 0), 0);
-    params.limit = limit;
-    params.offset = offset;
     const rows = await query(
-      `SELECT * FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT :limit OFFSET :offset`,
+      `SELECT * FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
     return sendData(res, rows);
