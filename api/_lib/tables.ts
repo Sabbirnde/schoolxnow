@@ -113,7 +113,9 @@ function firstQueryValue(value: string | string[] | undefined) {
 
 function appendFilters(req: VercelRequest, where: string[], params: Record<string, unknown>) {
   for (const [rawKey, rawValue] of Object.entries(req.query)) {
-    if (['path', 'limit', 'offset', 'sort', 'order'].includes(rawKey)) {
+    // Vercel adds dynamic filesystem route parameters to req.query. They
+    // identify the route and must never be interpreted as database columns.
+    if (['path', 'table', 'id', 'limit', 'offset', 'sort', 'order'].includes(rawKey)) {
       continue;
     }
 
@@ -192,10 +194,8 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
     appendFilters(req, where, params);
     const limit = Math.min(Math.max(Number(firstQueryValue(req.query.limit) || 50), 1), 200);
     const offset = Math.max(Number(firstQueryValue(req.query.offset) || 0), 0);
-    params.limit = limit;
-    params.offset = offset;
     const rows = await query(
-      `SELECT * FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT :limit OFFSET :offset`,
+      `SELECT * FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
     return sendData(res, rows);
