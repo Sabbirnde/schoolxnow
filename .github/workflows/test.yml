@@ -31,6 +31,9 @@ jobs:
       - name: Run unit and frontend tests
         run: npm test -- --run
 
+      - name: Validate ordered database migrations
+        run: npm run check:migrations
+
       - name: Run Vercel API and MySQL integration tests
         run: npm run test:api-integration
 

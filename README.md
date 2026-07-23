@@ -73,21 +73,46 @@ The schema uses foreign keys and cascading rules to maintain relationships.
 IDs are stored as UUID-compatible strings. Database connections are made only
 by the backend; never expose database credentials in `VITE_*` variables.
 
-### Import the schema
+### Create or migrate the schema
 
-Using the included helper with an environment file:
+Use the ordered migration runner for new and existing databases:
 
 ```bash
-npm run db:import:mysql -- --env .env.vercel.local
+npm run db:migrate:status -- --env .env.vercel.local
+npm run db:migrate -- --env .env.vercel.local --apply
+npm run db:migrate:status -- --env .env.vercel.local
 ```
 
-To also load development/demo accounts, first set unique passwords of at least
-16 characters in the ignored environment file:
+The runner creates `schema_migrations`, obtains a MySQL advisory lock, applies
+`NNNN_description.mysql.sql` files in order, and records the name, SHA-256
+checksum, execution time, operator, and application time. It rejects gaps,
+duplicates, changed applied files, and unknown database history.
+
+Existing installations that predate migration tracking adopt migration `0001`
+only when the core `users` table already exists. Fresh databases execute the
+complete `0001` baseline. Later migrations always execute normally.
+
+Create a compressed, verified backup before `--apply`:
+
+```bash
+npm run db:backup -- \
+  --env .env.vercel.local \
+  --output schoolxnow-before-migration.sql.gz
+```
+
+The backup helper uses the pinned MySQL 8.4 client in Docker, requires encrypted
+transport, never prints the password, refuses to overwrite an existing dump,
+and verifies that the compressed output is non-empty.
+
+For local/test demo accounts, set unique passwords of at least 16 characters
+and run the separate seed importer after migrations:
 
 ```bash
 DEMO_SUPER_ADMIN_PASSWORD=unique_random_local_password
 DEMO_SCHOOL_ADMIN_PASSWORD=another_unique_random_local_password
-npm run db:import:mysql -- --env .env.vercel.local --seed
+npm run db:import:mysql -- --env .env.vercel.local \
+  --schema backend/database/migrations/0002_security_hardening.mysql.sql \
+  --seed
 ```
 
 The importer accepts these optional arguments:
@@ -97,9 +122,9 @@ The importer accepts these optional arguments:
 --seed-file <sql-file>
 ```
 
-Alternatively, import `backend/database/schema.mysql.sql` using phpMyAdmin or
-the MySQL CLI. Import `backend/database/seed-super-admin.mysql.sql` only into a
-local or disposable test database.
+Do not use the baseline importer to upgrade production. Import
+`backend/database/seed-super-admin.mysql.sql` only into a local or disposable
+test database.
 
 ### Database configuration
 
@@ -120,7 +145,11 @@ The Node API also recognizes common `MYSQL_*` aliases, but the documented
 
 ### Schema changes, backup, and production safety
 
-- Back up the production database before applying schema changes.
+- Back up and verify the production database before applying schema changes.
+- Never edit or renumber an applied migration; add the next number.
+- Run `npm run check:migrations` in review and CI.
+- Follow [backend/database/ROLLBACK.md](backend/database/ROLLBACK.md) for dump,
+  restore, forward-fix, and rollback procedures.
 - Review SQL migrations before importing them.
 - Do not import the demo seed into production.
 - Use a restricted application database user rather than a root account.
@@ -129,8 +158,8 @@ The Node API also recognizes common `MYSQL_*` aliases, but the documented
 - Use SSL for database connections over public networks.
 - Store secrets only in hosting environment variables or ignored `.env` files.
 
-The baseline schema is intended for a new, empty database. Use the versioned
-files in `backend/database/migrations/` when altering production.
+The baseline schema is migration `0001`. Vercel checks both migration-file
+integrity and live database migration status before building a deployment.
 
 ## Authentication and authorization
 
@@ -279,7 +308,7 @@ without PHP. Vercel routes `/api/*` to this function and serves the Vite build
 from `dist`.
 
 1. Create an externally reachable MySQL/MariaDB database.
-2. Import `backend/database/schema.mysql.sql`.
+2. Back up existing data, then run the numbered migration runner.
 3. Create a Vercel Blob store.
 4. Copy `.env.vercel.example` to `.env.vercel.local`.
 5. Fill in real database, application, and Blob values.
@@ -320,7 +349,9 @@ Local deployment helper flow:
 
 ```bash
 npm run check:vercel-deploy -- --env .env.vercel.local
-npm run db:import:mysql -- --env .env.vercel.local
+npm run db:migrate:status -- --env .env.vercel.local
+npm run db:migrate -- --env .env.vercel.local --apply
+npm run db:migrate:status -- --env .env.vercel.local
 vercel login
 npm run vercel:env:push -- --env .env.vercel.local --targets production
 vercel deploy --prod
@@ -445,6 +476,7 @@ npm run build
 npm run lint:php
 
 # Deployment checks
+npm run check:migrations
 npm run check:php-deploy
 npm run check:vercel-deploy -- --env .env.vercel.local
 
@@ -453,7 +485,7 @@ npm audit --omit=dev
 ```
 
 The API integration command requires Docker. It pins `mysql:8.4`, selects a
-random local port, imports the production schema, invokes the real Vercel route
+random local port, applies the numbered migrations, invokes the real Vercel route
 adapters, and removes its uniquely named container after completion. It covers
 table list/create/show/update/delete/count routes, Vercel-injected parameters,
 filters, sorting, pagination, role/school isolation, login and token states,

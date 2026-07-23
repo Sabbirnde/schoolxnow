@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm run build",
+  "buildCommand": "npm run check:migrations && npm run db:migrate:status -- --process-env && npm run build",
   "outputDirectory": "dist",
   "framework": "vite"
 }

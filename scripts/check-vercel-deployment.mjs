@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { envValue, isPlaceholder, readEnvFile } from './lib/env-file.mjs';
+import { listMigrations } from './lib/migrations.mjs';
 
 const root = process.cwd();
 const envPath = process.argv.includes('--env')
@@ -15,6 +16,7 @@ const requiredFiles = [
   'api/_lib/http.ts',
   'api/_lib/tables.ts',
   'backend/database/schema.mysql.sql',
+  'scripts/migrate-mysql.mjs',
   '.env.vercel.example',
   'vercel.json',
 ];
@@ -79,7 +81,15 @@ console.log('\nEnvironment');
 ok = checkEnv(readEnvFile(path.resolve(root, envPath))) && ok;
 
 console.log('\nDatabase');
-console.log('INFO Import backend/database/schema.mysql.sql into your external MySQL database.');
+try {
+  const migrations = listMigrations(root);
+  console.log(`OK  ${migrations.length} ordered migration(s) with valid checksums`);
+} catch (error) {
+  console.log(`MISS ${error instanceof Error ? error.message : String(error)}`);
+  ok = false;
+}
+console.log(`INFO Check database state: npm run db:migrate:status -- --env ${envPath}`);
+console.log(`INFO Apply after backup: npm run db:migrate -- --env ${envPath} --apply`);
 console.log('INFO Optional demo accounts: import backend/database/seed-super-admin.mysql.sql with --seed.');
 
 console.log('\nStorage');
@@ -91,4 +101,3 @@ if (!ok) {
 }
 
 console.log('\nVercel deployment check passed.');
-

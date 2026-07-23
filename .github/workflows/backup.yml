@@ -1,68 +1,53 @@
-name: Database Backup
+name: MySQL Database Backup
 
 on:
   schedule:
-    # Run weekly on Sunday at 2 AM UTC
     - cron: '0 2 * * 0'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 20
+
     steps:
-      - name: Checkout repository
+      - name: Check out repository
         uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      
-      - name: Install Supabase CLI
-        run: npm install -g supabase
-      
-      - name: Create backup directory
-        run: mkdir -p backups
-      
-      - name: Backup database
+
+      - name: Create encrypted-transport database dump
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          PROJECT_REF: ktknzhypndszujoakaxq
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USERNAME: ${{ secrets.MYSQL_USERNAME }}
+          MYSQL_PWD: ${{ secrets.MYSQL_PASSWORD }}
         run: |
-          DATE=$(date +%Y%m%d_%H%M%S)
-          BACKUP_FILE="schoolxnow_backup_${DATE}.sql"
-          
-          echo "Starting backup..."
-          npx supabase db dump --project-ref $PROJECT_REF --data-only > "backups/$BACKUP_FILE"
-          
-          echo "Compressing backup..."
-          gzip "backups/$BACKUP_FILE"
-          
-          echo "✓ Backup completed: ${BACKUP_FILE}.gz"
-          ls -lh backups/
-      
-      - name: Upload backup artifact
+          test -n "$MYSQL_HOST"
+          test -n "$MYSQL_DATABASE"
+          test -n "$MYSQL_USERNAME"
+          BACKUP_FILE="schoolxnow_$(date -u +%Y%m%d_%H%M%S).sql"
+          docker run --rm \
+            --env MYSQL_PWD \
+            mysql:8.4 \
+            mysqldump \
+              --host="$MYSQL_HOST" \
+              --port="${MYSQL_PORT:-3306}" \
+              --user="$MYSQL_USERNAME" \
+              --ssl-mode=REQUIRED \
+              --single-transaction \
+              --routines \
+              --triggers \
+              --no-tablespaces \
+              --databases "$MYSQL_DATABASE" \
+            > "$BACKUP_FILE"
+          gzip "$BACKUP_FILE"
+          gzip --test "$BACKUP_FILE.gz"
+          echo "BACKUP_FILE=$BACKUP_FILE.gz" >> "$GITHUB_ENV"
+
+      - name: Upload protected backup artifact
         uses: actions/upload-artifact@v4
         with:
-          name: database-backup-${{ github.run_number }}
-          path: backups/*.sql.gz
+          name: mysql-backup-${{ github.run_number }}
+          path: ${{ env.BACKUP_FILE }}
           retention-days: 30
-      
-      # Optional: Upload to AWS S3
-      # - name: Upload to S3
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     aws-region: us-east-1
-      # 
-      # - name: Copy to S3
-      #   run: |
-      #     aws s3 cp backups/*.sql.gz s3://your-bucket/schoolxnow-backups/$(date +%Y/%m/%d)/
-      
-      - name: Send notification
-        if: failure()
-        run: |
-          echo "⚠️ Backup failed! Check workflow logs."
-          # Add notification service here (email, Slack, etc.)
+          if-no-files-found: error

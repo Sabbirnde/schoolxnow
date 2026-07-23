@@ -1,8 +1,6 @@
 // @vitest-environment node
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import mysql, { type Connection } from 'mysql2/promise';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,6 +10,7 @@ import tableRoute from '../api/tables/[table]';
 import countRoute from '../api/tables/[table]/count';
 import idRoute from '../api/tables/[table]/[id]';
 import { issueToken } from '../api/_lib/auth';
+import { applyMigrations, migrationStatus } from '../scripts/lib/migrations.mjs';
 
 const runIntegration = process.env.RUN_API_INTEGRATION === 'true';
 const suite = runIntegration ? describe : describe.skip;
@@ -211,8 +210,7 @@ suite('Vercel API + MySQL integration', () => {
     const portOutput = execFileSync('docker', ['port', containerName, '3306/tcp'], { encoding: 'utf8' }).trim();
     const port = Number(portOutput.split(':').pop());
     connection = await waitForMySql(port);
-    const schema = fs.readFileSync(path.resolve('backend/database/schema.mysql.sql'), 'utf8');
-    await connection.query(schema);
+    await applyMigrations(connection, { appliedBy: 'api-integration-test' });
     await connection.query("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
     await seed(connection);
 
@@ -258,6 +256,34 @@ suite('Vercel API + MySQL integration', () => {
     const [rows] = await connection.query<any[]>('SELECT VERSION() AS version, @@SESSION.sql_mode AS sql_mode');
     expect(rows[0].version).toMatch(/^8\./);
     expect(rows[0].sql_mode).toContain('STRICT_TRANS_TABLES');
+    const status = await migrationStatus(connection);
+    expect(status.applied).toHaveLength(2);
+    expect(status.pending).toHaveLength(0);
+  });
+
+  it('adopts the baseline for a legacy installation and applies later migrations', async () => {
+    await connection.query('CREATE DATABASE schoolxnow_legacy_test');
+    const legacy = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT),
+      user: process.env.DB_USERNAME,
+      password: process.env.DB_PASSWORD,
+      database: 'schoolxnow_legacy_test',
+      multipleStatements: true,
+    });
+    try {
+      await legacy.query('CREATE TABLE users (id CHAR(36) PRIMARY KEY) ENGINE=InnoDB');
+      const status = await applyMigrations(legacy, { appliedBy: 'legacy-adoption-test' });
+      expect(status.pending).toHaveLength(0);
+      expect(status.applied).toHaveLength(2);
+      expect(status.applied[0].applied_by).toBe('legacy-adoption-test:baseline');
+      const [rateTables] = await legacy.query<any[]>(
+        "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'api_rate_limits'",
+      );
+      expect(Number(rateTables[0].count)).toBe(1);
+    } finally {
+      await legacy.end();
+    }
   });
 
   it('supports list filters, sorting, and pagination through the table adapter', async () => {
