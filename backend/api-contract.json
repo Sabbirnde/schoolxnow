@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "primaryBackend": "node",
   "basePath": "/api",
   "requestIdHeader": "X-Request-ID",
@@ -35,12 +35,14 @@
       "schools", "user_profiles", "user_roles", "classes", "students",
       "subjects", "teachers", "attendance", "exams", "exam_results",
       "timetable", "teacher_applications", "audit_logs", "system_settings",
-      "notifications", "notification_settings", "feedback_submissions"
+      "notifications", "notification_settings", "feedback_submissions",
+      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
     ],
     "schoolScoped": [
       "classes", "students", "subjects", "teachers", "attendance", "exams",
       "exam_results", "timetable", "teacher_applications", "audit_logs",
-      "notifications", "notification_settings", "feedback_submissions"
+      "notifications", "notification_settings", "feedback_submissions",
+      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
     ]
   },
   "authorization": {
@@ -52,12 +54,14 @@
       "read": [
         "schools", "user_profiles", "classes", "students", "subjects", "teachers",
         "attendance", "exams", "exam_results", "timetable", "teacher_applications",
-        "audit_logs", "notifications", "notification_settings", "feedback_submissions"
+        "audit_logs", "notifications", "notification_settings", "feedback_submissions",
+        "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
       ],
       "write": [
         "user_profiles", "classes", "students", "subjects", "teachers", "attendance",
         "exams", "exam_results", "timetable", "teacher_applications", "notifications",
-        "notification_settings", "feedback_submissions"
+        "notification_settings", "feedback_submissions", "academic_years", "academic_terms",
+        "student_enrollments", "guardian_relationships"
       ],
       "appendOnly": ["audit_logs"]
     },
@@ -65,17 +69,26 @@
       "read": [
         "schools", "user_profiles", "classes", "students", "subjects", "teachers",
         "attendance", "exams", "exam_results", "timetable", "teacher_applications",
-        "notifications", "notification_settings", "feedback_submissions"
+        "notifications", "notification_settings", "feedback_submissions",
+        "academic_years", "academic_terms", "student_enrollments"
       ],
       "write": ["attendance", "exam_results", "notification_settings", "feedback_submissions"],
       "appendOnly": ["audit_logs"]
     },
     "student": {
-      "read": ["schools", "user_profiles", "notifications", "notification_settings", "feedback_submissions"],
+      "read": [
+        "schools", "user_profiles", "students", "notifications", "notification_settings",
+        "feedback_submissions", "academic_years", "academic_terms",
+        "student_enrollments", "guardian_relationships"
+      ],
       "write": ["notification_settings", "feedback_submissions"]
     },
     "guardian": {
-      "read": ["schools", "user_profiles", "notifications", "notification_settings", "feedback_submissions"],
+      "read": [
+        "schools", "user_profiles", "students", "notifications", "notification_settings",
+        "feedback_submissions", "academic_years", "academic_terms",
+        "student_enrollments", "guardian_relationships"
+      ],
       "write": ["notification_settings", "feedback_submissions"]
     }
   },

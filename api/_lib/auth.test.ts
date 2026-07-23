@@ -44,10 +44,15 @@ describe('table authorization policy', () => {
     allowed('teacher', 'user_profiles', ['read']);
   });
 
-  it('limits students and guardians to self-service data', () => {
-    allowed('student', 'students', []);
+  it('limits students and guardians to linked academic and self-service data', () => {
+    allowed('student', 'students', ['read']);
+    allowed('student', 'student_enrollments', ['read']);
+    allowed('student', 'guardian_relationships', ['read']);
     allowed('student', 'notifications', ['read']);
     allowed('student', 'notification_settings', ['read', 'create', 'update', 'delete']);
+    allowed('guardian', 'students', ['read']);
+    allowed('guardian', 'student_enrollments', ['read']);
+    allowed('guardian', 'guardian_relationships', ['read']);
     allowed('guardian', 'feedback_submissions', ['read', 'create', 'update', 'delete']);
   });
 });

@@ -70,7 +70,7 @@ Row Level Security, and realtime services are not required.
 Use a current MySQL/MariaDB release that supports InnoDB foreign keys, JSON
 columns, `utf8mb4`, and `DATETIME ... ON UPDATE CURRENT_TIMESTAMP`.
 
-The schema currently creates these 20 tables:
+The schema currently creates these 25 tables:
 
 | Area | Tables |
 | --- | --- |
@@ -78,12 +78,39 @@ The schema currently creates these 20 tables:
 | Profiles and authorization | `user_profiles`, `user_roles` |
 | School structure | `schools`, `classes`, `subjects` |
 | People | `students`, `teachers`, `teacher_applications` |
+| Academic structure | `academic_years`, `academic_terms`, `student_enrollments` |
+| Guardian access | `guardian_relationships` |
 | Academics | `attendance`, `exams`, `exam_results`, `timetable` |
 | Operations | `audit_logs`, `system_settings`, `notifications`, `notification_settings`, `feedback_submissions` |
 
 The schema uses foreign keys and cascading rules to maintain relationships.
 IDs are stored as UUID-compatible strings. Database connections are made only
 by the backend; never expose database credentials in `VITE_*` variables.
+
+### Academic year, enrollment, and guardian model
+
+`students.class_id` remains the convenient current-class field for existing
+screens. The authoritative historical placement is `student_enrollments`,
+which records one enrollment per student and academic year. Promotion creates
+a new enrollment for the next academic year; it must not overwrite the prior
+enrollment.
+
+Each school can have one `active` academic year. Terms belong to exactly one
+year. Composite foreign keys prevent years, classes, students, enrollments, and
+guardian links from being connected across schools.
+
+Portal accounts are normalized through two explicit links:
+
+- `students.user_id` links a student login to one student record.
+- `guardian_relationships` links one guardian login to one or more students
+  and stores relationship, pickup, emergency-contact, notification, and portal
+  permissions.
+
+Student and guardian API reads are restricted to these links. Disabling
+`has_portal_access` immediately removes that guardian's student and enrollment
+visibility. See
+[backend/database/ACADEMIC_FOUNDATION.md](backend/database/ACADEMIC_FOUNDATION.md)
+for the admissions, promotion, report-card, and guardian-access workflows.
 
 ### Create or migrate the schema
 
@@ -199,7 +226,8 @@ additional user scoping. Non-super-admin requests cannot assign `role`,
 | Super admin | All tables and operations; audit logs are read/create only |
 | School admin | Own-school academic and user data; no role or system-setting changes |
 | Teacher | Own-school reads; attendance/results and own settings/feedback writes |
-| Student/guardian | Own profile, notifications, settings, and feedback only |
+| Student | Own linked student record, enrollment history, guardian links, academic calendar, notifications, settings, and feedback |
+| Guardian | Portal-enabled linked students and enrollments, own guardian links, academic calendar, notifications, settings, and feedback |
 
 Authentication abuse controls are database-backed and shared across serverless
 instances: login and teacher portal login allow 10 attempts per 15 minutes;

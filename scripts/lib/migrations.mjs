@@ -86,6 +86,25 @@ async function tableExists(connection, table) {
   return Number(rows[0]?.count || 0) > 0;
 }
 
+const baselineTables = [
+  'users', 'schools', 'user_profiles', 'user_roles', 'classes', 'students',
+  'subjects', 'teachers', 'attendance', 'exams', 'exam_results', 'timetable',
+  'teacher_applications', 'audit_logs', 'system_settings', 'notifications',
+  'notification_settings', 'feedback_submissions',
+];
+
+async function assertCompleteLegacyBaseline(connection) {
+  const missing = [];
+  for (const table of baselineTables) {
+    if (!await tableExists(connection, table)) {
+      missing.push(table);
+    }
+  }
+  if (missing.length) {
+    throw new Error(`Cannot adopt incomplete legacy baseline; missing tables: ${missing.join(', ')}`);
+  }
+}
+
 export async function migrationStatus(connection, root = process.cwd()) {
   const migrations = listMigrations(root);
   await ensureMigrationTable(connection);
@@ -145,6 +164,7 @@ export async function applyMigrations(connection, {
         status.applied.length === 0 &&
         await tableExists(connection, 'users')
       ) {
+        await assertCompleteLegacyBaseline(connection);
         baselineAdopted = true;
         onProgress({ migration, action: 'baseline' });
       } else {

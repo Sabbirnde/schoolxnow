@@ -204,6 +204,53 @@ final class TableController
             return ['user_id = :scope_user_id'];
         }
 
+        if ($table === 'students' && $user['role'] === 'student') {
+            $params['scope_user_id'] = $user['id'];
+            return ['user_id = :scope_user_id'];
+        }
+
+        if ($table === 'students' && $user['role'] === 'guardian') {
+            $params['scope_school_id'] = $user['school_id'];
+            $params['scope_user_id'] = $user['id'];
+            return [
+                'school_id = :scope_school_id',
+                'EXISTS (SELECT 1 FROM guardian_relationships gr WHERE gr.student_id = students.id AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1)',
+            ];
+        }
+
+        if ($table === 'student_enrollments' && $user['role'] === 'student') {
+            $params['scope_school_id'] = $user['school_id'];
+            $params['scope_user_id'] = $user['id'];
+            return [
+                'school_id = :scope_school_id',
+                'EXISTS (SELECT 1 FROM students s WHERE s.id = student_enrollments.student_id AND s.user_id = :scope_user_id)',
+            ];
+        }
+
+        if ($table === 'student_enrollments' && $user['role'] === 'guardian') {
+            $params['scope_school_id'] = $user['school_id'];
+            $params['scope_user_id'] = $user['id'];
+            return [
+                'school_id = :scope_school_id',
+                'EXISTS (SELECT 1 FROM guardian_relationships gr WHERE gr.student_id = student_enrollments.student_id AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1)',
+            ];
+        }
+
+        if ($table === 'guardian_relationships' && $user['role'] === 'guardian') {
+            $params['scope_school_id'] = $user['school_id'];
+            $params['scope_user_id'] = $user['id'];
+            return ['school_id = :scope_school_id', 'guardian_user_id = :scope_user_id', 'has_portal_access = 1'];
+        }
+
+        if ($table === 'guardian_relationships' && $user['role'] === 'student') {
+            $params['scope_school_id'] = $user['school_id'];
+            $params['scope_user_id'] = $user['id'];
+            return [
+                'school_id = :scope_school_id',
+                'EXISTS (SELECT 1 FROM students s WHERE s.id = guardian_relationships.student_id AND s.user_id = :scope_user_id)',
+            ];
+        }
+
         if (in_array($table, ApiContract::schoolScopedTables(), true)) {
             $params['scope_school_id'] = $user['school_id'];
             return ['school_id = :scope_school_id'];

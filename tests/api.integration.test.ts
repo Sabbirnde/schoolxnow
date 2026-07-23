@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import bcrypt from 'bcryptjs';
 import mysql, { type Connection } from 'mysql2/promise';
@@ -29,10 +30,18 @@ const ids = {
   inactive: '30000000-0000-4000-8000-000000000004',
   teacherA: '30000000-0000-4000-8000-000000000005',
   studentUserA: '30000000-0000-4000-8000-000000000006',
+  guardianUserA: '30000000-0000-4000-8000-000000000007',
   studentA1: '40000000-0000-4000-8000-000000000001',
   studentA2: '40000000-0000-4000-8000-000000000002',
   studentA3: '40000000-0000-4000-8000-000000000003',
   studentB1: '40000000-0000-4000-8000-000000000004',
+  classA: '50000000-0000-4000-8000-000000000001',
+  classB: '50000000-0000-4000-8000-000000000002',
+  yearA: '60000000-0000-4000-8000-000000000001',
+  yearB: '60000000-0000-4000-8000-000000000002',
+  enrollmentA: '70000000-0000-4000-8000-000000000001',
+  enrollmentB: '70000000-0000-4000-8000-000000000002',
+  guardianLinkA: '80000000-0000-4000-8000-000000000001',
 };
 
 type MockResult = {
@@ -179,7 +188,8 @@ async function seed(connection: Connection) {
        (?, 'admin-b@example.test', ?, UTC_TIMESTAMP(), 1),
        (?, 'inactive@example.test', ?, UTC_TIMESTAMP(), 0),
        (?, 'teacher-a@example.test', ?, UTC_TIMESTAMP(), 1),
-       (?, 'student-a@example.test', ?, UTC_TIMESTAMP(), 1)`,
+       (?, 'student-a@example.test', ?, UTC_TIMESTAMP(), 1),
+       (?, 'guardian-a@example.test', ?, UTC_TIMESTAMP(), 1)`,
     [
       ids.superUser, passwordHash,
       ids.adminA, passwordHash,
@@ -187,6 +197,7 @@ async function seed(connection: Connection) {
       ids.inactive, passwordHash,
       ids.teacherA, passwordHash,
       ids.studentUserA, passwordHash,
+      ids.guardianUserA, passwordHash,
     ],
   );
   await connection.query(
@@ -197,7 +208,8 @@ async function seed(connection: Connection) {
        (UUID(), ?, ?, 'school_admin', 'Beta Admin', 1, 'approved'),
        (UUID(), ?, ?, 'school_admin', 'Inactive Admin', 1, 'approved'),
        (UUID(), ?, ?, 'teacher', 'Alpha Teacher', 1, 'approved'),
-       (UUID(), ?, ?, 'student', 'Alpha Student', 1, 'approved')`,
+       (UUID(), ?, ?, 'student', 'Alpha Student', 1, 'approved'),
+       (UUID(), ?, ?, 'guardian', 'Alpha Guardian', 1, 'approved')`,
     [
       ids.superUser,
       ids.adminA, ids.schoolA,
@@ -205,6 +217,7 @@ async function seed(connection: Connection) {
       ids.inactive, ids.schoolA,
       ids.teacherA, ids.schoolA,
       ids.studentUserA, ids.schoolA,
+      ids.guardianUserA, ids.schoolA,
     ],
   );
   await connection.query(
@@ -215,8 +228,9 @@ async function seed(connection: Connection) {
        (UUID(), ?, 'school_admin'),
        (UUID(), ?, 'school_admin'),
        (UUID(), ?, 'teacher'),
-       (UUID(), ?, 'student')`,
-    [ids.superUser, ids.adminA, ids.adminB, ids.inactive, ids.teacherA, ids.studentUserA],
+       (UUID(), ?, 'student'),
+       (UUID(), ?, 'guardian')`,
+    [ids.superUser, ids.adminA, ids.adminB, ids.inactive, ids.teacherA, ids.studentUserA, ids.guardianUserA],
   );
   await connection.query(
     `INSERT INTO students
@@ -233,6 +247,36 @@ async function seed(connection: Connection) {
       ids.studentB1, ids.schoolB,
     ],
   );
+  await connection.query('UPDATE students SET user_id = ? WHERE id = ?', [ids.studentUserA, ids.studentA1]);
+  await connection.query(
+    `INSERT INTO classes (id, school_id, name, class_level, section)
+     VALUES (?, ?, 'Class 6 A', 'class_6', 'A'), (?, ?, 'Class 6 B', 'class_6', 'A')`,
+    [ids.classA, ids.schoolA, ids.classB, ids.schoolB],
+  );
+  await connection.query(
+    `INSERT INTO academic_years (id, school_id, name, start_date, end_date, status)
+     VALUES
+       (?, ?, '2026', '2026-01-01', '2026-12-31', 'active'),
+       (?, ?, '2026', '2026-01-01', '2026-12-31', 'active')`,
+    [ids.yearA, ids.schoolA, ids.yearB, ids.schoolB],
+  );
+  await connection.query(
+    `INSERT INTO student_enrollments
+       (id, school_id, academic_year_id, student_id, class_id, roll_number, status)
+     VALUES
+       (?, ?, ?, ?, ?, '1', 'active'),
+       (?, ?, ?, ?, ?, '1', 'active')`,
+    [
+      ids.enrollmentA, ids.schoolA, ids.yearA, ids.studentA1, ids.classA,
+      ids.enrollmentB, ids.schoolB, ids.yearB, ids.studentB1, ids.classB,
+    ],
+  );
+  await connection.query(
+    `INSERT INTO guardian_relationships
+       (id, school_id, guardian_user_id, student_id, relationship_type, is_primary, has_portal_access)
+     VALUES (?, ?, ?, ?, 'mother', 1, 1)`,
+    [ids.guardianLinkA, ids.schoolA, ids.guardianUserA, ids.studentA1],
+  );
 }
 
 suite('Vercel API + MySQL integration', () => {
@@ -241,6 +285,7 @@ suite('Vercel API + MySQL integration', () => {
   let adminAToken: string;
   let teacherAToken: string;
   let studentAToken: string;
+  let guardianAToken: string;
   let phpServer: ChildProcess;
   let phpBase: string;
   let phpAdminToken: string;
@@ -297,10 +342,14 @@ suite('Vercel API + MySQL integration', () => {
     const studentLogin = await invoke(handler, 'POST', '/api/auth/login', {
       body: { email: 'student-a@example.test', password: loginPassword },
     });
+    const guardianLogin = await invoke(handler, 'POST', '/api/auth/login', {
+      body: { email: 'guardian-a@example.test', password: loginPassword },
+    });
     superToken = superLogin.body.data.session.access_token;
     adminAToken = adminLogin.body.data.session.access_token;
     teacherAToken = teacherLogin.body.data.session.access_token;
     studentAToken = studentLogin.body.data.session.access_token;
+    guardianAToken = guardianLogin.body.data.session.access_token;
 
     const phpLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
       body: { email: 'admin-a@example.test', password: loginPassword },
@@ -321,7 +370,7 @@ suite('Vercel API + MySQL integration', () => {
     expect(rows[0].version).toMatch(/^8\./);
     expect(rows[0].sql_mode).toContain('STRICT_TRANS_TABLES');
     const status = await migrationStatus(connection);
-    expect(status.applied).toHaveLength(2);
+    expect(status.applied).toHaveLength(3);
     expect(status.pending).toHaveLength(0);
   });
 
@@ -412,10 +461,10 @@ suite('Vercel API + MySQL integration', () => {
       multipleStatements: true,
     });
     try {
-      await legacy.query('CREATE TABLE users (id CHAR(36) PRIMARY KEY) ENGINE=InnoDB');
+      await legacy.query(readFileSync('backend/database/migrations/0001_baseline_schema.mysql.sql', 'utf8'));
       const status = await applyMigrations(legacy, { appliedBy: 'legacy-adoption-test' });
       expect(status.pending).toHaveLength(0);
-      expect(status.applied).toHaveLength(2);
+      expect(status.applied).toHaveLength(3);
       expect(status.applied[0].applied_by).toBe('legacy-adoption-test:baseline');
       const [rateTables] = await legacy.query<any[]>(
         "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'api_rate_limits'",
@@ -553,7 +602,73 @@ suite('Vercel API + MySQL integration', () => {
       token: studentAToken,
       query: { table: 'students' },
     });
-    expect(studentList.statusCode).toBe(403);
+    expect(studentList.statusCode).toBe(200);
+    expect(studentList.body.data.map((row: any) => row.id)).toEqual([ids.studentA1]);
+  });
+
+  it('scopes academic enrollment and guardian access in both backends', async () => {
+    const studentProfile = await invoke(tableRoute, 'GET', '/api/tables/students', {
+      token: studentAToken,
+      query: { table: 'students' },
+    });
+    expect(studentProfile.statusCode).toBe(200);
+    expect(studentProfile.body.data.map((row: any) => row.id)).toEqual([ids.studentA1]);
+
+    const guardianStudents = await invoke(tableRoute, 'GET', '/api/tables/students', {
+      token: guardianAToken,
+      query: { table: 'students' },
+    });
+    const guardianEnrollments = await invoke(tableRoute, 'GET', '/api/tables/student_enrollments', {
+      token: guardianAToken,
+      query: { table: 'student_enrollments' },
+    });
+    const guardianLinks = await invoke(tableRoute, 'GET', '/api/tables/guardian_relationships', {
+      token: guardianAToken,
+      query: { table: 'guardian_relationships' },
+    });
+
+    expect(guardianStudents.body.data.map((row: any) => row.id)).toEqual([ids.studentA1]);
+    expect(guardianEnrollments.body.data.map((row: any) => row.id)).toEqual([ids.enrollmentA]);
+    expect(guardianLinks.body.data.map((row: any) => row.id)).toEqual([ids.guardianLinkA]);
+
+    const crossSchoolEnrollment = await invoke(idRoute, 'GET', `/api/tables/student_enrollments/${ids.enrollmentB}`, {
+      token: guardianAToken,
+      query: { table: 'student_enrollments', id: ids.enrollmentB },
+    });
+    expect(crossSchoolEnrollment.statusCode).toBe(404);
+
+    const phpGuardianLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'guardian-a@example.test', password: loginPassword },
+    });
+    const phpEnrollments = await phpRequest(phpBase, 'GET', '/tables/student_enrollments', {
+      token: phpGuardianLogin.body.data.session.access_token,
+    });
+    expect(phpEnrollments.statusCode).toBe(200);
+    expect(phpEnrollments.body.data.map((row: any) => row.id)).toEqual([ids.enrollmentA]);
+  });
+
+  it('exposes academic foundation tables only within the authenticated school', async () => {
+    for (const table of ['academic_years', 'academic_terms', 'student_enrollments', 'guardian_relationships']) {
+      const result = await invoke(tableRoute, 'GET', `/api/tables/${table}`, {
+        token: adminAToken,
+        query: { table },
+      });
+      expect(result.statusCode).toBe(200);
+      expect(result.body.data.every((row: any) => row.school_id === ids.schoolA)).toBe(true);
+    }
+
+    const crossTenantEnrollment = await invoke(tableRoute, 'POST', '/api/tables/student_enrollments', {
+      token: adminAToken,
+      query: { table: 'student_enrollments' },
+      body: {
+        academic_year_id: ids.yearB,
+        student_id: ids.studentA2,
+        class_id: ids.classA,
+        status: 'active',
+      },
+    });
+    expect(crossTenantEnrollment.statusCode).toBe(500);
+    expect(crossTenantEnrollment.body.error.message).toBe('Internal server error');
   });
 
   it('logs in valid accounts and rejects invalid credentials', async () => {
