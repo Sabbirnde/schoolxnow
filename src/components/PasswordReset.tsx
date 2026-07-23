@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, GraduationCap } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 
@@ -56,7 +56,7 @@ const PasswordReset = () => {
 
         await phpApi.resetPassword(token, password);
       } else {
-        const { error } = await supabase.auth.updateUser({
+        const { error } = await apiClient.auth.updateUser({
           password: password
         });
 

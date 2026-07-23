@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import logo from "@/assets/logo.png";
@@ -171,7 +171,7 @@ const AdminAuth = () => {
         return;
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await apiClient.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password?mode=reset`,
       });
 

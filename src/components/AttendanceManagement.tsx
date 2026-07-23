@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,7 +19,7 @@ import { UserCheck, Users, Calendar as CalendarIcon, FileText, CheckSquare, Aler
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface Student {
   id: string;
@@ -143,7 +143,7 @@ export function AttendanceManagement() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('classes')
         .select('*')
         .eq('is_active', true);
@@ -156,7 +156,7 @@ export function AttendanceManagement() {
       // For teachers, only show classes they teach
       if (canFull('attendance.record')) {
         // Get teacher record
-        const { data: teacherData } = await supabase
+        const { data: teacherData } = await apiClient
           .from('teachers')
           .select('id')
           .eq('user_id', profile.user_id)
@@ -164,7 +164,7 @@ export function AttendanceManagement() {
 
         if (teacherData) {
           // Get classes from timetable
-          const { data: timetableData } = await supabase
+          const { data: timetableData } = await apiClient
             .from('timetable')
             .select('class_id')
             .eq('teacher_id', teacherData.id);
@@ -186,7 +186,7 @@ export function AttendanceManagement() {
       if (error) throw error;
       setClasses(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load attendance classes', error, {
+      const notice = handleApiError('Load attendance classes', error, {
         context: { schoolId: profile?.school_id, userId: profile?.user_id },
       });
       toast.error(notice.title, { description: notice.description });
@@ -213,7 +213,7 @@ export function AttendanceManagement() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('students')
         .select(`
           *,
@@ -230,7 +230,7 @@ export function AttendanceManagement() {
       if (error) throw error;
       setStudents(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load attendance students', error, {
+      const notice = handleApiError('Load attendance students', error, {
         context: { classId: selectedClass },
       });
       toast.error(notice.title, { description: notice.description });
@@ -260,7 +260,7 @@ export function AttendanceManagement() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('attendance')
         .select(`
           *,
@@ -277,7 +277,7 @@ export function AttendanceManagement() {
       if (error) throw error;
       setAttendance(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load attendance records', error, {
+      const notice = handleApiError('Load attendance records', error, {
         context: { classId: selectedClass, date: format(selectedDate, 'yyyy-MM-dd') },
       });
       toast.error(notice.title, { description: notice.description });
@@ -363,7 +363,7 @@ export function AttendanceManagement() {
       }
 
       // First, delete existing attendance for this date and class
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await apiClient
         .from('attendance')
         .delete()
         .eq('class_id', selectedClass)
@@ -381,7 +381,7 @@ export function AttendanceManagement() {
         remarks: a.remarks || null
       }));
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('attendance')
         .insert(attendanceData);
 
@@ -390,7 +390,7 @@ export function AttendanceManagement() {
       toast.success('Attendance saved successfully');
       loadAttendance();
     } catch (error) {
-      const notice = handleSupabaseError('Save attendance', error, {
+      const notice = handleApiError('Save attendance', error, {
         context: {
           schoolId: profile.school_id,
           classId: selectedClass,

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -60,7 +60,7 @@ export function TeacherApplicationsManager() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('teacher_applications')
         .select('*')
         .order('application_date', { ascending: false });
@@ -117,11 +117,11 @@ export function TeacherApplicationsManager() {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await apiClient.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Update application status
-      const { error: appError } = await supabase
+      const { error: appError } = await apiClient
         .from('teacher_applications')
         .update({
           status: 'approved',
@@ -133,7 +133,7 @@ export function TeacherApplicationsManager() {
       if (appError) throw appError;
 
       // Update user profile status and role
-      const { error: profileError } = await supabase
+      const { error: profileError } = await apiClient
         .from('user_profiles')
         .update({
           approval_status: 'approved',
@@ -206,11 +206,11 @@ export function TeacherApplicationsManager() {
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await apiClient.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       // Update application status
-      const { error: appError } = await supabase
+      const { error: appError } = await apiClient
         .from('teacher_applications')
         .update({
           status: 'rejected',
@@ -223,7 +223,7 @@ export function TeacherApplicationsManager() {
       if (appError) throw appError;
 
       // Update user profile status
-      const { error: profileError } = await supabase
+      const { error: profileError } = await apiClient
         .from('user_profiles')
         .update({
           approval_status: 'rejected',

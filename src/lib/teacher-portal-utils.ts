@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 
@@ -50,8 +50,8 @@ export async function generateTeacherMagicLink(
       };
     }
 
-    // Generate magic link via Supabase
-    const { data, error } = await supabase.auth.signInWithOtp({
+    // Generate magic link via Api
+    const { data, error } = await apiClient.auth.signInWithOtp({
       email: teacherEmail,
       options: {
         shouldCreateUser: false, // Only allow existing users
@@ -132,8 +132,8 @@ export async function sendTeacherPortalLink(email: string, teacherName: string):
       return false;
     }
 
-    // Note: Actual email sending would be handled by Supabase Edge Functions
-    // The OTP should already be sent by Supabase in generateTeacherMagicLink
+    // Note: Actual email sending would be handled by Api Edge Functions
+    // The OTP should already be sent by Api in generateTeacherMagicLink
     console.log('[TeacherPortal] Magic link ready for teacher:', email);
 
     return true;
@@ -155,12 +155,12 @@ export async function isTeacherSession(): Promise<boolean> {
       return user.role === 'teacher';
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await apiClient.auth.getUser();
     
     if (!user) return false;
 
     // Check user_roles table for teacher role
-    const { data, error } = await supabase
+    const { data, error } = await apiClient
       .from('user_roles')
       .select('role')
       .eq('user_id', user.id)
@@ -195,8 +195,8 @@ export async function recoverTeacherSession(): Promise<{ success: boolean; teach
     const storedToken = localStorage.getItem('teacher_session_token');
     
     if (!storedToken) {
-      // Try to restore from Supabase session
-      const { data: { session } } = await supabase.auth.getSession();
+      // Try to restore from Api session
+      const { data: { session } } = await apiClient.auth.getSession();
       
       if (session && (await isTeacherSession())) {
         return { success: true };
@@ -206,7 +206,7 @@ export async function recoverTeacherSession(): Promise<{ success: boolean; teach
     }
 
     // Token exists, verify it's still valid
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await apiClient.auth.getUser();
     
     if (user && (await isTeacherSession())) {
       return { success: true, teacherId: user.id };

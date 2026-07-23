@@ -1,5 +1,5 @@
 import { phpApi, type PhpApiUser } from './client';
-import type { RealtimeChannel, Session, User } from './compat-types';
+import type { RealtimeChannel, Session, User } from './api-types';
 
 type QueryResult<T = unknown> = {
   data: T | null;
@@ -46,7 +46,10 @@ function createChannel(topic: string): RealtimeChannel {
     topic,
     on: () => channel,
     subscribe: (callback) => {
-      callback?.('SUBSCRIBED');
+      callback?.(
+        'UNAVAILABLE',
+        new Error('Realtime channels are not supported by the MySQL API; use polling or explicit refresh.')
+      );
       return channel;
     },
     unsubscribe: async () => 'ok',
@@ -273,7 +276,7 @@ class PhpQueryBuilder {
   }
 }
 
-export const supabase = {
+export const apiClient = {
   from(table: string) {
     return new PhpQueryBuilder(table);
   },

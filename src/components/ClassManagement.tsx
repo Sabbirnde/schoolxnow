@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,8 +28,8 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
-import type { RealtimeChannel } from "@/integrations/php-api/compat-types";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import type { RealtimeChannel } from "@/integrations/php-api/api-types";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface Class {
   id: string;
@@ -143,7 +143,7 @@ export function ClassManagement() {
       }
 
       // Fetch classes with student count
-      const { data: classesData, error } = await supabase
+      const { data: classesData, error } = await apiClient
         .from('classes')
         .select(`
           *,
@@ -161,7 +161,7 @@ export function ClassManagement() {
 
       setClasses(classesWithCount);
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Load classes', error, {
+      const notice = handleApiError('Load classes', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -200,7 +200,7 @@ export function ClassManagement() {
     let updateChannel: RealtimeChannel | null = null;
 
     try {
-      insertChannel = supabase
+      insertChannel = apiClient
         .channel('classes_inserts')
         .on(
           'postgres_changes',
@@ -218,7 +218,7 @@ export function ClassManagement() {
         )
         .subscribe();
 
-      updateChannel = supabase
+      updateChannel = apiClient
         .channel('classes_updates')
         .on(
           'postgres_changes',
@@ -240,8 +240,8 @@ export function ClassManagement() {
     }
 
     return () => {
-      if (insertChannel) supabase.removeChannel(insertChannel);
-      if (updateChannel) supabase.removeChannel(updateChannel);
+      if (insertChannel) apiClient.removeChannel(insertChannel);
+      if (updateChannel) apiClient.removeChannel(updateChannel);
     };
   }, [profile?.school_id, fetchClasses, throttledFetch]);
 
@@ -297,7 +297,7 @@ export function ClassManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('classes')
         .insert({
           ...values,
@@ -321,7 +321,7 @@ export function ClassManagement() {
       form.reset();
       fetchClasses();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Create class', error, {
+      const notice = handleApiError('Create class', error, {
         context: {
           schoolId: profile.school_id,
           className: values.name,
@@ -385,7 +385,7 @@ export function ClassManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('classes')
         .update(values)
         .eq('id', editingClass.id);
@@ -411,7 +411,7 @@ export function ClassManagement() {
       form.reset();
       fetchClasses();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Update class', error, {
+      const notice = handleApiError('Update class', error, {
         context: {
           classId: editingClass.id,
           className: values.name,
@@ -473,7 +473,7 @@ export function ClassManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('classes')
         .update({ is_active: false })
         .eq('id', classId);
@@ -493,7 +493,7 @@ export function ClassManagement() {
 
       fetchClasses();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Deactivate class', error, {
+      const notice = handleApiError('Deactivate class', error, {
         context: { classId },
       });
       

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, ArrowRight, Shield, Users, BookOpen } from "lucide-react";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import logo from "@/assets/logo.png";
@@ -161,7 +161,7 @@ const Auth = () => {
         return;
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      const { error } = await apiClient.auth.resetPasswordForEmail(resetEmail, {
         redirectTo: `${window.location.origin}/reset-password?mode=reset`,
       });
 

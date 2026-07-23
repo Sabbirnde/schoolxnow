@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import type { Json } from "@/integrations/database/types";
@@ -176,7 +176,7 @@ export function EnhancedActivityFeed() {
       }
 
       // Fetch audit logs for school
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('audit_logs')
         .select(`
           id,

@@ -1,160 +1,307 @@
 # SchoolXNow Essential V2
 
-SchoolXNow is a school management system with a React/Vite frontend, a Vercel Node API, and MySQL database support.
+SchoolXNow is a school management system built with React and Vite. It uses a
+MySQL/MariaDB database through an HTTP API and can be deployed with either:
+
+- the Node.js serverless API included for Vercel; or
+- the PHP API included for shared hosting.
+
+The application does **not** use Supabase. The frontend uses a neutral
+`apiClient` that preserves a chainable query interface while sending requests
+to the SchoolXNow Node/PHP API.
+
+## Architecture
+
+```text
+React/Vite frontend
+        |
+        | VITE_API_URL (normally /api)
+        v
+SchoolXNow HTTP API
+   |                  |
+   | Vercel           | Shared hosting
+   v                  v
+Node serverless API   PHP API
+   |                  |
+   +--------+---------+
+            v
+      MySQL/MariaDB
+```
+
+| Layer | Implementation |
+| --- | --- |
+| Frontend | React 18, TypeScript, Vite, TanStack Query |
+| Frontend data client | `src/integrations/php-api/api-client.ts` |
+| Low-level HTTP client | `src/integrations/php-api/client.ts` |
+| Vercel backend | `api/[...path].ts` with `mysql2` |
+| Shared-hosting backend | `backend/public/index.php` with PHP PDO |
+| Database schema | `backend/database/schema.mysql.sql` |
+| Optional development seed | `backend/database/seed-super-admin.mysql.sql` |
+| Vercel file storage | Vercel Blob |
+| PHP file storage | Server filesystem under the configured upload directory |
+
+Both backend implementations expose the same `/api` contract for login,
+registration, profile management, password reset, bootstrap, table CRUD, and
+uploads.
+
+### Compatibility-mode environment value
+
+`VITE_BACKEND_PROVIDER=php` is a legacy name for the frontend's MySQL API
+compatibility path. Keep this value for **both PHP and Vercel Node deployments**.
+It does not mean that a Vercel deployment runs PHP.
+
+## Database
+
+SchoolXNow uses MySQL or MariaDB. Supabase/PostgreSQL migrations, credentials,
+Row Level Security, and realtime services are not required.
+
+Use a current MySQL/MariaDB release that supports InnoDB foreign keys, JSON
+columns, `utf8mb4`, and `DATETIME ... ON UPDATE CURRENT_TIMESTAMP`.
+
+The schema currently creates these 20 tables:
+
+| Area | Tables |
+| --- | --- |
+| Authentication | `users`, `password_reset_tokens`, `teacher_portal_tokens` |
+| Profiles and authorization | `user_profiles`, `user_roles` |
+| School structure | `schools`, `classes`, `subjects` |
+| People | `students`, `teachers`, `teacher_applications` |
+| Academics | `attendance`, `exams`, `exam_results`, `timetable` |
+| Operations | `audit_logs`, `system_settings`, `notifications`, `notification_settings`, `feedback_submissions` |
+
+The schema uses foreign keys and cascading rules to maintain relationships.
+IDs are stored as UUID-compatible strings. Database connections are made only
+by the backend; never expose database credentials in `VITE_*` variables.
+
+### Import the schema
+
+Using the included helper with an environment file:
+
+```bash
+npm run db:import:mysql -- --env .env.vercel.local
+```
+
+To also load development/demo accounts:
+
+```bash
+npm run db:import:mysql -- --env .env.vercel.local --seed
+```
+
+The importer accepts these optional arguments:
+
+```text
+--schema <sql-file>
+--seed-file <sql-file>
+```
+
+Alternatively, import `backend/database/schema.mysql.sql` using phpMyAdmin or
+the MySQL CLI. Import `backend/database/seed-super-admin.mysql.sql` only into a
+local or disposable test database.
+
+### Database configuration
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `DB_HOST` | Yes | MySQL server hostname |
+| `DB_PORT` | Yes | MySQL port, normally `3306` |
+| `DB_DATABASE` | Yes | Database name |
+| `DB_USERNAME` | Yes | Database user |
+| `DB_PASSWORD` | Yes | Database password |
+| `DB_CHARSET` | PHP | Defaults to `utf8mb4` |
+| `DB_CONNECTION_LIMIT` | Node | Pool size; defaults to `5` |
+| `DB_SSL` | Cloud DB | Set to `true` when the provider requires TLS |
+| `DB_SSL_REJECT_UNAUTHORIZED` | Node | Keep `true` unless the provider explicitly requires otherwise |
+
+The Node API also recognizes common `MYSQL_*` aliases, but the documented
+`DB_*` names are preferred.
+
+### Schema changes, backup, and production safety
+
+- Back up the production database before applying schema changes.
+- Review SQL migrations before importing them.
+- Do not import the demo seed into production.
+- Use a restricted application database user rather than a root account.
+- Restrict database network access to the backend where the hosting provider
+  supports allowlists or private networking.
+- Use SSL for database connections over public networks.
+- Store secrets only in hosting environment variables or ignored `.env` files.
+
+The current schema file uses `CREATE TABLE IF NOT EXISTS`; it establishes the
+baseline schema but is not a substitute for versioned migration scripts when
+altering an existing production database.
+
+## Authentication and authorization
+
+Authentication is implemented by the SchoolXNow API:
+
+- passwords are hashed server-side;
+- successful login returns a bearer token;
+- JWT lifetime is controlled by `JWT_TTL_SECONDS`;
+- the first super admin is created through the protected `/bootstrap` flow;
+- roles and school membership are stored in `user_roles` and `user_profiles`;
+- backend endpoints must enforce role and school boundaries.
+
+MySQL does not provide Supabase-style Row Level Security. Authorization must
+remain enforced in the Node and PHP APIs. Frontend visibility checks are for
+user experience only and must not be treated as security controls.
+
+Magic-link/OTP verification is not currently available in the MySQL API mode.
+Password reset and teacher portal token flows are provided by the API.
+
+## Realtime and refresh behavior
+
+Native database realtime subscriptions are not supported. The compatibility
+channel interface reports realtime as unavailable instead of pretending that a
+connection exists.
+
+Screens that need fresh data should use:
+
+- TanStack Query refetching;
+- polling where already configured; or
+- explicit refresh after a create, update, or delete operation.
+
+Presence and broadcast channels are also unavailable. Implement WebSockets,
+Server-Sent Events, or a managed realtime provider separately if true push
+updates become a requirement.
 
 ## Requirements
 
 - Node.js 20+
 - npm
-- MySQL/MariaDB
-- Vercel Blob storage for uploads when deploying the API to Vercel
+- MySQL or MariaDB
+- PHP with PDO MySQL for shared-hosting deployments
+- Vercel Blob storage for uploads on Vercel
 
-## Frontend Setup
+## Local frontend setup
 
-Copy `.env.example` to `.env` and use PHP backend mode:
+Copy `.env.example` to `.env`:
 
 ```env
 VITE_BACKEND_PROVIDER=php
 VITE_API_URL=/api
+VITE_ERROR_TELEMETRY_ENDPOINT=
+VITE_APP_VERSION=0.0.1
 ```
 
-Install dependencies:
+Install dependencies and start Vite:
 
 ```bash
 npm install
-```
-
-Run locally:
-
-```bash
 npm run dev
 ```
 
-Build production files:
+The development server runs on port `8080`. `VITE_API_URL` must point to a
+running Node/PHP API. A relative `/api` value is recommended when frontend and
+backend share a domain.
+
+Build the production frontend:
 
 ```bash
 npm run build
 ```
 
-## Vercel Full Deployment
+## Vercel deployment: Node API + MySQL
 
-This repo includes a Vercel serverless API at `api/[...path].ts`. It replaces the PHP runtime for Vercel deployments while keeping the same frontend API path: `/api`.
+The catch-all serverless function at `api/[...path].ts` serves the backend
+without PHP. Vercel routes `/api/*` to this function and serves the Vite build
+from `dist`.
 
-1. Create an external MySQL database.
+1. Create an externally reachable MySQL/MariaDB database.
 2. Import `backend/database/schema.mysql.sql`.
-3. Optionally import `backend/database/seed-super-admin.mysql.sql` for demo logins.
-4. Create a Vercel Blob store.
-5. Add the variables from `.env.vercel.example` to Vercel Project Settings.
-6. Deploy with Vercel.
+3. Create a Vercel Blob store.
+4. Copy `.env.vercel.example` to `.env.vercel.local`.
+5. Fill in real database, application, and Blob values.
+6. Run the deployment check.
+7. Push the environment variables and deploy.
 
-Required Vercel variables:
+Required/recommended configuration:
 
 ```env
+# Frontend
 VITE_BACKEND_PROVIDER=php
 VITE_API_URL=/api
+VITE_ERROR_TELEMETRY_ENDPOINT=
+VITE_APP_VERSION=0.0.1
 
-DB_HOST=your-mysql-host
+# Node API
+APP_DEBUG=false
+DB_HOST=your-external-mysql-host
 DB_PORT=3306
 DB_DATABASE=your_database_name
 DB_USERNAME=your_database_user
 DB_PASSWORD=your_database_password
+DB_CONNECTION_LIMIT=5
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=true
 
-JWT_SECRET=generated_value
-SUPER_ADMIN_SECRET=generated_value
+JWT_SECRET=replace_with_a_long_random_secret_at_least_32_chars
+JWT_TTL_SECONDS=86400
+SUPER_ADMIN_SECRET=replace_with_a_long_random_bootstrap_secret
+
 CORS_ORIGIN=https://your-vercel-domain.vercel.app
 FRONTEND_URL=https://your-vercel-domain.vercel.app
+UPLOAD_MAX_BYTES=5242880
 BLOB_READ_WRITE_TOKEN=vercel_blob_rw_token
 ```
 
-Local helper flow:
+Local deployment helper flow:
 
 ```bash
-cp .env.vercel.example .env.vercel.local
 npm run check:vercel-deploy -- --env .env.vercel.local
-npm run db:import:mysql -- --env .env.vercel.local --seed
+npm run db:import:mysql -- --env .env.vercel.local
 vercel login
 npm run vercel:env:push -- --env .env.vercel.local --targets production
 vercel deploy --prod
 ```
 
-Notes:
+Important:
 
-- `.env.vercel.local` is ignored by git. Keep real DB passwords and Blob tokens there only.
-- `DB_HOST` must be an external MySQL host. `localhost` and `127.0.0.1` will not work from Vercel.
-- `npm run db:import:mysql -- --seed` imports the schema and demo login accounts.
-- `npm run vercel:env:push` requires the Vercel CLI to be logged in.
+- `.env.vercel.local` is ignored by Git; do not commit it.
+- Vercel cannot connect to a MySQL server at `localhost` or `127.0.0.1`.
+- Set `DB_SSL=true` when required by the database provider.
+- `BLOB_READ_WRITE_TOKEN` is required for `/api/uploads/*`.
+- `npm run vercel:env:push` requires an authenticated Vercel CLI.
 
-Health check:
+Health endpoint:
 
 ```text
 https://your-vercel-domain.vercel.app/api/health
 ```
 
-## PHP Backend Setup
+## Shared-hosting deployment: PHP API + MySQL
 
-The old PHP backend is still kept for shared-hosting deployments.
-
-Create backend secrets:
+Generate secure placeholder values:
 
 ```bash
 npm run generate:php-secrets
 ```
 
-Edit `backend/.env` with real hosting values:
+Create `backend/.env` from `backend/.env.example` and fill in real values:
 
 ```env
+APP_DEBUG=false
+
 DB_HOST=localhost
 DB_PORT=3306
 DB_DATABASE=your_database_name
 DB_USERNAME=your_database_user
 DB_PASSWORD=your_database_password
+DB_CHARSET=utf8mb4
 
-JWT_SECRET=generated_value
-SUPER_ADMIN_SECRET=generated_value
+JWT_SECRET=replace_with_a_long_random_secret_at_least_32_chars
+JWT_TTL_SECONDS=86400
+SUPER_ADMIN_SECRET=replace_with_a_long_random_bootstrap_secret
 
 CORS_ORIGIN=https://your-domain.com
 FRONTEND_URL=https://your-domain.com
 PUBLIC_API_URL=https://your-domain.com/api
 API_BASE_PATH=/api
+
+UPLOAD_MAX_BYTES=5242880
+# UPLOAD_STORAGE_DIR=/home/username/private-schoolxnow-uploads
 ```
 
-Import the database schema:
-
-```text
-backend/database/schema.mysql.sql
-```
-
-Import demo login accounts for local testing:
-
-```text
-backend/database/seed-super-admin.mysql.sql
-```
-
-## Demo Login Accounts
-
-Use these accounts only for local development and test databases.
-
-Super admin:
-
-```text
-Email: admin@schoolxnow.local
-Password: Admin@12345
-Role: super_admin
-```
-
-School admin:
-
-```text
-School: Demo School
-Email: schooladmin@schoolxnow.local
-Password: SchoolAdmin@12345
-Role: school_admin
-Status: approved
-```
-
-## Shared Hosting Deployment
-
-Prepare upload files:
+Prepare the release:
 
 ```bash
 npm run prepare:shared-hosting
@@ -162,36 +309,110 @@ npm run prepare:shared-hosting
 
 Upload:
 
-- `release/shared-hosting/public_html/*` to hosting `public_html`
-- `release/shared-hosting/backend` beside `public_html` when possible
+- `release/shared-hosting/public_html/*` into the hosting `public_html`;
+- `release/shared-hosting/backend` beside `public_html` when the host permits.
 
 On the server:
 
 1. Copy `backend/.env.server-template` to `backend/.env`.
-2. Fill real DB/domain values.
+2. Add the real database, domain, and secret values.
 3. Import `backend/database/schema.mysql.sql`.
-4. Visit `https://your-domain.com/api/health`.
-5. Visit `https://your-domain.com/bootstrap`.
+4. Confirm `https://your-domain.com/api/health`.
+5. Open `https://your-domain.com/bootstrap`.
 6. Create the first super admin using `SUPER_ADMIN_SECRET`.
 
-## Verification
+For safer uploads, configure `UPLOAD_STORAGE_DIR` outside the public web root
+when the hosting layout supports it. The upload controller enforces
+`UPLOAD_MAX_BYTES`.
 
-Run checks before deployment:
+## API overview
+
+Both backends provide equivalent route groups:
+
+| Route group | Purpose |
+| --- | --- |
+| `GET /api/health` | API service health |
+| `/api/auth/*` | Login, registration, current user, password and portal-token flows |
+| `/api/bootstrap/*` | First-super-admin status and creation |
+| `/api/public/schools` | Public school lookup |
+| `/api/tables/{table}` | Authorized table list/create operations |
+| `/api/tables/{table}/count` | Authorized count queries |
+| `/api/tables/{table}/{id}` | Authorized read/update/delete operations |
+| `/api/uploads/{bucket}` | Authenticated file upload |
+
+Allowed upload buckets are `avatars`, `student-photos`, and `documents`.
+
+## Demo accounts
+
+Use these accounts only after importing the optional seed into a local or test
+database.
+
+| Role | School | Email | Password |
+| --- | --- | --- | --- |
+| Super admin | — | `admin@schoolxnow.local` | `Admin@12345` |
+| School admin | Demo School | `schooladmin@schoolxnow.local` | `SchoolAdmin@12345` |
+
+Never deploy these credentials to production.
+
+## Validation and useful commands
 
 ```bash
+# TypeScript
 npm run type-check
+
+# Tests
 npm test -- --run
+
+# Production frontend
 npm run build
+
+# PHP syntax through Docker
 npm run lint:php
+
+# Deployment checks
 npm run check:php-deploy
+npm run check:vercel-deploy -- --env .env.vercel.local
+
+# Dependency audit
 npm audit --omit=dev
 ```
 
-`npm run check:php-deploy` will fail until real server DB and domain values are added to `backend/.env`.
+`check:php-deploy` expects built release files and real values in `.env` and
+`backend/.env`. Placeholder credentials intentionally cause the check to fail.
 
-## GitHub
+## Troubleshooting
 
-Current repository:
+### The frontend reports `Missing VITE_API_URL`
+
+Create `.env`, set `VITE_API_URL=/api`, and restart the Vite/build process.
+Vite environment variables are embedded at build time.
+
+### Vercel cannot connect to MySQL
+
+Use an external database hostname, verify provider firewall rules, and enable
+`DB_SSL` if required. Confirm that the database user can connect from Vercel.
+
+### API returns unauthorized
+
+Log in again and verify `JWT_SECRET` is stable across deployments. Changing the
+secret invalidates existing tokens.
+
+### Bootstrap fails
+
+Confirm the schema is imported, `SUPER_ADMIN_SECRET` matches the server value,
+and a super admin has not already been created.
+
+### Uploads fail
+
+On Vercel, verify `BLOB_READ_WRITE_TOKEN`. On PHP hosting, verify directory
+permissions, `UPLOAD_STORAGE_DIR`, PHP upload limits, and `UPLOAD_MAX_BYTES`.
+
+### Data does not update automatically
+
+Realtime subscriptions are unavailable. Refresh the query, use configured
+polling, or reload the page.
+
+## Repository
 
 ```text
 https://github.com/Sabbirnde/schoolxnow

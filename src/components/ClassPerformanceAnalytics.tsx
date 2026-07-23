@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { 
@@ -294,14 +294,14 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       // Get teacher's classes if teacher role
       let teacherClassIds: string[] = [];
       if (!canFull('analytics.view')) {
-        const { data: teacherData } = await supabase
+        const { data: teacherData } = await apiClient
           .from('teachers')
           .select('id')
           .eq('user_id', profile.user_id)
           .single();
 
         if (teacherData) {
-          const { data: timetableData } = await supabase
+          const { data: timetableData } = await apiClient
             .from('timetable')
             .select('class_id')
             .eq('teacher_id', teacherData.id);
@@ -323,7 +323,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       }
 
       // Fetch students
-      let studentsQuery = supabase
+      let studentsQuery = apiClient
         .from('students')
         .select('id, class_id, status')
         .eq('school_id', profile.school_id);
@@ -342,7 +342,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       const startDate = dateRange?.start || thirtyDaysAgo;
       const endDate = dateRange?.end || new Date();
 
-      let attendanceQuery = supabase
+      let attendanceQuery = apiClient
         .from('attendance')
         .select('*')
         .eq('school_id', profile.school_id)
@@ -393,7 +393,7 @@ export function ClassPerformanceAnalytics({ classId, subjectId, dateRange }: Cla
       }
 
       // Fetch exam results for grades
-      let examResultsQuery = supabase
+      let examResultsQuery = apiClient
         .from('exam_results')
         .select('obtained_marks, total_marks, student_id')
         .eq('school_id', profile.school_id);

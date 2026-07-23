@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { RealtimeChannel } from '@/integrations/php-api/compat-types';
+import type { RealtimeChannel } from '@/integrations/php-api/api-types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +26,7 @@ import {
   Database,
   Shield
 } from 'lucide-react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { useToast } from '@/hooks/use-toast';
 import { usePollingRefresh } from '@/hooks/usePollingRefresh';
@@ -34,7 +34,7 @@ import {
   useSuperAdminDashboardData,
   type SuperAdminSchool as School,
 } from '@/hooks/useSuperAdminDashboardData';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 import SchoolAdminManagement from '@/components/SchoolAdminManagement';
 import SchoolManagement from '@/components/SchoolManagement';
 import SystemSettings from '@/components/SystemSettings';
@@ -80,7 +80,7 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     if (!dashboardError) return;
 
-    const notice = handleSupabaseError('Load super admin dashboard', dashboardError, {
+    const notice = handleApiError('Load super admin dashboard', dashboardError, {
       log: false,
     });
 
@@ -107,7 +107,7 @@ const SuperAdminDashboard = () => {
     };
 
     try {
-      schoolsChannel = supabase
+      schoolsChannel = apiClient
         .channel('schools_changes')
         .on('postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'schools' },
@@ -125,7 +125,7 @@ const SuperAdminDashboard = () => {
         )
         .subscribe();
 
-      studentsChannel = supabase
+      studentsChannel = apiClient
         .channel('students_changes')
         .on('postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'students' },
@@ -143,7 +143,7 @@ const SuperAdminDashboard = () => {
         )
         .subscribe();
     } catch (error) {
-      const notice = handleSupabaseError('Subscribe to super admin dashboard updates', error);
+      const notice = handleApiError('Subscribe to super admin dashboard updates', error);
       toast({
         title: notice.title,
         description: notice.description,
@@ -152,8 +152,8 @@ const SuperAdminDashboard = () => {
     }
 
     return () => {
-      if (schoolsChannel) supabase.removeChannel(schoolsChannel);
-      if (studentsChannel) supabase.removeChannel(studentsChannel);
+      if (schoolsChannel) apiClient.removeChannel(schoolsChannel);
+      if (studentsChannel) apiClient.removeChannel(studentsChannel);
     };
   }, [refetch, toast]);
 
@@ -185,7 +185,7 @@ const SuperAdminDashboard = () => {
 
   const handleCreateSchool = async () => {
     try {
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .insert([{
           name: formData.name,
@@ -211,7 +211,7 @@ const SuperAdminDashboard = () => {
       setIsAddSchoolOpen(false);
       resetForm();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Create school from super admin dashboard', error);
+      const notice = handleApiError('Create school from super admin dashboard', error);
       toast({
         title: notice.title,
         description: notice.description,
@@ -224,7 +224,7 @@ const SuperAdminDashboard = () => {
     if (!schoolToDelete) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .delete()
         .eq('id', schoolToDelete.id);
@@ -240,7 +240,7 @@ const SuperAdminDashboard = () => {
       setIsDeleteDialogOpen(false);
       setSchoolToDelete(null);
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Delete school from super admin dashboard', error);
+      const notice = handleApiError('Delete school from super admin dashboard', error);
       toast({
         title: notice.title,
         description: notice.description,

@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -107,7 +107,7 @@ export function ClassAssignment() {
       }
 
       // Fetch students with their class info
-      const { data: studentsData, error: studentsError } = await supabase
+      const { data: studentsData, error: studentsError } = await apiClient
         .from('students')
         .select(`
           *,
@@ -120,7 +120,7 @@ export function ClassAssignment() {
       if (studentsError) throw studentsError;
 
       // Fetch classes with student counts
-      const { data: classesData, error: classesError } = await supabase
+      const { data: classesData, error: classesError } = await apiClient
         .from('classes')
         .select('*')
         .eq('school_id', profile.school_id)
@@ -132,7 +132,7 @@ export function ClassAssignment() {
       // Count students per class
       const classesWithCounts = await Promise.all(
         (classesData || []).map(async (classItem) => {
-          const { count } = await supabase
+          const { count } = await apiClient
             .from('students')
             .select('id', { count: 'exact', head: true })
             .eq('class_id', classItem.id)
@@ -264,7 +264,7 @@ export function ClassAssignment() {
         return;
       }
       
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('students')
         .update({ class_id: selectedTargetClass })
         .in('id', studentIds);
@@ -329,7 +329,7 @@ export function ClassAssignment() {
         return;
       }
       
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('students')
         .update({ 
           status: 'graduated',

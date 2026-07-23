@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useToast } from "@/hooks/use-toast";
@@ -66,7 +66,7 @@ export function TeacherRegistrationForm({ onSuccess }: TeacherRegistrationFormPr
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('schools_public_view')
         .select('id, name, name_bangla, school_type')
         .order('name');
@@ -127,13 +127,13 @@ export function TeacherRegistrationForm({ onSuccess }: TeacherRegistrationFormPr
         return;
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await apiClient.auth.getUser();
       
       if (!user) {
         throw new Error('User not authenticated');
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('teacher_applications')
         .insert({
           user_id: user.id,

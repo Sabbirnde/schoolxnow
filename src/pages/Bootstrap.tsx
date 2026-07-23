@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield, AlertTriangle, CheckCircle, Lock, Info } from "lucide-react";
 import { PasswordStrengthInput, validatePassword } from "@/components/PasswordStrengthInput";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -37,7 +37,7 @@ const Bootstrap = () => {
           return;
         }
 
-        const { data, error } = await supabase.rpc('super_admin_exists');
+        const { data, error } = await apiClient.rpc('super_admin_exists');
 
         if (error) {
           console.error('Error checking super admins:', error);
@@ -149,7 +149,7 @@ const Bootstrap = () => {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-super-admin', {
+      const { data, error } = await apiClient.functions.invoke('create-super-admin', {
         body: {
           email: formData.email,
           password: formData.password,

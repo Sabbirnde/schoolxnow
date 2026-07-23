@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   categorizeError,
   getFriendlyErrorMessage,
-  handleSupabaseError,
-  SupabaseErrorType,
+  handleApiError,
+  ApiErrorType,
 } from './api-error-handler';
 
 describe('api-error-handler', () => {
@@ -14,7 +14,7 @@ describe('api-error-handler', () => {
       details: 'Key (student_id)=(S-001) already exists.',
     };
 
-    expect(categorizeError(error)).toBe(SupabaseErrorType.DATABASE);
+    expect(categorizeError(error)).toBe(ApiErrorType.DATABASE);
     expect(getFriendlyErrorMessage(error, 'Create student')).toBe(
       'This record already exists. Please use a different value.'
     );
@@ -26,9 +26,9 @@ describe('api-error-handler', () => {
       message: 'JSON object requested, multiple (or no) rows returned',
     };
 
-    const notice = handleSupabaseError('Load profile', error, { log: false });
+    const notice = handleApiError('Load profile', error, { log: false });
 
-    expect(notice.type).toBe(SupabaseErrorType.NOT_FOUND);
+    expect(notice.type).toBe(ApiErrorType.NOT_FOUND);
     expect(notice.title).toBe('Record not found');
   });
 
@@ -38,9 +38,9 @@ describe('api-error-handler', () => {
       message: 'new row violates row-level security policy',
     };
 
-    const notice = handleSupabaseError('Create class', error, { log: false });
+    const notice = handleApiError('Create class', error, { log: false });
 
-    expect(notice.type).toBe(SupabaseErrorType.AUTHORIZATION);
+    expect(notice.type).toBe(ApiErrorType.AUTHORIZATION);
     expect(notice.description).toContain('do not have permission');
   });
 });

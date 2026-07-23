@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import type { Database } from "@/integrations/database/types";
@@ -24,7 +24,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface Exam {
   id: string;
@@ -140,7 +140,7 @@ export function ExamManagement() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('exams')
         .select('*');
 
@@ -154,7 +154,7 @@ export function ExamManagement() {
       if (error) throw error;
       setExams(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load exams', error, {
+      const notice = handleApiError('Load exams', error, {
         context: { schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });
@@ -175,7 +175,7 @@ export function ExamManagement() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('subjects')
         .select('*')
         .eq('is_active', true);
@@ -190,7 +190,7 @@ export function ExamManagement() {
       if (error) throw error;
       setSubjects(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load exam subjects', error, {
+      const notice = handleApiError('Load exam subjects', error, {
         context: { schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });
@@ -229,7 +229,7 @@ export function ExamManagement() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('students')
         .select(`
           *,
@@ -255,7 +255,7 @@ export function ExamManagement() {
       
       setStudents(filteredStudents);
     } catch (error) {
-      const notice = handleSupabaseError('Load exam students', error, {
+      const notice = handleApiError('Load exam students', error, {
         context: { schoolId: profile?.school_id, examId: selectedExam },
       });
       toast.error(notice.title, { description: notice.description });
@@ -303,7 +303,7 @@ export function ExamManagement() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('exam_results')
         .select(`
           *,
@@ -323,7 +323,7 @@ export function ExamManagement() {
       if (error) throw error;
       setExamResults((data || []) as unknown as ExamResult[]);
     } catch (error) {
-      const notice = handleSupabaseError('Load exam results', error, {
+      const notice = handleApiError('Load exam results', error, {
         context: { examId: selectedExam, subjectId: selectedSubject },
       });
       toast.error(notice.title, { description: notice.description });
@@ -382,7 +382,7 @@ export function ExamManagement() {
       if (isPhpBackend) {
         await phpApi.table<Exam>('exams').create(newExam as Partial<Exam>);
       } else {
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('exams')
         .insert(newExam);
 
@@ -402,7 +402,7 @@ export function ExamManagement() {
       examForm.reset();
       loadExams();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Create exam', error, {
+      const notice = handleApiError('Create exam', error, {
         context: {
           schoolId: profile?.school_id,
           examName: data.name,
@@ -462,7 +462,7 @@ export function ExamManagement() {
           });
         } else {
         // Update existing result
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('exam_results')
           .update({
             obtained_marks: obtainedMarks,
@@ -503,7 +503,7 @@ export function ExamManagement() {
           newResultId = data.id || 'new';
         } else {
         // Create new result
-        const { data, error } = await supabase
+        const { data, error } = await apiClient
           .from('exam_results')
           .insert(newResult)
           .select();
@@ -526,7 +526,7 @@ export function ExamManagement() {
       toast.success('Result updated successfully');
       loadExamResults();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Update exam result', error, {
+      const notice = handleApiError('Update exam result', error, {
         context: {
           schoolId: profile?.school_id,
           examId: selectedExam,

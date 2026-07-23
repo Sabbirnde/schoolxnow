@@ -5,7 +5,7 @@
 
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 
 // ============================================================================
 // Type Definitions
@@ -347,13 +347,13 @@ export async function fetchDashboardMetrics(schoolId: string): Promise<Dashboard
     // Fetch all necessary data in parallel
     const [studentsResp, teachersResp, classesResp, subjectsResp, attendanceResp, marksResp, examsResp] = 
       await Promise.all([
-        supabase.from('students').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
-        supabase.from('teachers').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
-        supabase.from('classes').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
-        supabase.from('subjects').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
-        supabase.from('attendance').select('is_present') as unknown as Promise<QueryResponse<AttendanceRow>>,
-        supabase.from('exam_results').select('obtained_marks, total_marks') as unknown as Promise<QueryResponse<MarkRow>>,
-        supabase.from('exams').select('id').eq('school_id', schoolId).eq('exam_status', 'active') as unknown as Promise<QueryResponse<IdRow>>,
+        apiClient.from('students').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
+        apiClient.from('teachers').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
+        apiClient.from('classes').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
+        apiClient.from('subjects').select('id').eq('school_id', schoolId) as unknown as Promise<QueryResponse<IdRow>>,
+        apiClient.from('attendance').select('is_present') as unknown as Promise<QueryResponse<AttendanceRow>>,
+        apiClient.from('exam_results').select('obtained_marks, total_marks') as unknown as Promise<QueryResponse<MarkRow>>,
+        apiClient.from('exams').select('id').eq('school_id', schoolId).eq('exam_status', 'active') as unknown as Promise<QueryResponse<IdRow>>,
       ]);
 
     const totalStudents = studentsResp.data?.length || 0;
@@ -517,7 +517,7 @@ export async function fetchClassReport(classId: string): Promise<ClassReport> {
     }
 
     // Fetch class details
-    const { data: classData, error: classError } = await supabase
+    const { data: classData, error: classError } = await apiClient
       .from('classes')
       .select('*')
       .eq('id', classId)
@@ -526,7 +526,7 @@ export async function fetchClassReport(classId: string): Promise<ClassReport> {
     if (classError) throw classError;
 
     // Fetch students in class
-    const { data: students, error: studentsError } = await supabase
+    const { data: students, error: studentsError } = await apiClient
       .from('students')
       .select('id, full_name, status')
       .eq('class_id', classId);
@@ -537,19 +537,19 @@ export async function fetchClassReport(classId: string): Promise<ClassReport> {
     const studentIds = activeStudents.map(s => s.id);
 
     // Fetch attendance data
-    const { data: attendanceData } = await supabase
+    const { data: attendanceData } = await apiClient
       .from('attendance')
       .select('student_id, is_present')
       .in('student_id', studentIds.length > 0 ? studentIds : ['']);
 
     // Fetch marks data
-    const { data: marksData } = await supabase
+    const { data: marksData } = await apiClient
       .from('exam_results')
       .select('student_id, obtained_marks, total_marks, subject_id')
       .in('student_id', studentIds.length > 0 ? studentIds : ['']);
 
     // Fetch subjects
-    const subjectsResp = await supabase.from('subjects')
+    const subjectsResp = await apiClient.from('subjects')
       .select('id, name')
       .eq('class_id', classId) as unknown as QueryResponse<SubjectLookupRow>;
     const { data: subjects } = subjectsResp;
@@ -688,7 +688,7 @@ export async function fetchSubjectReport(subjectId: string, classId: string): Pr
       };
     }
 
-    const { data: subject, error: subjectError } = await supabase
+    const { data: subject, error: subjectError } = await apiClient
       .from('subjects')
       .select('*')
       .eq('id', subjectId)
@@ -697,7 +697,7 @@ export async function fetchSubjectReport(subjectId: string, classId: string): Pr
     if (subjectError) throw subjectError;
 
     // Fetch exam results for this subject
-    const { data: results } = await supabase
+    const { data: results } = await apiClient
       .from('exam_results')
       .select('obtained_marks, total_marks')
       .eq('subject_id', subjectId);
@@ -802,7 +802,7 @@ export async function fetchStudentDetailedReport(studentId: string): Promise<Stu
     }
 
     // Fetch student details
-    const { data: student, error: studentError } = await supabase
+    const { data: student, error: studentError } = await apiClient
       .from('students')
       .select('*, classes(name, section)')
       .eq('id', studentId)
@@ -811,7 +811,7 @@ export async function fetchStudentDetailedReport(studentId: string): Promise<Stu
     if (studentError) throw studentError;
 
     // Fetch attendance
-    const { data: attendance } = await supabase
+    const { data: attendance } = await apiClient
       .from('attendance')
       .select('is_present')
       .eq('student_id', studentId);
@@ -821,13 +821,13 @@ export async function fetchStudentDetailedReport(studentId: string): Promise<Stu
     const attendancePercentage = totalAttendance > 0 ? (presentDays / totalAttendance) * 100 : 0;
 
     // Fetch exam marks
-    const { data: exams } = await supabase
+    const { data: exams } = await apiClient
       .from('exams')
       .select('id, name');
 
     const examMarks = await Promise.all(
       (exams || []).map(async exam => {
-        const { data: results } = await supabase
+        const { data: results } = await apiClient
           .from('exam_results')
           .select('subject_id, obtained_marks, total_marks')
           .eq('exam_id', exam.id)
@@ -837,7 +837,7 @@ export async function fetchStudentDetailedReport(studentId: string): Promise<Stu
         const subjectIds = [...new Set(results?.map(r => r.subject_id) || [])];
         let subjects: SubjectLookupRow[] = [];
         if (subjectIds.length > 0) {
-          const { data: subjectData } = await supabase
+          const { data: subjectData } = await apiClient
             .from('subjects')
             .select('id, name')
             .in('id', subjectIds);
@@ -939,7 +939,7 @@ export async function fetchAttendanceTrend(
         .sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    let query = supabase
+    let query = apiClient
       .from('attendance')
       .select('date, is_present')
       .gte('date', startDate.toISOString());
@@ -1046,7 +1046,7 @@ export async function fetchTeacherMetrics(schoolId: string): Promise<TeacherMetr
     }
 
     // Fetch all teachers in school
-    const { data: teachers, error: teachersError } = await supabase
+    const { data: teachers, error: teachersError } = await apiClient
       .from('teachers')
       .select('id, full_name, email')
       .eq('school_id', schoolId);
@@ -1058,7 +1058,7 @@ export async function fetchTeacherMetrics(schoolId: string): Promise<TeacherMetr
     const teacherMetrics = await Promise.all(
       teachers.map(async teacher => {
         // Get assigned classes
-        const { data: classAssignments } = await supabase
+        const { data: classAssignments } = await apiClient
           .from('timetable')
           .select('class_id, subject_id, classes(id, name)')
           .eq('teacher_id', teacher.id);
@@ -1067,12 +1067,12 @@ export async function fetchTeacherMetrics(schoolId: string): Promise<TeacherMetr
         const uniqueSubjects = new Set(classAssignments?.map(a => a.subject_id) || []);
 
         // Get all students in teacher's classes
-        const { data: classIds } = await supabase
+        const { data: classIds } = await apiClient
           .from('classes')
           .select('id')
           .eq('school_id', schoolId);
 
-        const { data: students } = await supabase
+        const { data: students } = await apiClient
           .from('students')
           .select('id')
           .in('class_id', classIds?.map(c => c.id) || [])
@@ -1081,13 +1081,13 @@ export async function fetchTeacherMetrics(schoolId: string): Promise<TeacherMetr
         const studentIds = students?.map(s => s.id) || [];
 
         // Get marks for teacher's students
-        const { data: marks } = await supabase
+        const { data: marks } = await apiClient
           .from('exam_results')
           .select('obtained_marks, total_marks')
           .in('student_id', studentIds.length > 0 ? studentIds : ['']);
 
         // Get attendance
-        const { data: attendance } = await supabase
+        const { data: attendance } = await apiClient
           .from('attendance')
           .select('is_present')
           .in('student_id', studentIds.length > 0 ? studentIds : ['']);
@@ -1211,21 +1211,21 @@ export async function fetchTeacherClassReport(teacherId: string, classId: string
     }
 
     // Get teacher info
-    const { data: teacher } = await supabase
+    const { data: teacher } = await apiClient
       .from('teachers')
       .select('id, full_name')
       .eq('id', teacherId)
       .single();
 
     // Get class info
-    const { data: classData } = await supabase
+    const { data: classData } = await apiClient
       .from('classes')
       .select('id, name, section')
       .eq('id', classId)
       .single();
 
     // Get subjects taught by this teacher in this class
-    const { data: assignments } = await supabase
+    const { data: assignments } = await apiClient
       .from('timetable')
       .select('subject_id')
       .eq('teacher_id', teacherId)
@@ -1235,7 +1235,7 @@ export async function fetchTeacherClassReport(teacherId: string, classId: string
     const subjectIds = [...new Set(assignments?.map(a => a.subject_id) || [])];
     const subjectMap = new Map<string, string>();
     if (subjectIds.length > 0) {
-      const { data: subjects } = await supabase
+      const { data: subjects } = await apiClient
         .from('subjects')
         .select('id, name')
         .in('id', subjectIds);
@@ -1245,7 +1245,7 @@ export async function fetchTeacherClassReport(teacherId: string, classId: string
     const subjectsTaught = assignments?.map(a => subjectMap.get(a.subject_id) || 'Unknown') || [];
 
     // Get students in class
-    const { data: students } = await supabase
+    const { data: students } = await apiClient
       .from('students')
       .select('id, full_name')
       .eq('class_id', classId)
@@ -1254,7 +1254,7 @@ export async function fetchTeacherClassReport(teacherId: string, classId: string
     const studentIds = students?.map(s => s.id) || [];
 
     // Get exam results for this class
-    const { data: results } = await supabase
+    const { data: results } = await apiClient
       .from('exam_results')
       .select('student_id, obtained_marks, total_marks, subject_id')
       .in('student_id', studentIds.length > 0 ? studentIds : ['']);
@@ -1266,7 +1266,7 @@ export async function fetchTeacherClassReport(teacherId: string, classId: string
       : 0;
 
     // Get attendance
-    const { data: attendance } = await supabase
+    const { data: attendance } = await apiClient
       .from('attendance')
       .select('is_present')
       .in('student_id', studentIds.length > 0 ? studentIds : ['']);
@@ -1391,21 +1391,21 @@ export async function fetchTeacherSubjectReport(teacherId: string, subjectId: st
     }
 
     // Get teacher info
-    const { data: teacher } = await supabase
+    const { data: teacher } = await apiClient
       .from('teachers')
       .select('id, full_name')
       .eq('id', teacherId)
       .single();
 
     // Get subject info
-    const { data: subject } = await supabase
+    const { data: subject } = await apiClient
       .from('subjects')
       .select('id, name')
       .eq('id', subjectId)
       .single();
 
     // Get classes where teacher teaches this subject
-    const { data: assignments } = await supabase
+    const { data: assignments } = await apiClient
       .from('timetable')
       .select('class_id')
       .eq('teacher_id', teacherId)
@@ -1415,7 +1415,7 @@ export async function fetchTeacherSubjectReport(teacherId: string, subjectId: st
     const classIds = [...new Set(assignments?.map(a => a.class_id) || [])];
     let classesTeaching: ClassTeachingRow[] = [];
     if (classIds.length > 0) {
-      const { data: classesData } = await supabase
+      const { data: classesData } = await apiClient
         .from('classes')
         .select('id, name, section')
         .in('id', classIds);
@@ -1426,12 +1426,12 @@ export async function fetchTeacherSubjectReport(teacherId: string, subjectId: st
     }
 
     // Get all exam results for this subject
-    const { data: allResults } = await supabase
+    const { data: allResults } = await apiClient
       .from('exam_results')
       .select('obtained_marks, total_marks')
       .eq('subject_id', subjectId);
 
-    const { data: teacherResults } = await supabase
+    const { data: teacherResults } = await apiClient
       .from('exam_results')
       .select('obtained_marks, total_marks')
       .eq('subject_id', subjectId);

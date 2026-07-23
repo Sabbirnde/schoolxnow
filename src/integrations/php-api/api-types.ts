@@ -22,7 +22,7 @@ export type Session = {
   user: User;
 };
 
-export type RealtimePostgresChangesPayload<T = Record<string, unknown>> = {
+export type RealtimeChangePayload<T = Record<string, unknown>> = {
   eventType: 'INSERT' | 'UPDATE' | 'DELETE';
   new: T;
   old: Partial<T>;
@@ -39,7 +39,7 @@ export type RealtimeChannel = {
   presenceState: () => Record<string, unknown>;
 };
 
-export type SupabaseClient<T = unknown> = {
+export type ApiClient<T = unknown> = {
   from: (table: string) => unknown;
   auth: unknown;
   storage: unknown;

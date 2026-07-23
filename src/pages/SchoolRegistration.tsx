@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import type { Database } from "@/integrations/database/types";
@@ -48,9 +48,9 @@ const SchoolRegistration = () => {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Test Supabase connection on mount
+  // Test Api connection on mount
   useEffect(() => {
-    const testSupabaseConnection = async () => {
+    const testApiConnection = async () => {
       if (isPhpBackend) {
         try {
           await phpApi.health();
@@ -70,11 +70,11 @@ const SchoolRegistration = () => {
         return;
       }
 
-      console.log('Testing Supabase connection...');
+      console.log('Testing Api connection...');
       
       try {
         // Test database connectivity by attempting to make a simple query
-        const { count, error: configError } = await supabase
+        const { count, error: configError } = await apiClient
           .from('schools')
           .select('*', { count: 'exact', head: true });
 
@@ -83,13 +83,13 @@ const SchoolRegistration = () => {
             throw new Error('Invalid API configuration');
           }
           if (configError.message?.includes('FetchError')) {
-            throw new Error('Unable to reach Supabase server');
+            throw new Error('Unable to reach Api server');
           }
           throw configError;
         }
 
         // If we got here, the connection is working
-        const { data: timeData, error: timeError } = await supabase
+        const { data: timeData, error: timeError } = await apiClient
           .from('schools')
           .select('created_at')
           .limit(1);
@@ -117,7 +117,7 @@ const SchoolRegistration = () => {
         }
 
         // Test auth service
-        const { data: authData, error: authError } = await supabase.auth.getSession();
+        const { data: authData, error: authError } = await apiClient.auth.getSession();
         if (authError) {
           console.error('Auth service error:', authError);
           let errorMessage = 'Authentication service is unavailable.';
@@ -148,7 +148,7 @@ const SchoolRegistration = () => {
           return;
         }
 
-        console.log('✅ Supabase connection test successful');
+        console.log('✅ Api connection test successful');
         console.log('- Database connection: OK');
         console.log('- Auth service: OK');
         console.log('- User session: Not authenticated (expected)');
@@ -194,7 +194,7 @@ const SchoolRegistration = () => {
       }
     };
 
-    testSupabaseConnection();
+    testApiConnection();
   }, [toast, navigate]);
 
   const handleInputChange = (field: keyof SchoolRegistrationForm, value: string | number) => {
@@ -262,7 +262,7 @@ const SchoolRegistration = () => {
         is_active: true,
       };
 
-      const { data: schoolData, error: schoolError } = await supabase
+      const { data: schoolData, error: schoolError } = await apiClient
         .from("schools")
         .insert(newSchool)
         .select()
@@ -297,7 +297,7 @@ const SchoolRegistration = () => {
       console.log('School created successfully:', schoolData);
 
       // Step 2: Sign up the admin user with school_id in metadata
-      const { data: userData, error: signUpError } = await supabase.auth.signUp({
+      const { data: userData, error: signUpError } = await apiClient.auth.signUp({
         email: validatedData.adminEmail,
         password: validatedData.adminPassword,
         options: {
@@ -313,7 +313,7 @@ const SchoolRegistration = () => {
       if (signUpError) {
         console.error('User signup error:', signUpError);
         // If user signup fails, delete the school
-        const deleteResult = await supabase
+        const deleteResult = await apiClient
           .from('schools')
           .delete()
           .eq('id', schoolData.id);

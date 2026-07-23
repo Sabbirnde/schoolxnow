@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { useThrottledFetch } from '@/hooks/useThrottledFetch';
-import type { RealtimeChannel } from '@/integrations/php-api/compat-types';
+import type { RealtimeChannel } from '@/integrations/php-api/api-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Edit, Users, Eye, Shield } from 'lucide-react';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 
 interface SchoolAdmin {
   id: string;
@@ -76,7 +76,7 @@ const SchoolAdminManagement = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('user_profiles')
         .select(`
           *,
@@ -89,7 +89,7 @@ const SchoolAdminManagement = () => {
 
       setSchoolAdmins((data || []) as unknown as SchoolAdmin[]);
     } catch (error) {
-      const notice = handleSupabaseError('Load school admins', error);
+      const notice = handleApiError('Load school admins', error);
       toast({
         title: notice.title,
         description: notice.description,
@@ -119,7 +119,7 @@ const SchoolAdminManagement = () => {
 
     try {
       // Channel for profile updates (changes to existing school admins)
-      updateChannel = supabase
+      updateChannel = apiClient
         .channel('school_admins_profile_updates')
         .on(
           'postgres_changes',
@@ -142,7 +142,7 @@ const SchoolAdminManagement = () => {
         .subscribe();
 
       // Channel for new school admin insertions (promotions or new admins from auth trigger)
-      insertChannel = supabase
+      insertChannel = apiClient
         .channel('school_admins_profile_inserts')
         .on(
           'postgres_changes',
@@ -160,8 +160,8 @@ const SchoolAdminManagement = () => {
         .subscribe();
 
       return () => {
-        if (updateChannel) supabase.removeChannel(updateChannel);
-        if (insertChannel) supabase.removeChannel(insertChannel);
+        if (updateChannel) apiClient.removeChannel(updateChannel);
+        if (insertChannel) apiClient.removeChannel(insertChannel);
       };
     } catch (error) {
       console.error('[SchoolAdmins] Error setting up subscriptions:', error);
@@ -192,7 +192,7 @@ const SchoolAdminManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({
           full_name: formData.full_name,
@@ -213,7 +213,7 @@ const SchoolAdminManagement = () => {
       setIsEditDialogOpen(false);
       fetchSchoolAdmins();
     } catch (error) {
-      const notice = handleSupabaseError('Update school admin', error, {
+      const notice = handleApiError('Update school admin', error, {
         context: { adminId: selectedAdmin.id, schoolId: formData.school_id || null },
       });
       toast({
@@ -238,7 +238,7 @@ const SchoolAdminManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ is_active: false })
         .eq('id', adminId);
@@ -252,7 +252,7 @@ const SchoolAdminManagement = () => {
 
       fetchSchoolAdmins();
     } catch (error) {
-      const notice = handleSupabaseError('Deactivate school admin', error, {
+      const notice = handleApiError('Deactivate school admin', error, {
         context: { adminId },
       });
       toast({

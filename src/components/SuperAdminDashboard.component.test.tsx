@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { mockSupabase, mockToast, mockUseToast, mockUseAuth, mockUseFeatureAccess } from '../test/mocks';
+import { mockApi, mockToast, mockUseToast, mockUseAuth, mockUseFeatureAccess } from '../test/mocks';
 import { mockSchools, mockStats, mockAuditLogs } from '../test/mockData';
 import { BrowserRouter } from 'react-router-dom';
 import React from 'react';
@@ -27,8 +27,8 @@ type MockQuery = {
 };
 
 // Mock dependencies
-vi.mock('@/integrations/php-api/compat-client', () => ({
-  supabase: mockSupabase,
+vi.mock('@/integrations/php-api/api-client', () => ({
+  apiClient: mockApi,
 }));
 
 vi.mock('@/hooks/use-toast', () => ({
@@ -126,7 +126,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
       return query;
     };
 
-    mockSupabase.from.mockImplementation((table: string) => createQueryMock(table));
+    mockApi.from.mockImplementation((table: string) => createQueryMock(table));
   });
 
   describe('Dashboard Loading & Initial Render', () => {
@@ -278,7 +278,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
         subscribe: vi.fn(),
       };
       
-      mockSupabase.from.mockReturnValue(errorTableResponse);
+      mockApi.from.mockReturnValue(errorTableResponse);
 
       renderSuperAdminDashboard();
 
@@ -291,7 +291,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
       renderSuperAdminDashboard();
 
       await waitFor(() => {
-        expect(mockSupabase.channel).toHaveBeenCalledWith('schools_changes');
+        expect(mockApi.channel).toHaveBeenCalledWith('schools_changes');
       });
     });
 
@@ -299,7 +299,7 @@ describe('SuperAdminDashboard - Component Rendering', () => {
       renderSuperAdminDashboard();
 
       await waitFor(() => {
-        expect(mockSupabase.channel).toHaveBeenCalledWith('students_changes');
+        expect(mockApi.channel).toHaveBeenCalledWith('students_changes');
       });
     });
 
@@ -307,11 +307,11 @@ describe('SuperAdminDashboard - Component Rendering', () => {
       const { unmount } = renderSuperAdminDashboard();
 
       await waitFor(() => {
-        expect(mockSupabase.channel).toHaveBeenCalled();
+        expect(mockApi.channel).toHaveBeenCalled();
       });
 
       unmount();
-      expect(mockSupabase.removeChannel).toHaveBeenCalled();
+      expect(mockApi.removeChannel).toHaveBeenCalled();
     });
   });
 

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,7 +18,7 @@ import { EnhancedActivityFeed } from "@/components/SchoolAdmin/EnhancedActivityF
 import { TodaysTasksOverview } from "@/components/SchoolAdmin/TodaysTasksOverview";
 import { StatsCardWithTrends } from "@/components/SchoolAdmin/StatsCardWithTrends";
 import { StatsDetailModal } from "@/components/SchoolAdmin/StatsDetailModal";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 import { 
   Users, 
   GraduationCap, 
@@ -62,7 +62,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
   useEffect(() => {
     if (!dashboardError) return;
 
-    const notice = handleSupabaseError('Load school admin dashboard', dashboardError, {
+    const notice = handleApiError('Load school admin dashboard', dashboardError, {
       context: { schoolId: profile?.school_id },
       log: false,
     });
@@ -168,7 +168,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
 
       switch (statType) {
         case 'totalStudents': {
-          const { data: allStudents, error } = await supabase
+          const { data: allStudents, error } = await apiClient
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
@@ -179,7 +179,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         }
 
         case 'activeStudents': {
-          const { data: active, error } = await supabase
+          const { data: active, error } = await apiClient
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
@@ -191,7 +191,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         }
 
         case 'totalTeachers': {
-          const { data: teachers, error } = await supabase
+          const { data: teachers, error } = await apiClient
             .from('teachers')
             .select('id, full_name, email, phone, is_active, created_at')
             .eq('school_id', profile.school_id)
@@ -202,7 +202,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         }
 
         case 'totalClasses': {
-          const { data: classes, error } = await supabase
+          const { data: classes, error } = await apiClient
             .from('classes')
             .select('id, name, section, is_active, created_at')
             .eq('school_id', profile.school_id)
@@ -213,7 +213,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         }
 
         case 'totalSubjects': {
-          const { data: subjects, error } = await supabase
+          const { data: subjects, error } = await apiClient
             .from('subjects')
             .select('id, name, is_active, created_at')
             .eq('school_id', profile.school_id)
@@ -226,7 +226,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         case 'recentAdmissions': {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          const { data: recent, error } = await supabase
+          const { data: recent, error } = await apiClient
             .from('students')
             .select('id, full_name, student_id, class_id, status, admission_date, classes(name)')
             .eq('school_id', profile.school_id)
@@ -242,7 +242,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
       setStatsModalData(data);
       setStatsModalOpen(true);
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Load dashboard detail data', error, {
+      const notice = handleApiError('Load dashboard detail data', error, {
         context: { schoolId: profile?.school_id, statType },
       });
       toast({
@@ -270,9 +270,9 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
           return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await apiClient.auth.getUser();
         if (user) {
-          const { data } = await supabase
+          const { data } = await apiClient
             .from('user_profiles')
             .select('*')
             .eq('user_id', user.id)

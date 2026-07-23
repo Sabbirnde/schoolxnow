@@ -1,5 +1,5 @@
 import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
@@ -177,7 +177,7 @@ export async function fetchSuperAdminDashboardData(): Promise<SuperAdminDashboar
     };
   }
 
-  const { data: schoolsData, error: schoolsError } = await supabase
+  const { data: schoolsData, error: schoolsError } = await apiClient
     .from('schools')
     .select('*')
     .order('created_at', { ascending: false });
@@ -206,21 +206,21 @@ export async function fetchSuperAdminDashboardData(): Promise<SuperAdminDashboar
     previousMonthSchoolsResponse,
     auditResponse,
   ] = await Promise.all([
-    supabase.from('students').select('*', { count: 'exact', head: true }),
-    supabase.from('teachers').select('*', { count: 'exact', head: true }),
-    supabase.from('classes').select('*', { count: 'exact', head: true }),
-    supabase.from('subjects').select('*', { count: 'exact', head: true }),
-    supabase.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-    supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'school_admin'),
-    supabase.from('schools').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
-    supabase.from('students').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
-    supabase.from('teachers').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
-    supabase
+    apiClient.from('students').select('*', { count: 'exact', head: true }),
+    apiClient.from('teachers').select('*', { count: 'exact', head: true }),
+    apiClient.from('classes').select('*', { count: 'exact', head: true }),
+    apiClient.from('subjects').select('*', { count: 'exact', head: true }),
+    apiClient.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+    apiClient.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'school_admin'),
+    apiClient.from('schools').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
+    apiClient.from('students').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
+    apiClient.from('teachers').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart),
+    apiClient
       .from('schools')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', previousMonthStart)
       .lt('created_at', currentMonthStart),
-    supabase
+    apiClient
       .from('audit_logs')
       .select('id, action, entity_type, timestamp, success, user_id')
       .order('timestamp', { ascending: false })

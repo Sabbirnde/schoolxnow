@@ -1,5 +1,5 @@
-// Supabase client error handling and logging utilities
-import { SupabaseClient } from '@/integrations/php-api/compat-types';
+// Api client error handling and logging utilities
+import { ApiClient } from '@/integrations/php-api/api-types';
 import type { Database } from '@/integrations/database/types';
 import SecureConfig from './secure-config';
 import { errorTelemetry } from './error-telemetry';
@@ -25,7 +25,7 @@ const toErrorLike = (error: unknown): ErrorLike => {
 /**
  * Error types for better categorization
  */
-export enum SupabaseErrorType {
+export enum ApiErrorType {
   NETWORK = 'NETWORK',
   AUTHENTICATION = 'AUTHENTICATION',
   AUTHORIZATION = 'AUTHORIZATION',
@@ -35,15 +35,15 @@ export enum SupabaseErrorType {
   UNKNOWN = 'UNKNOWN',
 }
 
-export interface SupabaseErrorNotice {
+export interface ApiErrorNotice {
   title: string;
   description: string;
-  type: SupabaseErrorType;
+  type: ApiErrorType;
   operation: string;
   code?: string;
 }
 
-interface SupabaseErrorHandlingOptions {
+interface ApiErrorHandlingOptions {
   context?: Record<string, unknown>;
   fallbackMessage?: string;
   title?: string;
@@ -53,16 +53,16 @@ interface SupabaseErrorHandlingOptions {
 /**
  * Enhanced error class with additional context
  */
-export class SupabaseOperationError extends Error {
+export class ApiOperationError extends Error {
   constructor(
     message: string,
-    public type: SupabaseErrorType,
+    public type: ApiErrorType,
     public operation: string,
     public originalError?: unknown,
     public context?: Record<string, unknown>
   ) {
     super(message);
-    this.name = 'SupabaseOperationError';
+    this.name = 'ApiOperationError';
   }
 
   toJSON() {
@@ -79,10 +79,10 @@ export class SupabaseOperationError extends Error {
 }
 
 /**
- * Categorizes Supabase errors by type
+ * Categorizes Api errors by type
  */
-export function categorizeError(error: unknown): SupabaseErrorType {
-  if (!error) return SupabaseErrorType.UNKNOWN;
+export function categorizeError(error: unknown): ApiErrorType {
+  if (!error) return ApiErrorType.UNKNOWN;
 
   const errorLike = toErrorLike(error);
   const message = errorLike.message?.toLowerCase() || '';
@@ -95,7 +95,7 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     message.includes('timeout') ||
     message.includes('connection')
   ) {
-    return SupabaseErrorType.NETWORK;
+    return ApiErrorType.NETWORK;
   }
 
   // Authentication errors
@@ -107,7 +107,7 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     code === 'PGRST301' ||
     code === '401'
   ) {
-    return SupabaseErrorType.AUTHENTICATION;
+    return ApiErrorType.AUTHENTICATION;
   }
 
   // Authorization errors
@@ -118,7 +118,7 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     code === '42501' ||
     code === '403'
   ) {
-    return SupabaseErrorType.AUTHORIZATION;
+    return ApiErrorType.AUTHORIZATION;
   }
 
   // Not found / empty single-row responses
@@ -128,7 +128,7 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     code === 'PGRST116' ||
     code === '404'
   ) {
-    return SupabaseErrorType.NOT_FOUND;
+    return ApiErrorType.NOT_FOUND;
   }
 
   // Database errors
@@ -141,7 +141,7 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     code === '23502' ||
     code === '23514'
   ) {
-    return SupabaseErrorType.DATABASE;
+    return ApiErrorType.DATABASE;
   }
 
   // Validation errors
@@ -150,10 +150,10 @@ export function categorizeError(error: unknown): SupabaseErrorType {
     message.includes('required') ||
     message.includes('validation')
   ) {
-    return SupabaseErrorType.VALIDATION;
+    return ApiErrorType.VALIDATION;
   }
 
-  return SupabaseErrorType.UNKNOWN;
+  return ApiErrorType.UNKNOWN;
 }
 
 /**
@@ -168,19 +168,19 @@ export function getFriendlyErrorMessage(error: unknown, operation: string): stri
   const lowerDetails = errorLike.details?.toLowerCase() || '';
 
   switch (errorType) {
-    case SupabaseErrorType.NETWORK:
+    case ApiErrorType.NETWORK:
       return 'Unable to connect to the server. Please check your internet connection and try again.';
     
-    case SupabaseErrorType.AUTHENTICATION:
+    case ApiErrorType.AUTHENTICATION:
       return 'Your session has expired or is invalid. Please log in again.';
     
-    case SupabaseErrorType.AUTHORIZATION:
+    case ApiErrorType.AUTHORIZATION:
       return 'You do not have permission to perform this action. Please contact your administrator.';
 
-    case SupabaseErrorType.NOT_FOUND:
+    case ApiErrorType.NOT_FOUND:
       return 'The requested record could not be found. It may have been removed or you may need to refresh the page.';
     
-    case SupabaseErrorType.DATABASE:
+    case ApiErrorType.DATABASE:
       if (code === '23505' || lowerMessage.includes('duplicate') || lowerDetails.includes('already exists')) {
         return 'This record already exists. Please use a different value.';
       }
@@ -195,7 +195,7 @@ export function getFriendlyErrorMessage(error: unknown, operation: string): stri
       }
       return 'A database error occurred. Please try again or contact support.';
     
-    case SupabaseErrorType.VALIDATION:
+    case ApiErrorType.VALIDATION:
       return errorLike.message || 'The data provided is invalid. Please check your input and try again.';
     
     default:
@@ -203,19 +203,19 @@ export function getFriendlyErrorMessage(error: unknown, operation: string): stri
   }
 }
 
-function getErrorTitle(errorType: SupabaseErrorType, operation: string): string {
+function getErrorTitle(errorType: ApiErrorType, operation: string): string {
   switch (errorType) {
-    case SupabaseErrorType.NETWORK:
+    case ApiErrorType.NETWORK:
       return 'Connection problem';
-    case SupabaseErrorType.AUTHENTICATION:
+    case ApiErrorType.AUTHENTICATION:
       return 'Session expired';
-    case SupabaseErrorType.AUTHORIZATION:
+    case ApiErrorType.AUTHORIZATION:
       return 'Permission denied';
-    case SupabaseErrorType.NOT_FOUND:
+    case ApiErrorType.NOT_FOUND:
       return 'Record not found';
-    case SupabaseErrorType.DATABASE:
+    case ApiErrorType.DATABASE:
       return 'Could not save changes';
-    case SupabaseErrorType.VALIDATION:
+    case ApiErrorType.VALIDATION:
       return 'Please check your input';
     default:
       return `${operation} failed`;
@@ -223,21 +223,21 @@ function getErrorTitle(errorType: SupabaseErrorType, operation: string): string 
 }
 
 /**
- * Shared UI-facing handler for Supabase failures.
+ * Shared UI-facing handler for Api failures.
  *
  * Returns a sanitized, user-friendly notice while logging structured developer
- * details through the common Supabase logger/telemetry path.
+ * details through the common Api logger/telemetry path.
  */
-export function handleSupabaseError(
+export function handleApiError(
   operation: string,
   error: unknown,
-  options: SupabaseErrorHandlingOptions = {}
-): SupabaseErrorNotice {
+  options: ApiErrorHandlingOptions = {}
+): ApiErrorNotice {
   const errorType = categorizeError(error);
   const errorLike = toErrorLike(error);
 
   if (options.log !== false) {
-    logSupabaseError(operation, error, options.context);
+    logApiError(operation, error, options.context);
   }
 
   return {
@@ -249,12 +249,12 @@ export function handleSupabaseError(
   };
 }
 
-export function getSupabaseErrorMessage(
+export function getApiErrorMessage(
   operation: string,
   error: unknown,
   fallbackMessage?: string
 ): string {
-  return handleSupabaseError(operation, error, {
+  return handleApiError(operation, error, {
     fallbackMessage,
     log: false,
   }).description;
@@ -264,7 +264,7 @@ export function getSupabaseErrorMessage(
  * Logs errors with appropriate detail level based on environment
  * @security All errors are sanitized to remove credentials before logging
  */
-export function logSupabaseError(
+export function logApiError(
   operation: string,
   error: unknown,
   context?: Record<string, unknown>
@@ -277,7 +277,7 @@ export function logSupabaseError(
   const sanitizedContext = context ? SecureConfig.sanitizeError(context) : undefined;
 
   // Always log basic error info (sanitized)
-  console.error(`[Supabase ${errorType}] ${operation} failed:`, {
+  console.error(`[Api ${errorType}] ${operation} failed:`, {
     message: sanitizedError.message || 'No message',
     code: sanitizedError.code,
     type: errorType,
@@ -302,7 +302,7 @@ export function logSupabaseError(
     const severity = getSeverityForErrorType(errorType);
 
     // Capture in telemetry service (sanitized)
-    errorTelemetry.captureError(sanitizedError.message || 'Supabase operation failed', {
+    errorTelemetry.captureError(sanitizedError.message || 'Api operation failed', {
       error: sanitizedError,
       errorType: errorType.toString(),
       operation,
@@ -312,7 +312,7 @@ export function logSupabaseError(
         errorCode: sanitizedError.code,
       },
       tags: {
-        service: 'supabase',
+        service: 'apiClient',
         operation: operation,
         errorType: errorType.toString(),
       },
@@ -323,18 +323,18 @@ export function logSupabaseError(
 /**
  * Determines severity level for error type
  */
-function getSeverityForErrorType(errorType: SupabaseErrorType): 'low' | 'medium' | 'high' | 'critical' {
+function getSeverityForErrorType(errorType: ApiErrorType): 'low' | 'medium' | 'high' | 'critical' {
   switch (errorType) {
-    case SupabaseErrorType.AUTHENTICATION:
-    case SupabaseErrorType.AUTHORIZATION:
+    case ApiErrorType.AUTHENTICATION:
+    case ApiErrorType.AUTHORIZATION:
       return 'high';
-    case SupabaseErrorType.NOT_FOUND:
+    case ApiErrorType.NOT_FOUND:
       return 'low';
-    case SupabaseErrorType.NETWORK:
+    case ApiErrorType.NETWORK:
       return 'medium';
-    case SupabaseErrorType.DATABASE:
+    case ApiErrorType.DATABASE:
       return 'high';
-    case SupabaseErrorType.VALIDATION:
+    case ApiErrorType.VALIDATION:
       return 'low';
     default:
       return 'medium';
@@ -344,14 +344,14 @@ function getSeverityForErrorType(errorType: SupabaseErrorType): 'low' | 'medium'
 /**
  * Logs successful operations (in development only)
  */
-export function logSupabaseSuccess(
+export function logApiSuccess(
   operation: string,
   result?: unknown,
   duration?: number
 ): void {
   if (!import.meta.env.DEV) return;
 
-  console.log(`✅ [Supabase] ${operation} succeeded`, {
+  console.log(`✅ [Api] ${operation} succeeded`, {
     duration: duration ? `${duration}ms` : undefined,
     resultType: result ? typeof result : undefined,
     resultCount: Array.isArray(result) ? result.length : undefined,
@@ -359,29 +359,29 @@ export function logSupabaseSuccess(
 }
 
 /**
- * Wrapper for Supabase operations with automatic error handling and logging
+ * Wrapper for Api operations with automatic error handling and logging
  */
-export async function withSupabaseErrorHandling<T>(
+export async function withApiErrorHandling<T>(
   operation: string,
   fn: () => Promise<T>,
   context?: Record<string, unknown>
-): Promise<{ data: T | null; error: SupabaseOperationError | null }> {
+): Promise<{ data: T | null; error: ApiOperationError | null }> {
   const startTime = performance.now();
 
   try {
     const result = await fn();
     const duration = Math.round(performance.now() - startTime);
     
-    logSupabaseSuccess(operation, result, duration);
+    logApiSuccess(operation, result, duration);
     
     return { data: result, error: null };
   } catch (error: unknown) {
     const duration = Math.round(performance.now() - startTime);
     const errorType = categorizeError(error);
     
-    logSupabaseError(operation, error, { ...context, duration });
+    logApiError(operation, error, { ...context, duration });
     
-    const operationError = new SupabaseOperationError(
+    const operationError = new ApiOperationError(
       getFriendlyErrorMessage(error, operation),
       errorType,
       operation,
@@ -394,16 +394,16 @@ export async function withSupabaseErrorHandling<T>(
 }
 
 /**
- * Monitors Supabase client health
+ * Monitors Api client health
  */
-export class SupabaseHealthMonitor {
-  private client: SupabaseClient<Database>;
+export class ApiHealthMonitor {
+  private client: ApiClient<Database>;
   private isHealthy: boolean = true;
   private lastCheck: Date | null = null;
   private errorCount: number = 0;
   private consecutiveErrors: number = 0;
 
-  constructor(client: SupabaseClient<Database>) {
+  constructor(client: ApiClient<Database>) {
     this.client = client;
   }
 
@@ -437,7 +437,7 @@ export class SupabaseHealthMonitor {
       this.consecutiveErrors = 0;
 
       if (import.meta.env.DEV) {
-        console.log('✅ [Health Check] Supabase is healthy', {
+        console.log('✅ [Health Check] Api is healthy', {
           duration: `${duration}ms`,
           timestamp: this.lastCheck.toISOString(),
         });
@@ -458,7 +458,7 @@ export class SupabaseHealthMonitor {
       const errorType = categorizeError(error);
       const errorLike = toErrorLike(error);
       
-      console.error('❌ [Health Check] Supabase health check failed', {
+      console.error('❌ [Health Check] Api health check failed', {
         errorType,
         message: errorLike.message,
         duration: `${duration}ms`,
@@ -531,8 +531,8 @@ export async function withRetry<T>(
       
       // Don't retry authentication or authorization errors
       if (
-        errorType === SupabaseErrorType.AUTHENTICATION ||
-        errorType === SupabaseErrorType.AUTHORIZATION
+        errorType === ApiErrorType.AUTHENTICATION ||
+        errorType === ApiErrorType.AUTHORIZATION
       ) {
         throw error;
       }

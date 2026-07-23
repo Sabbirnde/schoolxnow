@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -31,7 +31,7 @@ const BootstrapChecker = ({ children }: BootstrapCheckerProps) => {
           return;
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await apiClient
           .rpc('super_admin_exists');
 
         if (error) {

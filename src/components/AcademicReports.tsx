@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useClassReportExport, useStudentReportExport } from '@/hooks/useReportExport';
@@ -49,7 +49,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 
 interface ClassOption {
   id: string;
@@ -157,7 +157,7 @@ export function AcademicReports() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('classes')
         .select('id, name, section')
         .eq('school_id', profile.school_id)
@@ -172,7 +172,7 @@ export function AcademicReports() {
       }
       setLoading(false);
     } catch (error) {
-      const notice = handleSupabaseError('Load academic report classes', error, {
+      const notice = handleApiError('Load academic report classes', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -205,7 +205,7 @@ export function AcademicReports() {
       }
 
       // Also load subjects for this class
-      const { data, error } = await supabase.from('subjects')
+      const { data, error } = await apiClient.from('subjects')
         .select('id, name')
         .eq('class_id', classId) as unknown as QueryResponse<SubjectOption>;
 
@@ -215,7 +215,7 @@ export function AcademicReports() {
         setSelectedSubjectId(data[0].id);
       }
     } catch (error) {
-      const notice = handleSupabaseError('Load class academic report', error, {
+      const notice = handleApiError('Load class academic report', error, {
         context: { classId },
       });
       toast({
@@ -231,7 +231,7 @@ export function AcademicReports() {
       const report = await fetchSubjectReport(subjectId, selectedClassId);
       setSubjectReport(report);
     } catch (error) {
-      const notice = handleSupabaseError('Load subject academic report', error, {
+      const notice = handleApiError('Load subject academic report', error, {
         context: { subjectId, classId: selectedClassId },
       });
       toast({
@@ -278,7 +278,7 @@ export function AcademicReports() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('students')
         .select('id, full_name, student_id, classes(name, section)')
         .eq('school_id', profile.school_id)
@@ -292,7 +292,7 @@ export function AcademicReports() {
         setSelectedStudentId(data[0].id);
       }
     } catch (error) {
-      const notice = handleSupabaseError('Load academic report students', error, {
+      const notice = handleApiError('Load academic report students', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -308,7 +308,7 @@ export function AcademicReports() {
       const report = await fetchStudentDetailedReport(studentId);
       setStudentReport(report);
     } catch (error) {
-      const notice = handleSupabaseError('Load student academic report', error, {
+      const notice = handleApiError('Load student academic report', error, {
         context: { studentId },
       });
       toast({

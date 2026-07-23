@@ -26,8 +26,8 @@ const { fromMock } = vi.hoisted(() => ({
   fromMock: vi.fn(),
 }));
 
-vi.mock('@/integrations/php-api/compat-client', () => ({
-  supabase: {
+vi.mock('@/integrations/php-api/api-client', () => ({
+  apiClient: {
     from: fromMock,
   },
 }));
