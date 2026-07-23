@@ -17,7 +17,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     exclude: [
-      'api/api.integration.test.ts',
+      'tests/api.integration.test.ts',
       '**/node_modules/**',
       '**/dist/**',
     ],

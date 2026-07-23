@@ -7,11 +7,11 @@ import bcrypt from 'bcryptjs';
 import mysql, { type Connection } from 'mysql2/promise';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import handler from './[...path]';
-import tableRoute from './tables/[table]';
-import countRoute from './tables/[table]/count';
-import idRoute from './tables/[table]/[id]';
-import { issueToken } from './_lib/auth';
+import handler from '../api/[...path]';
+import tableRoute from '../api/tables/[table]';
+import countRoute from '../api/tables/[table]/count';
+import idRoute from '../api/tables/[table]/[id]';
+import { issueToken } from '../api/_lib/auth';
 
 const runIntegration = process.env.RUN_API_INTEGRATION === 'true';
 const suite = runIntegration ? describe : describe.skip;

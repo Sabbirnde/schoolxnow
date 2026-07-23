@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['api/api.integration.test.ts'],
+    include: ['tests/api.integration.test.ts'],
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 240_000,
