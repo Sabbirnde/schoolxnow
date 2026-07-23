@@ -19,6 +19,7 @@ import TestPage from "./pages/TestPage";
 import RealtimeTest from "./pages/RealtimeTest";
 import TeacherPortalEntry from "./pages/TeacherPortalEntry";
 import { ProtectedRoute } from "./components/FeatureGuard";
+import { RouteBrandFooter } from "./components/BrandFooter";
 
 // Full app with diagnostic routes added
 const App = () => (
@@ -70,6 +71,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <RouteBrandFooter />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

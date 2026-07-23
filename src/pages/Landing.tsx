@@ -23,7 +23,7 @@ import {
   Phone,
   MessageSquare
 } from "lucide-react";
-import logo from "@/assets/logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 import { useState } from "react";
 
 const Landing = () => {
@@ -108,7 +108,7 @@ const Landing = () => {
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-lg sm:rounded-xl blur-sm sm:blur-md group-hover:blur-lg transition-all duration-300" />
               <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:scale-110">
-                <img src={logo} alt="SchoolXNow Logo" className="h-6 w-6 sm:h-8 sm:w-8 object-contain drop-shadow-lg" />
+                <BrandLogo className="h-6 w-6 sm:h-8 sm:w-8 drop-shadow-lg" />
               </div>
             </div>
             <span className="text-base sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
@@ -497,7 +497,7 @@ const Landing = () => {
                 <div className="relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg blur-sm" />
                   <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 sm:p-2 rounded-lg border border-primary/20">
-                    <img src={logo} alt="SchoolXNow Logo" className="h-6 w-6 sm:h-7 sm:w-7 object-contain drop-shadow-md" />
+                    <BrandLogo className="h-6 w-6 sm:h-7 sm:w-7 drop-shadow-md" />
                   </div>
                 </div>
                 <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
@@ -538,8 +538,12 @@ const Landing = () => {
             </div>
           </div>
 
-          <div className="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t text-center text-xs sm:text-sm text-muted-foreground">
+          <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t pt-6 text-center text-xs text-muted-foreground sm:mt-12 sm:flex-row sm:pt-8 sm:text-left">
             <p>&copy; {new Date().getFullYear()} SchoolXNow. All rights reserved.</p>
+            <p className="inline-flex items-center gap-1.5">
+              <Shield className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+              First-party SchoolXNow experience
+            </p>
           </div>
         </div>
       </footer>

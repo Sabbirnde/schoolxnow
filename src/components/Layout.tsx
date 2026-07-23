@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import logo from "@/assets/logo.png";
+import { BrandFooter } from "@/components/BrandFooter";
+import { BrandLogo } from "@/components/BrandLogo";
 import { Menu } from "lucide-react";
 
 interface LayoutProps {
@@ -31,7 +32,7 @@ export function Layout({ children, activeModule, setActiveModule }: LayoutProps)
               <div className="relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg blur-sm group-hover:blur-md transition-all duration-300" />
                 <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 md:p-2 rounded-lg border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:scale-105">
-                  <img src={logo} alt="SchoolXNow Logo" className="h-6 w-6 md:h-7 md:w-7 object-contain drop-shadow-md" />
+                  <BrandLogo className="h-6 w-6 md:h-7 md:w-7 drop-shadow-md" />
                 </div>
               </div>
               <h1 className="text-base sm:text-lg md:text-xl font-semibold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent truncate">
@@ -45,6 +46,7 @@ export function Layout({ children, activeModule, setActiveModule }: LayoutProps)
           <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-x-hidden bg-background p-3 md:min-h-[calc(100vh-4rem)] md:gap-4 md:p-4 lg:p-6 min-h-[calc(100vh-3.5rem)]">
             {children}
           </main>
+          <BrandFooter compact />
         </SidebarInset>
       </div>
     </SidebarProvider>

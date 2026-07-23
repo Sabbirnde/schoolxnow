@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SchoolXNow</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#047857"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="book" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset=".5" stop-color="#fff"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M64 305c70-12 129 1 192 62 63-61 122-74 192-62v75c-74-12-132 7-192 64-60-57-118-76-192-64z" fill="#10233f"/>
+  <path d="M67 277c78-13 139 6 189 65 50-59 111-78 189-65M83 247c66-8 121 12 173 70 52-58 107-78 173-70" fill="none" stroke="url(#book)" stroke-width="17" stroke-linecap="round"/>
+  <path d="M256 130v187M149 178l107 48 107-48M149 178l55-55 52 107 52-107 55 55" fill="none" stroke="#fff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#0f766e" stroke="#fff" stroke-width="10">
+    <circle cx="256" cy="112" r="24"/>
+    <circle cx="149" cy="178" r="20"/>
+    <circle cx="363" cy="178" r="20"/>
+    <circle cx="256" cy="230" r="20"/>
+    <circle cx="204" cy="123" r="14"/>
+    <circle cx="308" cy="123" r="14"/>
+  </g>
+</svg>
