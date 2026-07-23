@@ -10,6 +10,7 @@ const targets = (valueAfter('--targets') || 'production')
   .split(',')
   .map((target) => target.trim())
   .filter(Boolean);
+const gitBranch = valueAfter('--git-branch');
 
 const requiredKeys = [
   'VITE_BACKEND_PROVIDER',
@@ -77,8 +78,20 @@ if (whoami.status !== 0) {
 const keys = [...requiredKeys, ...optionalKeys].filter((key) => env[key] !== undefined);
 for (const target of targets) {
   for (const key of keys) {
-    run('vercel', ['env', 'rm', key, target, '--yes']);
-    const add = run('vercel', ['env', 'add', key, target], { input: `${env[key]}\n` });
+    const targetArgs = target === 'preview' && gitBranch
+      ? [target, gitBranch]
+      : [target];
+    run('vercel', ['env', 'rm', key, ...targetArgs, '--yes']);
+    const add = run('vercel', [
+      'env',
+      'add',
+      key,
+      ...targetArgs,
+      '--value',
+      env[key],
+      '--yes',
+      '--force',
+    ]);
     if (add.status !== 0) {
       console.error(`MISS failed to push ${key} to ${target}`);
       console.error(add.stderr || add.stdout);
@@ -90,4 +103,3 @@ for (const target of targets) {
 }
 
 console.log('OK Vercel environment variables pushed. No values printed.');
-
