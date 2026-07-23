@@ -19,6 +19,7 @@ import { TodaysTasksOverview } from "@/components/SchoolAdmin/TodaysTasksOvervie
 import { StatsCardWithTrends } from "@/components/SchoolAdmin/StatsCardWithTrends";
 import { StatsDetailModal } from "@/components/SchoolAdmin/StatsDetailModal";
 import { handleApiError } from "@/lib/api-error-handler";
+import { DashboardRefreshStatus } from "@/components/DashboardRefreshStatus";
 import { 
   Users, 
   GraduationCap, 
@@ -46,6 +47,9 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
     stats,
     schoolInfo,
     loading,
+    fetching,
+    refetch,
+    lastUpdatedAt,
     error: dashboardError,
   } = useSchoolAdminDashboardData(profile?.school_id);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -345,6 +349,11 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
             </div>
           </div>
           <div className="flex gap-2">
+            <DashboardRefreshStatus
+              updatedAt={lastUpdatedAt}
+              fetching={fetching}
+              onRefresh={refetch}
+            />
             {/* <Button className="bg-primary hover:bg-primary/90 shadow-sm">
               <UserPlus className="mr-2 h-4 w-4" />
               Add Student

@@ -5,6 +5,7 @@ import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
+import { dashboardRefreshIntervals } from '@/lib/dashboard-refresh';
 
 export interface SchoolAdminSchoolInfo {
   name: string;
@@ -120,6 +121,8 @@ export function useSchoolAdminDashboardData(schoolId?: string | null) {
     {
       enabled: Boolean(schoolId),
       retry: 2,
+      refetchInterval: dashboardRefreshIntervals.schoolAdmin,
+      refetchIntervalInBackground: false,
     }
   );
 
@@ -131,5 +134,6 @@ export function useSchoolAdminDashboardData(schoolId?: string | null) {
     fetching: query.isFetching,
     error: query.error,
     refetch: query.refetch,
+    lastUpdatedAt: query.dataUpdatedAt,
   };
 }

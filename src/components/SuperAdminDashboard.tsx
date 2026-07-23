@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import type { RealtimeChannel } from '@/integrations/php-api/api-types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,7 +28,7 @@ import {
 import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { useToast } from '@/hooks/use-toast';
-import { usePollingRefresh } from '@/hooks/usePollingRefresh';
+import { DashboardRefreshStatus } from '@/components/DashboardRefreshStatus';
 import {
   useSuperAdminDashboardData,
   type SuperAdminSchool as School,
@@ -49,6 +48,8 @@ const SuperAdminDashboard = () => {
     loading,
     error: dashboardError,
     refetch,
+    fetching,
+    lastUpdatedAt,
   } = useSuperAdminDashboardData();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -71,12 +72,6 @@ const SuperAdminDashboard = () => {
   });
   const { toast } = useToast();
 
-  usePollingRefresh({
-    enabled: isPhpBackend,
-    intervalMs: 10000,
-    onRefresh: refetch,
-  });
-
   useEffect(() => {
     if (!dashboardError) return;
 
@@ -90,72 +85,6 @@ const SuperAdminDashboard = () => {
       variant: "destructive",
     });
   }, [dashboardError, toast]);
-
-  // Set up real-time subscriptions and refresh cached dashboard data.
-  useEffect(() => {
-    if (isPhpBackend) {
-      return;
-    }
-
-    let schoolsChannel: RealtimeChannel | null = null;
-    let studentsChannel: RealtimeChannel | null = null;
-
-    const refreshDashboardData = () => {
-      setTimeout(() => {
-        void refetch();
-      }, 300);
-    };
-
-    try {
-      schoolsChannel = apiClient
-        .channel('schools_changes')
-        .on('postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'schools' },
-          () => {
-            console.log('[SuperAdminDashboard] School inserted, refreshing stats...');
-            refreshDashboardData();
-          }
-        )
-        .on('postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'schools' },
-          () => {
-            console.log('[SuperAdminDashboard] School updated, refreshing stats...');
-            refreshDashboardData();
-          }
-        )
-        .subscribe();
-
-      studentsChannel = apiClient
-        .channel('students_changes')
-        .on('postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'students' },
-          () => {
-            console.log('[SuperAdminDashboard] Student inserted, refreshing stats...');
-            refreshDashboardData();
-          }
-        )
-        .on('postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'students' },
-          () => {
-            console.log('[SuperAdminDashboard] Student updated, refreshing stats...');
-            refreshDashboardData();
-          }
-        )
-        .subscribe();
-    } catch (error) {
-      const notice = handleApiError('Subscribe to super admin dashboard updates', error);
-      toast({
-        title: notice.title,
-        description: notice.description,
-        variant: "destructive",
-      });
-    }
-
-    return () => {
-      if (schoolsChannel) apiClient.removeChannel(schoolsChannel);
-      if (studentsChannel) apiClient.removeChannel(studentsChannel);
-    };
-  }, [refetch, toast]);
 
   const getSchoolTypeLabel = (type: string) => {
     switch (type) {
@@ -292,6 +221,11 @@ const SuperAdminDashboard = () => {
           <h1 className="text-2xl font-bold text-foreground md:text-3xl">Super Admin Dashboard</h1>
           <p className="text-muted-foreground mt-1">Manage all schools and platform overview</p>
         </div>
+        <DashboardRefreshStatus
+          updatedAt={lastUpdatedAt}
+          fetching={fetching}
+          onRefresh={refetch}
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

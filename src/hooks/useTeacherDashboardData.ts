@@ -5,6 +5,7 @@ import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
 import type { Database } from '@/integrations/database/types';
+import { dashboardRefreshIntervals } from '@/lib/dashboard-refresh';
 
 export interface TeacherDashboardProfile {
   user_id: string;
@@ -473,6 +474,8 @@ export function useTeacherDashboardData(profile?: TeacherDashboardProfile | null
     {
       enabled: canLoad,
       retry: 2,
+      refetchInterval: dashboardRefreshIntervals.teacher,
+      refetchIntervalInBackground: false,
     }
   );
 
@@ -484,5 +487,6 @@ export function useTeacherDashboardData(profile?: TeacherDashboardProfile | null
     fetching: query.isFetching,
     error: query.error,
     refetch: query.refetch,
+    lastUpdatedAt: query.dataUpdatedAt,
   };
 }

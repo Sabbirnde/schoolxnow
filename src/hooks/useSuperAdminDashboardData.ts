@@ -4,6 +4,7 @@ import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
 import type { Database } from '@/integrations/database/types';
+import { dashboardRefreshIntervals } from '@/lib/dashboard-refresh';
 
 export type SuperAdminSchool = Database['public']['Tables']['schools']['Row'];
 
@@ -260,6 +261,8 @@ export function useSuperAdminDashboardData() {
     fetchSuperAdminDashboardData,
     {
       retry: 2,
+      refetchInterval: dashboardRefreshIntervals.superAdmin,
+      refetchIntervalInBackground: false,
     }
   );
 
@@ -271,5 +274,6 @@ export function useSuperAdminDashboardData() {
     fetching: query.isFetching,
     error: query.error,
     refetch: query.refetch,
+    lastUpdatedAt: query.dataUpdatedAt,
   };
 }

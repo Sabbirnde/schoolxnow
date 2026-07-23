@@ -266,13 +266,17 @@ connection exists.
 
 Screens that need fresh data should use:
 
-- TanStack Query refetching;
-- polling where already configured; or
-- explicit refresh after a create, update, or delete operation.
+- TanStack Query polling while the page is visible: every 60 seconds for super
+  admin and school admin dashboards, and every 30 seconds for the
+  schedule-sensitive teacher dashboard;
+- automatic dashboard-query invalidation after successful table create,
+  update, or delete operations; and
+- the visible dashboard refresh control and `Last updated` timestamp.
 
-Presence and broadcast channels are also unavailable. Implement WebSockets,
-Server-Sent Events, or a managed realtime provider separately if true push
-updates become a requirement.
+Background tabs do not poll. Presence and broadcast channels are also
+unavailable. Add WebSockets, Server-Sent Events, or a managed realtime provider
+only if a measured requirement needs server-pushed updates faster than the
+polling intervals.
 
 ## Requirements
 

@@ -286,32 +286,14 @@ describe('SuperAdminDashboard - Component Rendering', () => {
     });
   });
 
-  describe('Real-time Subscriptions', () => {
-    it('should setup schools_changes subscription', async () => {
+  describe('Refresh status', () => {
+    it('shows the last-updated timestamp and uses polling instead of subscriptions', async () => {
       renderSuperAdminDashboard();
 
       await waitFor(() => {
-        expect(mockApi.channel).toHaveBeenCalledWith('schools_changes');
+        expect(screen.getByText(/last updated:/i)).toBeInTheDocument();
       });
-    });
-
-    it('should setup students_changes subscription', async () => {
-      renderSuperAdminDashboard();
-
-      await waitFor(() => {
-        expect(mockApi.channel).toHaveBeenCalledWith('students_changes');
-      });
-    });
-
-    it('should cleanup subscriptions on unmount', async () => {
-      const { unmount } = renderSuperAdminDashboard();
-
-      await waitFor(() => {
-        expect(mockApi.channel).toHaveBeenCalled();
-      });
-
-      unmount();
-      expect(mockApi.removeChannel).toHaveBeenCalled();
+      expect(mockApi.channel).not.toHaveBeenCalled();
     });
   });
 

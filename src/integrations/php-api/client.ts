@@ -1,3 +1,5 @@
+import { queryClient } from '@/lib/query-client';
+
 type ApiErrorBody = {
   error?: {
     message?: string;
@@ -125,6 +127,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     throw new Error(body.error?.message || `API request failed with status ${response.status}`);
+  }
+
+  const method = String(options.method || 'GET').toUpperCase();
+  const changesDashboardData =
+    ['POST', 'PATCH', 'DELETE'].includes(method) &&
+    (path.startsWith('/tables/') || path === '/auth/profile');
+  if (changesDashboardData) {
+    await queryClient.invalidateQueries({ queryKey: ['analytics'] });
   }
 
   return body.data;
@@ -344,17 +354,8 @@ export const phpApi = {
       },
 
       delete(id: string) {
-        return fetch(`${getBaseUrl()}/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+        return request<void>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
           method: 'DELETE',
-          headers: {
-            ...(localStorage.getItem(API_TOKEN_KEY)
-              ? { Authorization: `Bearer ${localStorage.getItem(API_TOKEN_KEY)}` }
-              : {}),
-          },
-        }).then((response) => {
-          if (!response.ok && response.status !== 204) {
-            throw new Error(`Delete failed with status ${response.status}`);
-          }
         });
       },
     };

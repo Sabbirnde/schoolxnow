@@ -34,6 +34,7 @@ import { phpApi } from '@/integrations/php-api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeacherDashboardData, type TodayClass } from '@/hooks/useTeacherDashboardData';
+import { DashboardRefreshStatus } from '@/components/DashboardRefreshStatus';
 import { handleApiError } from '@/lib/api-error-handler';
 
 // Swipeable Class Card Component
@@ -194,6 +195,8 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
     loading,
     error: dashboardError,
     refetch,
+    fetching,
+    lastUpdatedAt,
   } = useTeacherDashboardData(profile);
   const { toast } = useToast();
   
@@ -475,6 +478,11 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
               )}
             </div>
           </div>
+          <DashboardRefreshStatus
+            updatedAt={lastUpdatedAt}
+            fetching={fetching}
+            onRefresh={refetch}
+          />
         </div>
       </div>
 
