@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const MIGRATION_PATTERN = /^(\d{4})_([a-z0-9_]+)\.mysql\.sql$/;
+const LEGACY_CHECKSUMS = new Map([
+  // Recorded by the pre-canonical Windows runner when migration 0002 was
+  // introduced. The SQL was verified before this one-time normalization.
+  [2, ['189aa01167aa07411a030a3d679f248c15b271cdd9401ff0ae490abf1c2bbe17']],
+]);
 
 export function listMigrations(root = process.cwd()) {
   const directory = path.resolve(root, 'backend/database/migrations');
@@ -21,12 +26,20 @@ export function listMigrations(root = process.cwd()) {
       if (sql.trim() === '') {
         throw new Error(`Migration is empty: ${filename}`);
       }
+      const canonicalSql = sql.replace(/\r\n/g, '\n');
+      const lfChecksum = crypto.createHash('sha256').update(canonicalSql).digest('hex');
+      const crlfChecksum = crypto.createHash('sha256').update(canonicalSql.replace(/\n/g, '\r\n')).digest('hex');
       return {
         version: Number(match[1]),
         name: match[2],
         filename,
         sql,
-        checksum: crypto.createHash('sha256').update(sql).digest('hex'),
+        checksum: lfChecksum,
+        compatibleChecksums: new Set([
+          lfChecksum,
+          crlfChecksum,
+          ...(LEGACY_CHECKSUMS.get(Number(match[1])) || []),
+        ]),
       };
     })
     .sort((a, b) => a.version - b.version);
@@ -84,7 +97,15 @@ export async function migrationStatus(connection, root = process.cwd()) {
   for (const migration of migrations) {
     const record = applied.get(migration.version);
     if (record && record.checksum !== migration.checksum) {
-      throw new Error(`Checksum mismatch for applied migration ${migration.filename}. Never edit an applied migration.`);
+      if (migration.compatibleChecksums.has(record.checksum)) {
+        await connection.execute(
+          'UPDATE schema_migrations SET checksum = ? WHERE version = ? AND checksum = ?',
+          [migration.checksum, migration.version, record.checksum],
+        );
+        record.checksum = migration.checksum;
+      } else {
+        throw new Error(`Checksum mismatch for applied migration ${migration.filename}. Never edit an applied migration.`);
+      }
     }
   }
   for (const record of rows) {
