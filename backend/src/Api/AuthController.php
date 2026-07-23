@@ -8,6 +8,7 @@ use SchoolXNow\Core\Database;
 use SchoolXNow\Core\Config;
 use SchoolXNow\Core\Request;
 use SchoolXNow\Core\Response;
+use SchoolXNow\Core\Monitoring;
 use SchoolXNow\Security\Auth;
 use SchoolXNow\Security\RateLimiter;
 use SchoolXNow\Security\TokenService;
@@ -132,7 +133,8 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
-            Response::json(['error' => ['message' => 'Registration failed', 'detail' => $error->getMessage()]], 400);
+            Monitoring::logError($error, 'auth_registration_error');
+            Response::json(['error' => ['message' => 'Registration failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
         }
 
         Response::json(['data' => ['id' => $id, 'email' => $email]], 201);
@@ -239,12 +241,13 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
+            Monitoring::logError($error, 'school_registration_error');
             $message = $error->getMessage();
             if (str_contains($message, 'users.email') || str_contains($message, 'users_email') || str_contains($message, 'Duplicate')) {
                 Response::json(['error' => ['message' => 'This email or EIIN number is already registered']], 409);
             }
 
-            Response::json(['error' => ['message' => 'School registration failed', 'detail' => $message]], 400);
+            Response::json(['error' => ['message' => 'School registration failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $message : null]], 400);
         }
 
         Response::json([
@@ -324,7 +327,8 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
-            Response::json(['error' => ['message' => 'Failed to create super admin', 'detail' => $error->getMessage()]], 400);
+            Monitoring::logError($error, 'bootstrap_error');
+            Response::json(['error' => ['message' => 'Failed to create super admin', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
         }
 
         Response::json([
@@ -512,7 +516,8 @@ final class AuthController
                 $pdo->commit();
             } catch (\Throwable $error) {
                 $pdo->rollBack();
-                Response::json(['error' => ['message' => 'Password reset request failed', 'detail' => $error->getMessage()]], 400);
+                Monitoring::logError($error, 'password_reset_request_error');
+                Response::json(['error' => ['message' => 'Password reset request failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
             }
 
             $data['reset_token'] = $token;
@@ -571,7 +576,8 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
-            Response::json(['error' => ['message' => 'Password reset failed', 'detail' => $error->getMessage()]], 400);
+            Monitoring::logError($error, 'password_reset_error');
+            Response::json(['error' => ['message' => 'Password reset failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
         }
 
         Response::json(['data' => ['ok' => true]]);
@@ -637,7 +643,8 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
-            Response::json(['error' => ['message' => 'Teacher portal link generation failed', 'detail' => $error->getMessage()]], 400);
+            Monitoring::logError($error, 'teacher_portal_link_error');
+            Response::json(['error' => ['message' => 'Teacher portal link generation failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
         }
 
         $base = $redirectTo !== '' ? $redirectTo : self::frontendUrl('/teacher-portal');
@@ -701,7 +708,8 @@ final class AuthController
             $pdo->commit();
         } catch (\Throwable $error) {
             $pdo->rollBack();
-            Response::json(['error' => ['message' => 'Teacher portal login failed', 'detail' => $error->getMessage()]], 400);
+            Monitoring::logError($error, 'teacher_portal_login_error');
+            Response::json(['error' => ['message' => 'Teacher portal login failed', 'detail' => Config::get('APP_DEBUG') === 'true' ? $error->getMessage() : null]], 400);
         }
 
         $jwt = TokenService::issue([

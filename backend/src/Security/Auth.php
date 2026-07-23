@@ -7,6 +7,7 @@ namespace SchoolXNow\Security;
 use SchoolXNow\Core\Database;
 use SchoolXNow\Core\Request;
 use SchoolXNow\Core\Response;
+use SchoolXNow\Core\Monitoring;
 
 final class Auth
 {
@@ -43,6 +44,7 @@ final class Auth
             Response::json(['error' => ['message' => 'Account is inactive or missing']], 403);
         }
 
+        Monitoring::setUserRole((string) $user['role']);
         return $user;
     }
 

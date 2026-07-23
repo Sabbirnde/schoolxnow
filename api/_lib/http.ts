@@ -19,7 +19,8 @@ export function setCors(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Request-ID');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Request-ID');
 }
 
 export function sendData<T>(res: VercelResponse, data: T, status = 200) {
@@ -98,4 +99,3 @@ export function appendQuery(url: string, params: Record<string, string>) {
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}${new URLSearchParams(params).toString()}`;
 }
-

@@ -9,15 +9,27 @@ use SchoolXNow\Api\TableController;
 use SchoolXNow\Api\UploadController;
 use SchoolXNow\Core\Response;
 use SchoolXNow\Core\Router;
+use SchoolXNow\Core\Database;
 
 $router = new Router();
 
 $router->get('/health', function (): void {
-    Response::json([
-        'ok' => true,
-        'service' => 'schoolxnow-php-api',
-        'time' => gmdate('c'),
-    ]);
+    try {
+        $value = Database::connection()->query('SELECT 1')->fetchColumn();
+        Response::json([
+            'ok' => (int) $value === 1,
+            'service' => 'schoolxnow-php-api',
+            'checks' => ['database' => 'ok'],
+            'time' => gmdate('c'),
+        ]);
+    } catch (Throwable) {
+        Response::json([
+            'ok' => false,
+            'service' => 'schoolxnow-php-api',
+            'checks' => ['database' => 'unavailable'],
+            'time' => gmdate('c'),
+        ], 503);
+    }
 });
 
 $router->post('/auth/login', [AuthController::class, 'login']);

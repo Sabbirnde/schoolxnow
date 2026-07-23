@@ -17,8 +17,10 @@ spl_autoload_register(function (string $class): void {
 });
 
 SchoolXNow\Core\Env::load(__DIR__ . '/../.env');
+SchoolXNow\Core\Monitoring::initialize();
 
 set_exception_handler(function (Throwable $error): void {
+    SchoolXNow\Core\Monitoring::logError($error);
     SchoolXNow\Core\Response::json([
         'error' => [
             'message' => 'Internal server error',

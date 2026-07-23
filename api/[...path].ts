@@ -19,6 +19,12 @@ import {
 } from './_lib/http.js';
 import { handleTable } from './_lib/tables.js';
 import { enforceRateLimit } from './_lib/rate-limit.js';
+import {
+  recordAlertSignal,
+  sanitizedError,
+  setRequestUserRole,
+  withRequestContext,
+} from './_lib/monitoring.js';
 
 type LoginUser = ApiUser & RowDataPacket & { password_hash: string };
 
@@ -105,6 +111,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
   const user = rows[0];
 
   if (!user || !(await verifyPassword(password, user.password_hash))) {
+    recordAlertSignal('login_failure');
     throw new ApiError(401, 'Invalid email or password');
   }
 
@@ -113,6 +120,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
   }
 
   const { password_hash: _passwordHash, ...safeUser } = user;
+  setRequestUserRole(safeUser.role);
   const token = issueToken({
     sub: safeUser.id,
     email: safeUser.email,
@@ -127,6 +135,50 @@ async function login(req: VercelRequest, res: VercelResponse) {
       token_type: 'bearer',
     },
   });
+}
+
+function sanitizeTelemetryText(value: unknown) {
+  return String(value || '')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+    .replace(/([?&](?:token|key|secret|password)=)[^&\s]+/gi, '$1[redacted]')
+    .slice(0, 500);
+}
+
+async function receiveErrorTelemetry(req: VercelRequest, res: VercelResponse) {
+  await enforceRateLimit(
+    req,
+    res,
+    { action: 'telemetry.client-errors', limit: 20, windowSeconds: 60 },
+  );
+  const contentLength = Number(req.headers['content-length'] || 0);
+  if (contentLength > 64 * 1024) {
+    throw new ApiError(413, 'Telemetry payload is too large');
+  }
+
+  const body = readJsonBody<{ errors?: unknown[]; appVersion?: string; environment?: string }>(req);
+  const errors = Array.isArray(body.errors) ? body.errors.slice(0, 20) : [];
+  if (errors.length === 0) {
+    throw new ApiError(422, 'Telemetry errors are required');
+  }
+
+  for (const item of errors) {
+    const error = item && typeof item === 'object' ? item as Record<string, unknown> : {};
+    console.error(JSON.stringify({
+      event: 'client_error_telemetry',
+      telemetry_id: sanitizeTelemetryText(error.id),
+      error_type: sanitizeTelemetryText(error.errorType),
+      operation: sanitizeTelemetryText(error.operation),
+      severity: sanitizeTelemetryText(error.severity),
+      message: sanitizeTelemetryText(error.message),
+      app_version: sanitizeTelemetryText(body.appVersion),
+      request_id: res.getHeader('X-Request-ID'),
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
+  recordAlertSignal('client_error', { batch_size: errors.length });
+  return sendData(res, { accepted: errors.length }, 202);
 }
 
 async function register(req: VercelRequest, res: VercelResponse) {
@@ -732,6 +784,11 @@ function pathSegments(req: VercelRequest) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const suppliedRequestId = String(req.headers['x-request-id'] || '');
+  const requestId = /^[a-zA-Z0-9._-]{8,128}$/.test(suppliedRequestId)
+    ? suppliedRequestId
+    : randomUUID();
+  res.setHeader('X-Request-ID', requestId);
   setCors(req, res);
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -740,11 +797,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const segments = pathSegments(req);
   const path = `/${segments.join('/')}`;
 
+  return withRequestContext({
+    requestId,
+    endpoint: path,
+    method: req.method || 'UNKNOWN',
+  }, async () => {
   try {
     if (req.method === 'GET' && path === '/health') {
-      return res.status(200).json({ ok: true, service: 'schoolxnow-vercel-api', time: new Date().toISOString() });
+      try {
+        const rows = await Promise.race([
+          query<RowDataPacket[]>('SELECT 1 AS ok'),
+          new Promise<never>((_, reject) => setTimeout(() => reject(Object.assign(new Error('Health check timeout'), { code: 'ETIMEDOUT' })), 4000)),
+        ]);
+        return res.status(200).json({
+          ok: Number(rows[0]?.ok) === 1,
+          service: 'schoolxnow-vercel-api',
+          checks: { database: 'ok' },
+          time: new Date().toISOString(),
+        });
+      } catch {
+        return res.status(503).json({
+          ok: false,
+          service: 'schoolxnow-vercel-api',
+          checks: { database: 'unavailable' },
+          time: new Date().toISOString(),
+        });
+      }
     }
 
+    if (req.method === 'POST' && path === '/telemetry/errors') return await receiveErrorTelemetry(req, res);
     if (req.method === 'POST' && path === '/auth/login') return await login(req, res);
     if (req.method === 'POST' && path === '/auth/register') return await register(req, res);
     if (req.method === 'POST' && path === '/auth/register-school') return await registerSchool(req, res);
@@ -774,6 +855,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     throw new ApiError(404, 'Route not found');
   } catch (error) {
+    const status = error instanceof ApiError ? error.status : 500;
+    if (status >= 500) {
+      console.error(JSON.stringify({
+        event: 'api_error',
+        request_id: requestId,
+        endpoint: path,
+        method: req.method,
+        status,
+        error: sanitizedError(error),
+        timestamp: new Date().toISOString(),
+      }));
+      recordAlertSignal('http_500', { status });
+    }
     return sendError(res, error);
   }
+  });
 }

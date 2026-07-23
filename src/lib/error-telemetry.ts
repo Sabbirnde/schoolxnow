@@ -250,7 +250,9 @@ class ErrorTelemetryService {
    * Send errors to backend endpoint
    */
   private async sendErrorsTelemetry(errors: ErrorTelemetry[]): Promise<void> {
-    const endpoint = import.meta.env.VITE_ERROR_TELEMETRY_ENDPOINT;
+    const endpoint =
+      import.meta.env.VITE_ERROR_TELEMETRY_ENDPOINT ||
+      (import.meta.env.PROD ? '/api/telemetry/errors' : '');
 
     // Skip if no endpoint configured
     if (!endpoint) {
@@ -342,7 +344,9 @@ class ErrorTelemetryService {
     window.addEventListener('beforeunload', () => {
       // Use sendBeacon for guaranteed delivery on page unload
       if (this.queue.length > 0) {
-        const endpoint = import.meta.env.VITE_ERROR_TELEMETRY_ENDPOINT;
+        const endpoint =
+          import.meta.env.VITE_ERROR_TELEMETRY_ENDPOINT ||
+          (import.meta.env.PROD ? '/api/telemetry/errors' : '');
         if (endpoint && navigator.sendBeacon) {
           navigator.sendBeacon(
             endpoint,

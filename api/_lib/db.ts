@@ -1,5 +1,6 @@
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from 'mysql2/promise';
 import { ApiError } from './http.js';
+import { logMySqlError, monitorDatabaseError } from './monitoring.js';
 
 let pool: Pool | null = null;
 
@@ -42,6 +43,7 @@ export function db(): Pool {
     connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 5),
     namedPlaceholders: true,
     timezone: 'Z',
+    connectTimeout: 5000,
     ssl:
       process.env.DB_SSL === 'true'
         ? {
@@ -59,8 +61,14 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
   connection?: PoolConnection,
 ): Promise<T> {
   const executor = connection ?? db();
-  const [rows] = await executor.execute<T>(sql, params as any);
-  return rows;
+  try {
+    const [rows] = await executor.execute<T>(sql, params as any);
+    return rows;
+  } catch (error) {
+    logMySqlError(error, 'query');
+    monitorDatabaseError(error);
+    throw error;
+  }
 }
 
 export async function execute(
@@ -69,12 +77,25 @@ export async function execute(
   connection?: PoolConnection,
 ) {
   const executor = connection ?? db();
-  const [result] = await executor.execute(sql, params as any);
-  return result;
+  try {
+    const [result] = await executor.execute(sql, params as any);
+    return result;
+  } catch (error) {
+    logMySqlError(error, 'execute');
+    monitorDatabaseError(error);
+    throw error;
+  }
 }
 
 export async function transaction<T>(fn: (connection: PoolConnection) => Promise<T>): Promise<T> {
-  const connection = await db().getConnection();
+  let connection: PoolConnection;
+  try {
+    connection = await db().getConnection();
+  } catch (error) {
+    logMySqlError(error, 'get_connection');
+    monitorDatabaseError(error);
+    throw error;
+  }
   await connection.beginTransaction();
 
   try {

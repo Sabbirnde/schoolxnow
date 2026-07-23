@@ -4,6 +4,7 @@ import type { VercelRequest } from '@vercel/node';
 import type { RowDataPacket } from 'mysql2/promise';
 import { query } from './db.js';
 import { ApiError, readBearerToken, requiredEnv } from './http.js';
+import { setRequestUserRole } from './monitoring.js';
 
 export type ApiUser = {
   id: string;
@@ -123,6 +124,7 @@ export async function requireUser(req: VercelRequest): Promise<ApiUser> {
     throw new ApiError(403, 'Account is inactive or missing');
   }
 
+  setRequestUserRole(user.role);
   return user;
 }
 

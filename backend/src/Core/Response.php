@@ -8,10 +8,13 @@ final class Response
 {
     public static function json(array $payload, int $status = 200): never
     {
+        $payload['request_id'] = Monitoring::requestId();
         http_response_code($status);
+        header('X-Request-ID: ' . Monitoring::requestId());
         header('Content-Type: application/json; charset=utf-8');
         header('Access-Control-Allow-Origin: ' . Config::get('CORS_ORIGIN', '*'));
-        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With, X-Request-ID');
+        header('Access-Control-Expose-Headers: X-Request-ID');
         header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
 
         echo json_encode($payload, JSON_UNESCAPED_SLASHES);
@@ -21,8 +24,10 @@ final class Response
     public static function noContent(): never
     {
         http_response_code(204);
+        header('X-Request-ID: ' . Monitoring::requestId());
         header('Access-Control-Allow-Origin: ' . Config::get('CORS_ORIGIN', '*'));
-        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Requested-With, X-Request-ID');
+        header('Access-Control-Expose-Headers: X-Request-ID');
         header('Access-Control-Allow-Methods: GET, POST, PATCH, DELETE, OPTIONS');
         exit;
     }

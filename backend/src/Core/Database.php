@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SchoolXNow\Core;
 
 use PDO;
+use Throwable;
 
 final class Database
 {
@@ -41,7 +42,12 @@ final class Database
             }
         }
 
-        self::$pdo = new PDO($dsn, $user, $pass, $options);
+        try {
+            self::$pdo = new PDO($dsn, $user, $pass, $options);
+        } catch (Throwable $error) {
+            Monitoring::logError($error, 'mysql_connection_error');
+            throw $error;
+        }
 
         return self::$pdo;
     }

@@ -166,6 +166,37 @@ registration and password-reset requests allow 5 per hour; school registration
 allows 3 per hour; bootstrap allows 5 per hour. Limits combine the client IP
 with a normalized account identity where one is available.
 
+## Error monitoring and health
+
+Every Node and PHP API response includes an `X-Request-ID` header. Clients may
+send their own ID when it contains only letters, numbers, dots, underscores, or
+hyphens; otherwise the API generates one. Use this ID to correlate a browser
+error with backend logs.
+
+Production browser errors are sent in sanitized batches to
+`POST /api/telemetry/errors`. `VITE_ERROR_TELEMETRY_ENDPOINT` may override that
+same-origin default. MySQL logs contain only the error code/state plus request
+ID, endpoint, method, and authenticated role—never SQL, parameters, passwords,
+tokens, or raw database messages.
+
+Monitoring emits structured JSON events suitable for Vercel log drains:
+
+- `monitoring_signal` for login failures, HTTP 500 responses, database
+  connection failures, and client-error batches;
+- `schoolxnow_alert` when the configured rolling threshold is reached;
+- `mysql_error`, `api_error`, and `client_error_telemetry` for diagnosis.
+
+Set the optional server-only `ALERT_WEBHOOK_URL` to deliver JSON alerts to an
+incident-management or automation webhook. The built-in warm-instance
+thresholds are 5 login failures in 5 minutes, 5 HTTP 500s in 1 minute, any
+database connection failure, and 10 client errors in 5 minutes. For
+fleet-wide aggregation, configure the same thresholds in the Vercel log-drain
+destination using the structured event names above.
+
+`GET /api/health` performs a bounded `SELECT 1`. It returns `200` with
+`checks.database: "ok"` or `503` with `"unavailable"` and never exposes the
+database host, name, username, SQL error, or credentials.
+
 ## Preview database isolation
 
 Preview deployments must never use the production database name or production

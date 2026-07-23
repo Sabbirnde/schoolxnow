@@ -36,6 +36,7 @@ const optionalKeys = [
   'UPLOAD_MAX_BYTES',
   'VITE_ERROR_TELEMETRY_ENDPOINT',
   'VITE_APP_VERSION',
+  'ALERT_WEBHOOK_URL',
 ];
 
 function valueAfter(flag) {
