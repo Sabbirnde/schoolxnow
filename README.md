@@ -435,6 +435,9 @@ npm run type-check
 # Tests
 npm test -- --run
 
+# Vercel API routes against a disposable strict MySQL 8.4 container
+npm run test:api-integration
+
 # Production frontend
 npm run build
 
@@ -448,6 +451,13 @@ npm run check:vercel-deploy -- --env .env.vercel.local
 # Dependency audit
 npm audit --omit=dev
 ```
+
+The API integration command requires Docker. It pins `mysql:8.4`, selects a
+random local port, imports the production schema, invokes the real Vercel route
+adapters, and removes its uniquely named container after completion. It covers
+table list/create/show/update/delete/count routes, Vercel-injected parameters,
+filters, sorting, pagination, role/school isolation, login and token states,
+strict SQL mode, named placeholders, and constraint-error sanitization.
 
 `check:php-deploy` expects built release files and real values in `.env` and
 `backend/.env`. Placeholder credentials intentionally cause the check to fail.

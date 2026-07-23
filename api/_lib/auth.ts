@@ -110,7 +110,7 @@ export async function requireUser(req: VercelRequest): Promise<ApiUser> {
             p.address,
             p.address_bangla,
             p.approval_status,
-            p.is_active
+            IF(u.is_active = 1 AND p.is_active = 1, 1, 0) AS is_active
      FROM users u
      JOIN user_profiles p ON p.user_id = u.id
      LEFT JOIN user_roles r ON r.user_id = u.id

@@ -39,7 +39,7 @@ final class AuthController
                     p.address,
                     p.address_bangla,
                     p.approval_status,
-                    p.is_active
+                    IF(u.is_active = 1 AND p.is_active = 1, 1, 0) AS is_active
              FROM users u
              JOIN user_profiles p ON p.user_id = u.id
              LEFT JOIN user_roles r ON r.user_id = u.id
@@ -683,7 +683,7 @@ final class AuthController
                         p.address,
                         p.address_bangla,
                         p.approval_status,
-                        p.is_active
+                        IF(u.is_active = 1 AND p.is_active = 1, 1, 0) AS is_active
                  FROM teacher_portal_tokens t
                  JOIN users u ON u.id = t.user_id
                  JOIN user_profiles p ON p.user_id = u.id
@@ -748,7 +748,7 @@ final class AuthController
                     p.avatar_url,
                     p.address,
                     p.address_bangla,
-                    p.is_active
+                    IF(u.is_active = 1 AND p.is_active = 1, 1, 0) AS is_active
              FROM user_profiles p
              LEFT JOIN user_roles r ON r.user_id = p.user_id
              WHERE p.user_id = :user_id
