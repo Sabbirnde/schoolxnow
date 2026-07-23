@@ -12,10 +12,13 @@ const envPath = process.argv.includes('--env')
 const requiredFiles = [
   'api/[...path].ts',
   'api/_lib/auth.ts',
+  'api/_lib/contract.ts',
   'api/_lib/db.ts',
   'api/_lib/http.ts',
   'api/_lib/tables.ts',
   'backend/database/schema.mysql.sql',
+  'backend/api-contract.json',
+  'scripts/check-api-contract.mjs',
   'scripts/migrate-mysql.mjs',
   '.env.vercel.example',
   'vercel.json',

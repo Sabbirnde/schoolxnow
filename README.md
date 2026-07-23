@@ -42,7 +42,11 @@ Node serverless API   PHP API
 
 Both backend implementations expose the same `/api` contract for login,
 registration, profile management, password reset, bootstrap, table CRUD, and
-uploads.
+uploads. The machine-readable
+[shared API contract](backend/API_CONTRACT.md) is consumed by both backends and
+is the source of truth for table exposure and role permissions. Node/Vercel is
+the primary production backend; PHP remains the shared-hosting compatibility
+adapter.
 
 ### Compatibility-mode environment value
 
@@ -466,7 +470,10 @@ npm run type-check
 # Tests
 npm test -- --run
 
-# Vercel API routes against a disposable strict MySQL 8.4 container
+# Validate the shared Node/PHP API definition
+npm run check:api-contract
+
+# Node and PHP APIs against a disposable strict MySQL 8.4 container
 npm run test:api-integration
 
 # Production frontend
@@ -485,8 +492,9 @@ npm audit --omit=dev
 ```
 
 The API integration command requires Docker. It pins `mysql:8.4`, selects a
-random local port, applies the numbered migrations, invokes the real Vercel route
-adapters, and removes its uniquely named container after completion. It covers
+random local port, applies the numbered migrations, invokes both the real
+Vercel route adapters and PHP router, and removes its uniquely named container
+after completion. It covers cross-backend contract behavior plus
 table list/create/show/update/delete/count routes, Vercel-injected parameters,
 filters, sorting, pagination, role/school isolation, login and token states,
 strict SQL mode, named placeholders, and constraint-error sanitization.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SchoolXNow\Security;
 
+use SchoolXNow\Core\ApiContract;
 use SchoolXNow\Core\Database;
 use SchoolXNow\Core\Request;
 use SchoolXNow\Core\Response;
@@ -50,51 +51,6 @@ final class Auth
 
     public static function canAccessTable(array $user, string $table, string $operation): bool
     {
-        if ($user['role'] === 'super_admin') {
-            return $table !== 'audit_logs' || in_array($operation, ['read', 'create'], true);
-        }
-
-        $schoolAdminRead = [
-            'schools',
-            'user_profiles',
-            'classes',
-            'students',
-            'subjects',
-            'teachers',
-            'attendance',
-            'exams',
-            'exam_results',
-            'timetable',
-            'teacher_applications',
-            'audit_logs',
-            'notifications',
-            'notification_settings',
-            'feedback_submissions',
-        ];
-        $schoolAdminWrite = array_values(array_diff($schoolAdminRead, ['schools', 'audit_logs']));
-        if ($user['role'] === 'school_admin') {
-            if ($table === 'audit_logs') {
-                return in_array($operation, ['read', 'create'], true);
-            }
-            return in_array($table, $operation === 'read' ? $schoolAdminRead : $schoolAdminWrite, true);
-        }
-
-        $teacherRead = [
-            'schools', 'user_profiles', 'classes', 'students', 'subjects', 'teachers',
-            'attendance', 'exams', 'exam_results', 'timetable', 'teacher_applications',
-            'notifications', 'notification_settings', 'feedback_submissions',
-        ];
-        $teacherWrite = ['attendance', 'exam_results', 'notification_settings', 'feedback_submissions'];
-        if ($user['role'] === 'teacher') {
-            if ($table === 'audit_logs') {
-                return $operation === 'create';
-            }
-            return in_array($table, $operation === 'read' ? $teacherRead : $teacherWrite, true);
-        }
-
-        $selfServiceRead = ['schools', 'user_profiles', 'notifications', 'notification_settings', 'feedback_submissions'];
-        $selfServiceWrite = ['notification_settings', 'feedback_submissions'];
-        return in_array($user['role'], ['student', 'guardian'], true)
-            && in_array($table, $operation === 'read' ? $selfServiceRead : $selfServiceWrite, true);
+        return ApiContract::allows((string) $user['role'], $table, $operation);
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SchoolXNow\Api;
 
+use SchoolXNow\Core\ApiContract;
 use SchoolXNow\Core\Database;
 use SchoolXNow\Core\Request;
 use SchoolXNow\Core\Response;
@@ -11,42 +12,6 @@ use SchoolXNow\Security\Auth;
 
 final class TableController
 {
-    private const ALLOWED_TABLES = [
-        'schools',
-        'user_profiles',
-        'user_roles',
-        'classes',
-        'students',
-        'subjects',
-        'teachers',
-        'attendance',
-        'exams',
-        'exam_results',
-        'timetable',
-        'teacher_applications',
-        'audit_logs',
-        'system_settings',
-        'notifications',
-        'notification_settings',
-        'feedback_submissions',
-    ];
-
-    private const SCHOOL_SCOPED = [
-        'classes',
-        'students',
-        'subjects',
-        'teachers',
-        'attendance',
-        'exams',
-        'exam_results',
-        'timetable',
-        'teacher_applications',
-        'audit_logs',
-        'notifications',
-        'notification_settings',
-        'feedback_submissions',
-    ];
-
     public function index(string $table): void
     {
         $table = $this->assertTable($table);
@@ -120,7 +85,7 @@ final class TableController
         $body = Request::json();
         $this->removeProtectedFields($body, $user);
         $body['id'] = $body['id'] ?? self::uuid();
-        if (in_array($table, self::SCHOOL_SCOPED, true) && $user['role'] !== 'super_admin') {
+        if (in_array($table, ApiContract::schoolScopedTables(), true) && $user['role'] !== 'super_admin') {
             $body['school_id'] = $user['school_id'];
         }
         if (in_array($table, ['notification_settings', 'feedback_submissions'], true) && $user['role'] !== 'super_admin') {
@@ -181,7 +146,7 @@ final class TableController
 
     private function assertTable(string $table): string
     {
-        if (!in_array($table, self::ALLOWED_TABLES, true)) {
+        if (!in_array($table, ApiContract::allowedTables(), true)) {
             Response::json(['error' => ['message' => 'Table is not available through API']], 404);
         }
 
@@ -239,7 +204,7 @@ final class TableController
             return ['user_id = :scope_user_id'];
         }
 
-        if (in_array($table, self::SCHOOL_SCOPED, true)) {
+        if (in_array($table, ApiContract::schoolScopedTables(), true)) {
             $params['scope_school_id'] = $user['school_id'];
             return ['school_id = :scope_school_id'];
         }

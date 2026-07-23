@@ -4,45 +4,10 @@ import type { ApiUser } from './auth.js';
 import { canAccessTable, requireUser, type TableOperation } from './auth.js';
 import { execute, query } from './db.js';
 import { ApiError, readJsonBody, sendData } from './http.js';
-
-const ALLOWED_TABLES = [
-  'schools',
-  'user_profiles',
-  'user_roles',
-  'classes',
-  'students',
-  'subjects',
-  'teachers',
-  'attendance',
-  'exams',
-  'exam_results',
-  'timetable',
-  'teacher_applications',
-  'audit_logs',
-  'system_settings',
-  'notifications',
-  'notification_settings',
-  'feedback_submissions',
-];
-
-const SCHOOL_SCOPED = [
-  'classes',
-  'students',
-  'subjects',
-  'teachers',
-  'attendance',
-  'exams',
-  'exam_results',
-  'timetable',
-  'teacher_applications',
-  'audit_logs',
-  'notifications',
-  'notification_settings',
-  'feedback_submissions',
-];
+import { allowedTables, schoolScopedTables } from './contract.js';
 
 function assertTable(table: string) {
-  if (!ALLOWED_TABLES.includes(table)) {
+  if (!allowedTables.includes(table)) {
     throw new ApiError(404, 'Table is not available through API');
   }
 
@@ -104,7 +69,7 @@ function scopeWhere(table: string, user: ApiUser, params: Record<string, unknown
     return ['user_id = :scope_user_id'];
   }
 
-  if (SCHOOL_SCOPED.includes(table)) {
+  if (schoolScopedTables.includes(table)) {
     params.scope_school_id = user.school_id;
     return ['school_id = :scope_school_id'];
   }
@@ -231,7 +196,7 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
     const body = readJsonBody(req);
     removeProtectedFields(body, user);
     const row: Record<string, unknown> = { ...body, id: body.id || randomUUID() };
-    if (SCHOOL_SCOPED.includes(table) && user.role !== 'super_admin') {
+    if (schoolScopedTables.includes(table) && user.role !== 'super_admin') {
       row.school_id = user.school_id;
     }
     if (['notification_settings', 'feedback_submissions'].includes(table) && user.role !== 'super_admin') {

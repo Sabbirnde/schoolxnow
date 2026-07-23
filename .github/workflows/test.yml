@@ -34,7 +34,10 @@ jobs:
       - name: Validate ordered database migrations
         run: npm run check:migrations
 
-      - name: Run Vercel API and MySQL integration tests
+      - name: Validate shared API contract
+        run: npm run check:api-contract
+
+      - name: Run Node/PHP contract and MySQL integration tests
         run: npm run test:api-integration
 
       - name: Build production frontend

@@ -1,0 +1,108 @@
+{
+  "version": "1.0.0",
+  "primaryBackend": "node",
+  "basePath": "/api",
+  "requestIdHeader": "X-Request-ID",
+  "envelopes": {
+    "success": { "required": ["data"] },
+    "error": { "required": ["error"], "errorRequired": ["message"] },
+    "health": { "required": ["ok", "service", "checks", "time"] }
+  },
+  "endpoints": [
+    { "path": "/health", "methods": ["GET"], "auth": false, "envelope": "health" },
+    { "path": "/auth/login", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/register", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/register-school", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/me", "methods": ["GET"], "auth": true, "envelope": "success" },
+    { "path": "/auth/teacher-application", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/auth/profile", "methods": ["PATCH"], "auth": true, "envelope": "success" },
+    { "path": "/auth/change-password", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/auth/request-password-reset", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/reset-password", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/teacher-portal-link", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/auth/teacher-portal-login", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/auth/logout", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/bootstrap/status", "methods": ["GET"], "auth": false, "envelope": "success" },
+    { "path": "/bootstrap/create-super-admin", "methods": ["POST"], "auth": false, "envelope": "success" },
+    { "path": "/public/schools", "methods": ["GET"], "auth": false, "envelope": "success" },
+    { "path": "/tables/{table}", "methods": ["GET", "POST"], "auth": true, "envelope": "success" },
+    { "path": "/tables/{table}/count", "methods": ["GET"], "auth": true, "envelope": "success" },
+    { "path": "/tables/{table}/{id}", "methods": ["GET", "PATCH", "DELETE"], "auth": true, "envelope": "success" },
+    { "path": "/uploads/{bucket}", "methods": ["POST"], "auth": true, "envelope": "success" }
+  ],
+  "tables": {
+    "allowed": [
+      "schools", "user_profiles", "user_roles", "classes", "students",
+      "subjects", "teachers", "attendance", "exams", "exam_results",
+      "timetable", "teacher_applications", "audit_logs", "system_settings",
+      "notifications", "notification_settings", "feedback_submissions"
+    ],
+    "schoolScoped": [
+      "classes", "students", "subjects", "teachers", "attendance", "exams",
+      "exam_results", "timetable", "teacher_applications", "audit_logs",
+      "notifications", "notification_settings", "feedback_submissions"
+    ]
+  },
+  "authorization": {
+    "super_admin": {
+      "all": ["read", "create", "update", "delete"],
+      "overrides": { "audit_logs": ["read", "create"] }
+    },
+    "school_admin": {
+      "read": [
+        "schools", "user_profiles", "classes", "students", "subjects", "teachers",
+        "attendance", "exams", "exam_results", "timetable", "teacher_applications",
+        "audit_logs", "notifications", "notification_settings", "feedback_submissions"
+      ],
+      "write": [
+        "user_profiles", "classes", "students", "subjects", "teachers", "attendance",
+        "exams", "exam_results", "timetable", "teacher_applications", "notifications",
+        "notification_settings", "feedback_submissions"
+      ],
+      "appendOnly": ["audit_logs"]
+    },
+    "teacher": {
+      "read": [
+        "schools", "user_profiles", "classes", "students", "subjects", "teachers",
+        "attendance", "exams", "exam_results", "timetable", "teacher_applications",
+        "notifications", "notification_settings", "feedback_submissions"
+      ],
+      "write": ["attendance", "exam_results", "notification_settings", "feedback_submissions"],
+      "appendOnly": ["audit_logs"]
+    },
+    "student": {
+      "read": ["schools", "user_profiles", "notifications", "notification_settings", "feedback_submissions"],
+      "write": ["notification_settings", "feedback_submissions"]
+    },
+    "guardian": {
+      "read": ["schools", "user_profiles", "notifications", "notification_settings", "feedback_submissions"],
+      "write": ["notification_settings", "feedback_submissions"]
+    }
+  },
+  "intentionalDifferences": [
+    {
+      "area": "uploads",
+      "node": "Vercel Blob object storage",
+      "php": "Hosting filesystem storage",
+      "sharedGuarantee": "Authenticated upload, identical bucket and MIME allowlists, public URL response"
+    },
+    {
+      "area": "request_id_body",
+      "node": "Request ID is guaranteed in the response header",
+      "php": "Request ID is in the response header and additionally in JSON bodies",
+      "sharedGuarantee": "X-Request-ID header on every application response"
+    },
+    {
+      "area": "deployment",
+      "node": "Primary production backend on Vercel",
+      "php": "Compatibility backend for shared hosting",
+      "sharedGuarantee": "Contract tests must pass before release"
+    },
+    {
+      "area": "client_error_telemetry",
+      "node": "Accepts sanitized browser error batches at /telemetry/errors",
+      "php": "Relies on host-level PHP logging and alerting",
+      "sharedGuarantee": "Request IDs correlate client failures with sanitized server logs"
+    }
+  ]
+}

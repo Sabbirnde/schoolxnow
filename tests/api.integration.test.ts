@@ -1,6 +1,7 @@
 // @vitest-environment node
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import crypto from 'node:crypto';
+import { createServer } from 'node:net';
 import bcrypt from 'bcryptjs';
 import mysql, { type Connection } from 'mysql2/promise';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,6 +12,7 @@ import countRoute from '../api/tables/[table]/count';
 import idRoute from '../api/tables/[table]/[id]';
 import { issueToken } from '../api/_lib/auth';
 import { applyMigrations, migrationStatus } from '../scripts/lib/migrations.mjs';
+import contract from '../backend/api-contract.json';
 
 const runIntegration = process.env.RUN_API_INTEGRATION === 'true';
 const suite = runIntegration ? describe : describe.skip;
@@ -116,6 +118,50 @@ async function waitForMySql(port: number) {
   throw lastError;
 }
 
+async function availablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForHttp(url: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const result = await fetch(url);
+      if (result.ok) return;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw lastError ?? new Error(`Server did not become ready: ${url}`);
+}
+
+async function phpRequest(
+  base: string,
+  method: string,
+  path: string,
+  options: { body?: Record<string, unknown>; token?: string } = {},
+) {
+  const response = await fetch(`${base}${path}`, {
+    method,
+    headers: {
+      ...(options.body ? { 'content-type': 'application/json' } : {}),
+      ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const body = response.status === 204 ? undefined : await response.json();
+  return { statusCode: response.status, headers: response.headers, body };
+}
+
 async function seed(connection: Connection) {
   const passwordHash = await bcrypt.hash(loginPassword, 4);
   await connection.query(
@@ -195,6 +241,9 @@ suite('Vercel API + MySQL integration', () => {
   let adminAToken: string;
   let teacherAToken: string;
   let studentAToken: string;
+  let phpServer: ChildProcess;
+  let phpBase: string;
+  let phpAdminToken: string;
 
   beforeAll(async () => {
     execFileSync('docker', [
@@ -227,6 +276,15 @@ suite('Vercel API + MySQL integration', () => {
       VERCEL_ENV: 'preview',
     });
 
+    const phpPort = await availablePort();
+    phpBase = `http://127.0.0.1:${phpPort}/api`;
+    phpServer = spawn(
+      'php',
+      ['-S', `127.0.0.1:${phpPort}`, '-t', 'backend/public', 'backend/public/index.php'],
+      { cwd: process.cwd(), env: { ...process.env, API_BASE_PATH: '/api' }, stdio: 'ignore' },
+    );
+    await waitForHttp(`${phpBase}/health`);
+
     const superLogin = await invoke(handler, 'POST', '/api/auth/login', {
       body: { email: 'super@example.test', password: loginPassword },
     });
@@ -243,9 +301,15 @@ suite('Vercel API + MySQL integration', () => {
     adminAToken = adminLogin.body.data.session.access_token;
     teacherAToken = teacherLogin.body.data.session.access_token;
     studentAToken = studentLogin.body.data.session.access_token;
+
+    const phpLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'admin-a@example.test', password: loginPassword },
+    });
+    phpAdminToken = phpLogin.body.data.session.access_token;
   }, 240_000);
 
   afterAll(async () => {
+    phpServer?.kill();
     await connection?.end();
     if (runIntegration && /^schoolxnow-api-test-\d+-[a-f0-9]{8}$/.test(containerName)) {
       execFileSync('docker', ['rm', '--force', containerName], { stdio: 'ignore', timeout: 30_000 });
@@ -259,6 +323,82 @@ suite('Vercel API + MySQL integration', () => {
     const status = await migrationStatus(connection);
     expect(status.applied).toHaveLength(2);
     expect(status.pending).toHaveLength(0);
+  });
+
+  it('keeps health and login response contracts aligned across Node and PHP', async () => {
+    const nodeHealth = await invoke(handler, 'GET', '/api/health');
+    const phpHealth = await phpRequest(phpBase, 'GET', '/health');
+    for (const result of [nodeHealth, phpHealth]) {
+      expect(result.statusCode).toBe(200);
+      for (const field of contract.envelopes.health.required) {
+        expect(result.body).toHaveProperty(field);
+      }
+    }
+    expect(nodeHealth.getHeader(contract.requestIdHeader)).toBeTruthy();
+    expect(phpHealth.headers.get(contract.requestIdHeader)).toBeTruthy();
+
+    const nodeLogin = await invoke(handler, 'POST', '/api/auth/login', {
+      body: { email: 'admin-b@example.test', password: loginPassword },
+    });
+    const phpLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'admin-b@example.test', password: loginPassword },
+    });
+    for (const result of [nodeLogin, phpLogin]) {
+      expect(result.statusCode).toBe(200);
+      expect(result.body.data.user.role).toBe('school_admin');
+      expect(result.body.data.session.access_token).toEqual(expect.any(String));
+    }
+  });
+
+  it('keeps authentication failures aligned across Node and PHP', async () => {
+    const credentials = { email: 'admin-b@example.test', password: 'wrong-password' };
+    const invalidNode = await invoke(handler, 'POST', '/api/auth/login', { body: credentials });
+    const invalidPhp = await phpRequest(phpBase, 'POST', '/auth/login', { body: credentials });
+    expect([invalidNode.statusCode, invalidPhp.statusCode]).toEqual([401, 401]);
+
+    const inactiveNode = await invoke(handler, 'POST', '/api/auth/login', {
+      body: { email: 'inactive@example.test', password: loginPassword },
+    });
+    const inactivePhp = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'inactive@example.test', password: loginPassword },
+    });
+    expect([inactiveNode.statusCode, inactivePhp.statusCode]).toEqual([403, 403]);
+
+    process.env.JWT_TTL_SECONDS = '-1';
+    const expiredToken = issueToken({ sub: ids.adminA });
+    process.env.JWT_TTL_SECONDS = '3600';
+    const expiredNode = await invoke(handler, 'GET', '/api/auth/me', { token: expiredToken });
+    const expiredPhp = await phpRequest(phpBase, 'GET', '/auth/me', { token: expiredToken });
+    expect([expiredNode.statusCode, expiredPhp.statusCode]).toEqual([401, 401]);
+  });
+
+  it('keeps table authorization and school isolation aligned across Node and PHP', async () => {
+    const nodeStudents = await invoke(handler, 'GET', '/api/tables/students?limit=20', {
+      token: adminAToken,
+      query: { path: ['tables', 'students'], limit: '20' },
+    });
+    const phpStudents = await phpRequest(phpBase, 'GET', '/tables/students?limit=20', {
+      token: phpAdminToken,
+    });
+    for (const result of [nodeStudents, phpStudents]) {
+      expect(result.statusCode).toBe(200);
+      expect(result.body.data).toHaveLength(3);
+      expect(result.body.data.every((row: any) => row.school_id === ids.schoolA)).toBe(true);
+    }
+
+    const nodeForbidden = await invoke(handler, 'POST', '/api/tables/students', {
+      token: teacherAToken,
+      query: { path: ['tables', 'students'] },
+      body: { student_id: 'NOT-ALLOWED' },
+    });
+    const phpTeacherLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'teacher-a@example.test', password: loginPassword },
+    });
+    const phpForbidden = await phpRequest(phpBase, 'POST', '/tables/students', {
+      token: phpTeacherLogin.body.data.session.access_token,
+      body: { student_id: 'NOT-ALLOWED' },
+    });
+    expect([nodeForbidden.statusCode, phpForbidden.statusCode]).toEqual([403, 403]);
   });
 
   it('adopts the baseline for a legacy installation and applies later migrations', async () => {
