@@ -6,6 +6,16 @@ namespace SchoolXNow\Core;
 
 final class Request
 {
+    public static function ip(): string
+    {
+        $forwarded = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+        if ($forwarded !== '') {
+            return trim(explode(',', $forwarded)[0]);
+        }
+
+        return trim((string) ($_SERVER['HTTP_X_REAL_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    }
+
     public static function json(): array
     {
         $raw = file_get_contents('php://input');

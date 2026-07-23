@@ -44,10 +44,15 @@ function valueAfter(flag) {
 }
 
 function run(command, commandArgs, options = {}) {
-  return spawnSync(command, commandArgs, {
+  const isWindowsVercel = process.platform === 'win32' && command === 'vercel';
+  const executable = isWindowsVercel ? process.execPath : command;
+  const finalArgs = isWindowsVercel
+    ? [path.join(process.env.APPDATA || '', 'npm', 'node_modules', 'vercel', 'dist', 'vc.js'), ...commandArgs]
+    : commandArgs;
+  return spawnSync(executable, finalArgs, {
     cwd: root,
     encoding: 'utf8',
-    shell: process.platform === 'win32',
+    shell: false,
     env: {
       ...process.env,
       VERCEL_TELEMETRY_DISABLED: '1',
@@ -61,6 +66,12 @@ if (!env) {
   console.error(`MISS ${envPath}`);
   console.error('Create it from .env.vercel.example and fill production values first.');
   process.exit(1);
+}
+if (args.includes('--force-db-ssl')) {
+  env.DB_SSL = 'true';
+}
+if (args.includes('--allow-self-signed-db')) {
+  env.DB_SSL_REJECT_UNAUTHORIZED = 'false';
 }
 
 const missing = requiredKeys.filter((key) => isPlaceholder(env[key]));
@@ -81,7 +92,6 @@ for (const target of targets) {
     const targetArgs = target === 'preview' && gitBranch
       ? [target, gitBranch]
       : [target];
-    run('vercel', ['env', 'rm', key, ...targetArgs, '--yes']);
     const add = run('vercel', [
       'env',
       'add',

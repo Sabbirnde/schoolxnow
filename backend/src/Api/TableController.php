@@ -51,6 +51,7 @@ final class TableController
     {
         $table = $this->assertTable($table);
         $user = Auth::user();
+        $this->requireAccess($user, $table, 'read');
         $params = [];
         $where = $this->scopeWhere($table, $user, $params);
         $limit = min(max((int) ($_GET['limit'] ?? 50), 1), 200);
@@ -75,6 +76,7 @@ final class TableController
     {
         $table = $this->assertTable($table);
         $user = Auth::user();
+        $this->requireAccess($user, $table, 'read');
         $params = ['id' => $id];
         $where = ['id = :id', ...$this->scopeWhere($table, $user, $params)];
 
@@ -93,6 +95,7 @@ final class TableController
     {
         $table = $this->assertTable($table);
         $user = Auth::user();
+        $this->requireAccess($user, $table, 'read');
         $params = [];
         $where = $this->scopeWhere($table, $user, $params);
         $this->appendFilters($where, $params);
@@ -112,20 +115,18 @@ final class TableController
         $table = $this->assertTable($table);
         $user = Auth::user();
 
-        if ($table === 'audit_logs' && $user['role'] !== 'super_admin') {
-            Response::json(['error' => ['message' => 'Audit logs are append-only']], 403);
-        }
-
-        if (!Auth::canManage($user, $table)) {
-            Response::json(['error' => ['message' => 'Forbidden']], 403);
-        }
+        $this->requireAccess($user, $table, 'create');
 
         $body = Request::json();
+        $this->removeProtectedFields($body, $user);
         $body['id'] = $body['id'] ?? self::uuid();
         if (in_array($table, self::SCHOOL_SCOPED, true) && $user['role'] !== 'super_admin') {
             $body['school_id'] = $user['school_id'];
         }
         if (in_array($table, ['notification_settings', 'feedback_submissions'], true) && $user['role'] !== 'super_admin') {
+            $body['user_id'] = $user['id'];
+        }
+        if ($table === 'audit_logs' && $user['role'] !== 'super_admin') {
             $body['user_id'] = $user['id'];
         }
 
@@ -138,15 +139,10 @@ final class TableController
         $table = $this->assertTable($table);
         $user = Auth::user();
 
-        if ($table === 'audit_logs' && $user['role'] !== 'super_admin') {
-            Response::json(['error' => ['message' => 'Audit logs are append-only']], 403);
-        }
-
-        if (!Auth::canManage($user, $table)) {
-            Response::json(['error' => ['message' => 'Forbidden']], 403);
-        }
+        $this->requireAccess($user, $table, 'update');
 
         $body = Request::json();
+        $this->removeProtectedFields($body, $user);
         unset($body['id'], $body['created_at']);
         if (!$body) {
             Response::json(['error' => ['message' => 'No fields to update']], 422);
@@ -174,9 +170,7 @@ final class TableController
         $table = $this->assertTable($table);
         $user = Auth::user();
 
-        if (!Auth::canManage($user, $table)) {
-            Response::json(['error' => ['message' => 'Forbidden']], 403);
-        }
+        $this->requireAccess($user, $table, 'delete');
 
         $params = ['id' => $id];
         $where = ['id = :id', ...$this->scopeWhere($table, $user, $params)];
@@ -240,12 +234,31 @@ final class TableController
             return ['school_id = :scope_school_id', 'user_id = :scope_user_id'];
         }
 
+        if ($table === 'teacher_applications' && $user['role'] === 'teacher') {
+            $params['scope_user_id'] = $user['id'];
+            return ['user_id = :scope_user_id'];
+        }
+
         if (in_array($table, self::SCHOOL_SCOPED, true)) {
             $params['scope_school_id'] = $user['school_id'];
             return ['school_id = :scope_school_id'];
         }
 
         Response::json(['error' => ['message' => 'Forbidden']], 403);
+    }
+
+    private function requireAccess(array $user, string $table, string $operation): void
+    {
+        if (!Auth::canAccessTable($user, $table, $operation)) {
+            Response::json(['error' => ['message' => 'Forbidden']], 403);
+        }
+    }
+
+    private function removeProtectedFields(array &$body, array $user): void
+    {
+        if ($user['role'] !== 'super_admin') {
+            unset($body['user_id'], $body['school_id'], $body['role']);
+        }
     }
 
     private function appendFilters(array &$where, array &$params): void

@@ -25,11 +25,23 @@ final class Database
 
         $dsn = "mysql:host={$host};port={$port};dbname={$name};charset={$charset}";
 
-        self::$pdo = new PDO($dsn, $user, $pass, [
+        $options = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
+        ];
+
+        if (Config::get('DB_SSL', 'false') === 'true') {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] =
+                Config::get('DB_SSL_REJECT_UNAUTHORIZED', 'true') !== 'false';
+
+            $caPath = Config::get('DB_SSL_CA');
+            if ($caPath !== null && $caPath !== '') {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
+            }
+        }
+
+        self::$pdo = new PDO($dsn, $user, $pass, $options);
 
         return self::$pdo;
     }
