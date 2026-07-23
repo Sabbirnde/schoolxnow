@@ -10,7 +10,7 @@ import { Loader2, ArrowLeft, ArrowRight, Shield, Users, BookOpen } from "lucide-
 import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import logo from "@/assets/logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const Auth = () => {
   const { user, signIn, signUp } = useAuth();
@@ -207,21 +207,18 @@ const Auth = () => {
           <span>Back</span>
         </Button>
         {/* Header */}
-        <div className="text-center mb-6 sm:mb-8 space-y-3 sm:space-y-4">
-          <div className="flex items-center justify-center mb-3 sm:mb-4">
-            <div className="relative group animate-fade-in">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary via-accent to-primary rounded-2xl sm:rounded-3xl blur-xl sm:blur-2xl opacity-50 group-hover:opacity-70 transition-opacity duration-500 animate-pulse" />
-              <div className="relative bg-gradient-to-br from-primary/20 via-accent/20 to-primary/20 p-6 sm:p-8 rounded-2xl sm:rounded-3xl border-2 border-primary/30 backdrop-blur-sm shadow-elegant group-hover:shadow-[0_0_40px_rgba(var(--primary),0.3)] transition-all duration-300 group-hover:scale-105">
-                <img src={logo} alt="SchoolXNow Logo" className="h-16 w-16 sm:h-20 sm:w-20 object-contain drop-shadow-2xl" />
-              </div>
+        <div className="mb-6 space-y-3 text-center sm:mb-7">
+          <div className="flex items-center justify-center">
+            <div className="rounded-2xl border border-primary/20 bg-card/90 p-2.5 shadow-sm ring-4 ring-primary/5">
+              <BrandLogo className="h-10 w-10 sm:h-12 sm:w-12" alt="SchoolXNow logo" />
             </div>
           </div>
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
+            <h1 className="mb-1.5 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               SchoolXNow
             </h1>
-            <p className="text-base sm:text-lg text-muted-foreground">Welcome back</p>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1">Access your school management dashboard</p>
+            <p className="text-sm font-medium text-muted-foreground sm:text-base">Welcome back</p>
+            <p className="mt-1 text-xs text-muted-foreground sm:text-sm">Access your school management dashboard</p>
           </div>
         </div>
 
