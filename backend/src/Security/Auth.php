@@ -46,13 +46,14 @@ final class Auth
         return $user;
     }
 
-    public static function canManage(array $user, string $table): bool
+    public static function canAccessTable(array $user, string $table, string $operation): bool
     {
         if ($user['role'] === 'super_admin') {
-            return true;
+            return $table !== 'audit_logs' || in_array($operation, ['read', 'create'], true);
         }
 
-        $schoolAdminTables = [
+        $schoolAdminRead = [
+            'schools',
             'user_profiles',
             'classes',
             'students',
@@ -68,17 +69,30 @@ final class Auth
             'notification_settings',
             'feedback_submissions',
         ];
-
-        if ($user['role'] === 'school_admin' && in_array($table, $schoolAdminTables, true)) {
-            return true;
+        $schoolAdminWrite = array_values(array_diff($schoolAdminRead, ['schools', 'audit_logs']));
+        if ($user['role'] === 'school_admin') {
+            if ($table === 'audit_logs') {
+                return in_array($operation, ['read', 'create'], true);
+            }
+            return in_array($table, $operation === 'read' ? $schoolAdminRead : $schoolAdminWrite, true);
         }
 
-        $teacherWritableTables = ['attendance', 'exam_results', 'audit_logs', 'notification_settings', 'feedback_submissions'];
-        if ($user['role'] === 'teacher' && in_array($table, $teacherWritableTables, true)) {
-            return true;
+        $teacherRead = [
+            'schools', 'user_profiles', 'classes', 'students', 'subjects', 'teachers',
+            'attendance', 'exams', 'exam_results', 'timetable', 'teacher_applications',
+            'notifications', 'notification_settings', 'feedback_submissions',
+        ];
+        $teacherWrite = ['attendance', 'exam_results', 'notification_settings', 'feedback_submissions'];
+        if ($user['role'] === 'teacher') {
+            if ($table === 'audit_logs') {
+                return $operation === 'create';
+            }
+            return in_array($table, $operation === 'read' ? $teacherRead : $teacherWrite, true);
         }
 
-        $selfServiceTables = ['notification_settings', 'feedback_submissions'];
-        return in_array($user['role'], ['student', 'guardian'], true) && in_array($table, $selfServiceTables, true);
+        $selfServiceRead = ['schools', 'user_profiles', 'notifications', 'notification_settings', 'feedback_submissions'];
+        $selfServiceWrite = ['notification_settings', 'feedback_submissions'];
+        return in_array($user['role'], ['student', 'guardian'], true)
+            && in_array($table, $operation === 'read' ? $selfServiceRead : $selfServiceWrite, true);
     }
 }

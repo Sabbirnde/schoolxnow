@@ -126,37 +126,49 @@ export async function requireUser(req: VercelRequest): Promise<ApiUser> {
   return user;
 }
 
-export function canManage(user: ApiUser, table: string) {
+export type TableOperation = 'read' | 'create' | 'update' | 'delete';
+
+const SCHOOL_ADMIN_READ = new Set([
+  'schools', 'user_profiles', 'classes', 'students', 'subjects', 'teachers',
+  'attendance', 'exams', 'exam_results', 'timetable', 'teacher_applications',
+  'audit_logs', 'notifications', 'notification_settings', 'feedback_submissions',
+]);
+const SCHOOL_ADMIN_WRITE = new Set([
+  'user_profiles', 'classes', 'students', 'subjects', 'teachers', 'attendance',
+  'exams', 'exam_results', 'timetable', 'teacher_applications', 'notifications',
+  'notification_settings', 'feedback_submissions',
+]);
+const TEACHER_READ = new Set([
+  'schools', 'user_profiles', 'classes', 'students', 'subjects', 'teachers',
+  'attendance', 'exams', 'exam_results', 'timetable', 'teacher_applications',
+  'notifications', 'notification_settings', 'feedback_submissions',
+]);
+const TEACHER_WRITE = new Set(['attendance', 'exam_results', 'notification_settings', 'feedback_submissions']);
+const SELF_SERVICE_READ = new Set(['schools', 'user_profiles', 'notifications', 'notification_settings', 'feedback_submissions']);
+const SELF_SERVICE_WRITE = new Set(['notification_settings', 'feedback_submissions']);
+
+export function canAccessTable(user: ApiUser, table: string, operation: TableOperation) {
   if (user.role === 'super_admin') {
-    return true;
+    return table === 'audit_logs' ? ['read', 'create'].includes(operation) : true;
   }
 
-  const schoolAdminTables = [
-    'user_profiles',
-    'classes',
-    'students',
-    'subjects',
-    'teachers',
-    'attendance',
-    'exams',
-    'exam_results',
-    'timetable',
-    'teacher_applications',
-    'audit_logs',
-    'notifications',
-    'notification_settings',
-    'feedback_submissions',
-  ];
-
-  if (user.role === 'school_admin' && schoolAdminTables.includes(table)) {
-    return true;
+  if (user.role === 'school_admin') {
+    if (table === 'audit_logs') {
+      return operation === 'read' || operation === 'create';
+    }
+    return operation === 'read' ? SCHOOL_ADMIN_READ.has(table) : SCHOOL_ADMIN_WRITE.has(table);
   }
 
-  const teacherWritableTables = ['attendance', 'exam_results', 'audit_logs', 'notification_settings', 'feedback_submissions'];
-  if (user.role === 'teacher' && teacherWritableTables.includes(table)) {
-    return true;
+  if (user.role === 'teacher') {
+    if (table === 'audit_logs') {
+      return operation === 'create';
+    }
+    return operation === 'read' ? TEACHER_READ.has(table) : TEACHER_WRITE.has(table);
   }
 
-  const selfServiceTables = ['notification_settings', 'feedback_submissions'];
-  return ['student', 'guardian'].includes(user.role) && selfServiceTables.includes(table);
+  if (['student', 'guardian'].includes(user.role)) {
+    return operation === 'read' ? SELF_SERVICE_READ.has(table) : SELF_SERVICE_WRITE.has(table);
+  }
+
+  return false;
 }

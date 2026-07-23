@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomUUID } from 'node:crypto';
 import type { ApiUser } from './auth.js';
-import { canManage, requireUser } from './auth.js';
+import { canAccessTable, requireUser, type TableOperation } from './auth.js';
 import { execute, query } from './db.js';
 import { ApiError, readJsonBody, sendData } from './http.js';
 
@@ -99,12 +99,33 @@ function scopeWhere(table: string, user: ApiUser, params: Record<string, unknown
     return ['school_id = :scope_school_id', 'user_id = :scope_user_id'];
   }
 
+  if (table === 'teacher_applications' && user.role === 'teacher') {
+    params.scope_user_id = user.id;
+    return ['user_id = :scope_user_id'];
+  }
+
   if (SCHOOL_SCOPED.includes(table)) {
     params.scope_school_id = user.school_id;
     return ['school_id = :scope_school_id'];
   }
 
   throw new ApiError(403, 'Forbidden');
+}
+
+function requireTableAccess(user: ApiUser, table: string, operation: TableOperation) {
+  if (!canAccessTable(user, table, operation)) {
+    throw new ApiError(403, 'Forbidden');
+  }
+}
+
+function removeProtectedFields(body: Record<string, unknown>, user: ApiUser) {
+  if (user.role === 'super_admin') {
+    return;
+  }
+
+  delete body.user_id;
+  delete body.school_id;
+  delete body.role;
 }
 
 function firstQueryValue(value: string | string[] | undefined) {
@@ -177,6 +198,7 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
   const user = await requireUser(req);
 
   if (req.method === 'GET' && idOrCount === 'count') {
+    requireTableAccess(user, table, 'read');
     const params: Record<string, unknown> = {};
     const where = scopeWhere(table, user, params);
     appendFilters(req, where, params);
@@ -185,10 +207,12 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
   }
 
   if (req.method === 'GET' && idOrCount) {
+    requireTableAccess(user, table, 'read');
     return showRecord(res, table, idOrCount, user);
   }
 
   if (req.method === 'GET') {
+    requireTableAccess(user, table, 'read');
     const params: Record<string, unknown> = {};
     const where = scopeWhere(table, user, params);
     appendFilters(req, where, params);
@@ -202,20 +226,18 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
   }
 
   if (req.method === 'POST' && !idOrCount) {
-    if (table === 'audit_logs' && user.role !== 'super_admin') {
-      throw new ApiError(403, 'Audit logs are append-only');
-    }
-
-    if (!canManage(user, table)) {
-      throw new ApiError(403, 'Forbidden');
-    }
+    requireTableAccess(user, table, 'create');
 
     const body = readJsonBody(req);
+    removeProtectedFields(body, user);
     const row: Record<string, unknown> = { ...body, id: body.id || randomUUID() };
     if (SCHOOL_SCOPED.includes(table) && user.role !== 'super_admin') {
       row.school_id = user.school_id;
     }
     if (['notification_settings', 'feedback_submissions'].includes(table) && user.role !== 'super_admin') {
+      row.user_id = user.id;
+    }
+    if (table === 'audit_logs' && user.role !== 'super_admin') {
       row.user_id = user.id;
     }
 
@@ -227,15 +249,10 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
   }
 
   if (req.method === 'PATCH' && idOrCount) {
-    if (table === 'audit_logs' && user.role !== 'super_admin') {
-      throw new ApiError(403, 'Audit logs are append-only');
-    }
-
-    if (!canManage(user, table)) {
-      throw new ApiError(403, 'Forbidden');
-    }
+    requireTableAccess(user, table, 'update');
 
     const body = readJsonBody(req);
+    removeProtectedFields(body, user);
     delete body.id;
     delete body.created_at;
     const columns = Object.keys(body).filter(isIdentifier);
@@ -254,9 +271,7 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
   }
 
   if (req.method === 'DELETE' && idOrCount) {
-    if (!canManage(user, table)) {
-      throw new ApiError(403, 'Forbidden');
-    }
+    requireTableAccess(user, table, 'delete');
 
     const params: Record<string, unknown> = { id: idOrCount };
     const where = ['id = :id', ...scopeWhere(table, user, params)];

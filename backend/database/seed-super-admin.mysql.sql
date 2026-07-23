@@ -7,7 +7,7 @@ SET collation_connection = 'utf8mb4_unicode_ci';
 SET time_zone = '+00:00';
 
 SET @super_admin_email = 'admin@schoolxnow.local';
-SET @super_admin_password_hash = '$2y$12$YTdDySvIaEc6B7MUUc8wfe/owUPM1PG9NjWrqB49n/h2D/WbcGc3W';
+SET @super_admin_password_hash = '{{DEMO_SUPER_ADMIN_PASSWORD_HASH}}';
 SET @super_admin_name = 'Super Admin';
 SET @new_super_admin_user_id = '00000000-0000-4000-8000-000000000001';
 SET @new_super_admin_profile_id = '00000000-0000-4000-8000-000000000002';
@@ -18,7 +18,7 @@ SET @demo_school_eiin = '123456';
 SET @new_demo_school_id = '00000000-0000-4000-8000-000000000010';
 
 SET @school_admin_email = 'schooladmin@schoolxnow.local';
-SET @school_admin_password_hash = '$2y$12$hM9SGU4tw6Lu4hHRECOineOx0nRSV2aUgHuUmr.JiH4Qn7BFnxdBm';
+SET @school_admin_password_hash = '{{DEMO_SCHOOL_ADMIN_PASSWORD_HASH}}';
 SET @school_admin_name = 'School Admin';
 SET @new_school_admin_user_id = '00000000-0000-4000-8000-000000000011';
 SET @new_school_admin_profile_id = '00000000-0000-4000-8000-000000000012';

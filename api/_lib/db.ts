@@ -23,7 +23,11 @@ export function db(): Pool {
   const user = env('DB_USERNAME', 'MYSQL_USER', 'MYSQL_USERNAME');
   const password = env('DB_PASSWORD', 'MYSQL_PASSWORD');
   const host = env('DB_HOST', 'MYSQL_HOST');
+  const isProduction = process.env.VERCEL_ENV === 'production';
 
+  if (isProduction && process.env.DB_SSL !== 'true') {
+    throw new ApiError(500, 'Secure database transport is required in production');
+  }
   if (!host || !database || !user || !password) {
     throw new ApiError(500, 'Database environment variables are missing');
   }

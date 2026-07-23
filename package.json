@@ -11,6 +11,7 @@
     "check:php-deploy": "node scripts/check-php-deployment.mjs",
     "check:vercel-deploy": "node scripts/check-vercel-deployment.mjs",
     "db:import:mysql": "node scripts/import-mysql.mjs",
+    "db:provision:preview": "node scripts/provision-preview-db.mjs",
     "generate:php-secrets": "node scripts/generate-php-secrets.mjs",
     "prepare:shared-hosting": "node scripts/prepare-shared-hosting.mjs",
     "vercel:env:push": "node scripts/push-vercel-env.mjs",

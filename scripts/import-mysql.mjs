@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import bcrypt from 'bcryptjs';
 import mysql from 'mysql2/promise';
 import { envValue, isPlaceholder, readEnvFile } from './lib/env-file.mjs';
 
@@ -8,6 +9,8 @@ const root = process.cwd();
 const args = process.argv.slice(2);
 const envPath = valueAfter('--env') || '.env.vercel.local';
 const includeSeed = args.includes('--seed');
+const forceSsl = args.includes('--force-ssl');
+const allowSelfSigned = args.includes('--allow-self-signed');
 const schemaPath = valueAfter('--schema') || 'backend/database/schema.mysql.sql';
 const seedPath = valueAfter('--seed-file') || 'backend/database/seed-super-admin.mysql.sql';
 
@@ -24,6 +27,33 @@ function readSql(file) {
   }
 
   return fs.readFileSync(fullPath, 'utf8');
+}
+
+async function readSeedSql(file) {
+  const superAdminPassword = env.DEMO_SUPER_ADMIN_PASSWORD || '';
+  const schoolAdminPassword = env.DEMO_SCHOOL_ADMIN_PASSWORD || '';
+  const missingPasswords = [
+    !superAdminPassword ? 'DEMO_SUPER_ADMIN_PASSWORD' : null,
+    !schoolAdminPassword ? 'DEMO_SCHOOL_ADMIN_PASSWORD' : null,
+  ].filter(Boolean);
+
+  if (missingPasswords.length > 0) {
+    console.error(`MISS seed passwords: ${missingPasswords.join(', ')}`);
+    console.error('Set unique values of at least 16 characters in the ignored env file used with --env.');
+    process.exit(1);
+  }
+  if (superAdminPassword.length < 16 || schoolAdminPassword.length < 16) {
+    console.error('MISS demo seed passwords must be at least 16 characters.');
+    process.exit(1);
+  }
+  if (superAdminPassword === schoolAdminPassword) {
+    console.error('MISS demo seed passwords must be unique.');
+    process.exit(1);
+  }
+
+  return readSql(file)
+    .replace('{{DEMO_SUPER_ADMIN_PASSWORD_HASH}}', await bcrypt.hash(superAdminPassword, 12))
+    .replace('{{DEMO_SCHOOL_ADMIN_PASSWORD_HASH}}', await bcrypt.hash(schoolAdminPassword, 12));
 }
 
 const env = readEnvFile(path.resolve(root, envPath));
@@ -59,9 +89,9 @@ const connection = await mysql.createConnection({
   ...config,
   multipleStatements: true,
   ssl:
-    env.DB_SSL === 'true'
+    env.DB_SSL === 'true' || forceSsl
       ? {
-          rejectUnauthorized: env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+          rejectUnauthorized: !allowSelfSigned && env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
         }
       : undefined,
 });
@@ -72,10 +102,9 @@ try {
   console.log(`OK imported ${schemaPath}`);
 
   if (includeSeed) {
-    await connection.query(readSql(seedPath));
+    await connection.query(await readSeedSql(seedPath));
     console.log(`OK imported ${seedPath}`);
   }
 } finally {
   await connection.end();
 }
-

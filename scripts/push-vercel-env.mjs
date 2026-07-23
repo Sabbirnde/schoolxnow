@@ -62,6 +62,12 @@ if (!env) {
   console.error('Create it from .env.vercel.example and fill production values first.');
   process.exit(1);
 }
+if (args.includes('--force-db-ssl')) {
+  env.DB_SSL = 'true';
+}
+if (args.includes('--allow-self-signed-db')) {
+  env.DB_SSL_REJECT_UNAUTHORIZED = 'false';
+}
 
 const missing = requiredKeys.filter((key) => isPlaceholder(env[key]));
 if (missing.length > 0) {

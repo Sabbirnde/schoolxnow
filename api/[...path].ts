@@ -18,6 +18,7 @@ import {
   setCors,
 } from './_lib/http.js';
 import { handleTable } from './_lib/tables.js';
+import { enforceRateLimit } from './_lib/rate-limit.js';
 
 type LoginUser = ApiUser & RowDataPacket & { password_hash: string };
 
@@ -74,6 +75,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
   const body = readJsonBody(req);
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '');
+  await enforceRateLimit(req, res, { action: 'auth.login', limit: 10, windowSeconds: 900 }, email);
 
   if (!email || !password) {
     throw new ApiError(422, 'Email and password are required');
@@ -134,6 +136,7 @@ async function register(req: VercelRequest, res: VercelResponse) {
   const fullName = String(body.full_name || '').trim();
   const role = String(body.role || 'teacher');
   const schoolId = body.school_id || null;
+  await enforceRateLimit(req, res, { action: 'auth.register', limit: 5, windowSeconds: 3600 }, email);
 
   if (!email || !password || !fullName) {
     throw new ApiError(422, 'Email, password, and full_name are required');
@@ -190,6 +193,7 @@ async function registerSchool(req: VercelRequest, res: VercelResponse) {
   const adminEmail = String(admin.email || '').trim().toLowerCase();
   const adminPhone = String(admin.phone || '').trim();
   const adminPassword = String(admin.password || '');
+  await enforceRateLimit(req, res, { action: 'auth.register-school', limit: 3, windowSeconds: 3600 }, adminEmail);
 
   if (!schoolName || !schoolAddress || !schoolPhone || !schoolEmail) {
     throw new ApiError(422, 'School name, address, phone, and email are required');
@@ -282,6 +286,7 @@ async function createSuperAdmin(req: VercelRequest, res: VercelResponse) {
   const password = String(body.password || '');
   const fullName = String(body.full_name || body.fullName || '').trim();
   const secretKey = String(body.secret_key || body.secretKey || '');
+  await enforceRateLimit(req, res, { action: 'bootstrap.create-super-admin', limit: 5, windowSeconds: 3600 }, email);
 
   if (!secretKey || secretKey !== requiredEnv('SUPER_ADMIN_SECRET')) {
     throw new ApiError(401, 'Invalid bootstrap secret key');
@@ -419,6 +424,7 @@ async function requestPasswordReset(req: VercelRequest, res: VercelResponse) {
   const body = readJsonBody(req);
   const email = String(body.email || '').trim().toLowerCase();
   const redirectTo = String(body.redirect_to || '').trim();
+  await enforceRateLimit(req, res, { action: 'auth.request-password-reset', limit: 5, windowSeconds: 3600 }, email);
   if (!email) {
     throw new ApiError(422, 'Email is required');
   }
@@ -595,6 +601,7 @@ async function createTeacherPortalLink(req: VercelRequest, res: VercelResponse) 
 async function loginWithTeacherPortalToken(req: VercelRequest, res: VercelResponse) {
   const body = readJsonBody(req);
   const token = String(body.token || '').trim();
+  await enforceRateLimit(req, res, { action: 'auth.teacher-portal-login', limit: 10, windowSeconds: 900 });
   if (!token) {
     throw new ApiError(422, 'Teacher portal token is required');
   }

@@ -9,6 +9,7 @@ use SchoolXNow\Core\Config;
 use SchoolXNow\Core\Request;
 use SchoolXNow\Core\Response;
 use SchoolXNow\Security\Auth;
+use SchoolXNow\Security\RateLimiter;
 use SchoolXNow\Security\TokenService;
 
 final class AuthController
@@ -18,6 +19,7 @@ final class AuthController
         $body = Request::json();
         $email = strtolower(trim((string) ($body['email'] ?? '')));
         $password = (string) ($body['password'] ?? '');
+        RateLimiter::enforce('auth.login', $email, 10, 900);
 
         if ($email === '' || $password === '') {
             Response::json(['error' => ['message' => 'Email and password are required']], 422);
@@ -81,6 +83,7 @@ final class AuthController
         $fullName = trim((string) ($body['full_name'] ?? ''));
         $role = (string) ($body['role'] ?? 'teacher');
         $schoolId = $body['school_id'] ?? null;
+        RateLimiter::enforce('auth.register', $email, 5, 3600);
 
         if ($email === '' || $password === '' || $fullName === '') {
             Response::json(['error' => ['message' => 'Email, password, and full_name are required']], 422);
@@ -154,6 +157,7 @@ final class AuthController
         $adminEmail = strtolower(trim((string) ($admin['email'] ?? '')));
         $adminPhone = trim((string) ($admin['phone'] ?? ''));
         $adminPassword = (string) ($admin['password'] ?? '');
+        RateLimiter::enforce('auth.register-school', $adminEmail, 3, 3600);
 
         if ($schoolName === '' || $schoolAddress === '' || $schoolPhone === '' || $schoolEmail === '') {
             Response::json(['error' => ['message' => 'School name, address, phone, and email are required']], 422);
@@ -263,6 +267,7 @@ final class AuthController
         $password = (string) ($body['password'] ?? '');
         $fullName = trim((string) ($body['full_name'] ?? $body['fullName'] ?? ''));
         $secretKey = (string) ($body['secret_key'] ?? $body['secretKey'] ?? '');
+        RateLimiter::enforce('bootstrap.create-super-admin', $email, 5, 3600);
         $configuredSecret = Config::required('SUPER_ADMIN_SECRET');
 
         if ($secretKey === '' || !hash_equals($configuredSecret, $secretKey)) {
@@ -467,6 +472,7 @@ final class AuthController
         $body = Request::json();
         $email = strtolower(trim((string) ($body['email'] ?? '')));
         $redirectTo = trim((string) ($body['redirect_to'] ?? ''));
+        RateLimiter::enforce('auth.request-password-reset', $email, 5, 3600);
 
         if ($email === '') {
             Response::json(['error' => ['message' => 'Email is required']], 422);
@@ -648,6 +654,7 @@ final class AuthController
     {
         $body = Request::json();
         $token = trim((string) ($body['token'] ?? ''));
+        RateLimiter::enforce('auth.teacher-portal-login', '', 10, 900);
         if ($token === '') {
             Response::json(['error' => ['message' => 'Teacher portal token is required']], 422);
         }

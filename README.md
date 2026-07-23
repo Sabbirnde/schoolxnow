@@ -81,9 +81,12 @@ Using the included helper with an environment file:
 npm run db:import:mysql -- --env .env.vercel.local
 ```
 
-To also load development/demo accounts:
+To also load development/demo accounts, first set unique passwords of at least
+16 characters in the ignored environment file:
 
 ```bash
+DEMO_SUPER_ADMIN_PASSWORD=unique_random_local_password
+DEMO_SCHOOL_ADMIN_PASSWORD=another_unique_random_local_password
 npm run db:import:mysql -- --env .env.vercel.local --seed
 ```
 
@@ -126,9 +129,8 @@ The Node API also recognizes common `MYSQL_*` aliases, but the documented
 - Use SSL for database connections over public networks.
 - Store secrets only in hosting environment variables or ignored `.env` files.
 
-The current schema file uses `CREATE TABLE IF NOT EXISTS`; it establishes the
-baseline schema but is not a substitute for versioned migration scripts when
-altering an existing production database.
+The baseline schema is intended for a new, empty database. Use the versioned
+files in `backend/database/migrations/` when altering production.
 
 ## Authentication and authorization
 
@@ -144,6 +146,45 @@ Authentication is implemented by the SchoolXNow API:
 MySQL does not provide Supabase-style Row Level Security. Authorization must
 remain enforced in the Node and PHP APIs. Frontend visibility checks are for
 user experience only and must not be treated as security controls.
+
+The generic table API uses an explicit role/operation allowlist. School-scoped
+records are always filtered by the authenticated user's `school_id`; profile,
+notification-setting, feedback, and teacher-application records receive
+additional user scoping. Non-super-admin requests cannot assign `role`,
+`school_id`, or `user_id`. Audit logs are append-only through the API.
+
+| Role | Generic table access |
+| --- | --- |
+| Super admin | All tables and operations; audit logs are read/create only |
+| School admin | Own-school academic and user data; no role or system-setting changes |
+| Teacher | Own-school reads; attendance/results and own settings/feedback writes |
+| Student/guardian | Own profile, notifications, settings, and feedback only |
+
+Authentication abuse controls are database-backed and shared across serverless
+instances: login and teacher portal login allow 10 attempts per 15 minutes;
+registration and password-reset requests allow 5 per hour; school registration
+allows 3 per hour; bootstrap allows 5 per hour. Limits combine the client IP
+with a normalized account identity where one is available.
+
+## Preview database isolation
+
+Preview deployments must never use the production database name or production
+JWT/bootstrap secrets. Provision an isolated MySQL database and an ignored
+Preview environment file with:
+
+```bash
+npm run db:provision:preview -- --env .env.vercel.local --apply
+npm run vercel:env:push -- --env .env.preview.local --targets preview --git-branch your-branch
+```
+
+Add `--allow-self-signed` only when the provider's TCP database endpoint uses a
+self-signed certificate. Transport remains encrypted, but a provider-issued CA
+and `DB_SSL_REJECT_UNAUTHORIZED=true` are preferred.
+
+For Railway MySQL, the public TCP proxy is internet reachable. Disable it and
+use Railway private networking when the API runs inside the same Railway
+project. A Vercel serverless deployment needs the public proxy unless static
+egress/Secure Compute and an allowlist-capable database provider are used.
 
 Magic-link/OTP verification is not currently available in the MySQL API mode.
 Password reset and teacher portal token flows are provided by the API.
@@ -342,17 +383,17 @@ Both backends provide equivalent route groups:
 
 Allowed upload buckets are `avatars`, `student-photos`, and `documents`.
 
-## Demo accounts
+## Development seed accounts
 
 Use these accounts only after importing the optional seed into a local or test
 database.
 
-| Role | School | Email | Password |
-| --- | --- | --- | --- |
-| Super admin | — | `admin@schoolxnow.local` | `Admin@12345` |
-| School admin | Demo School | `schooladmin@schoolxnow.local` | `SchoolAdmin@12345` |
+The seed creates `admin@schoolxnow.local` and
+`schooladmin@schoolxnow.local`. Their passwords are supplied through the
+ignored `DEMO_SUPER_ADMIN_PASSWORD` and `DEMO_SCHOOL_ADMIN_PASSWORD`
+variables; no working password or reusable password hash is stored in Git.
 
-Never deploy these credentials to production.
+Never import these seed identities into production.
 
 ## Validation and useful commands
 
