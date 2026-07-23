@@ -467,7 +467,7 @@ export async function checkBackendHealth() {
   } catch (error) {
     return {
       healthy: false,
-      message: error instanceof Error ? error.message : 'PHP API health check failed',
+      message: error instanceof Error ? error.message : 'SchoolXNow API health check failed',
       timestamp: new Date().toISOString(),
     };
   }

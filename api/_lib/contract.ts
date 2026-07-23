@@ -1,4 +1,4 @@
-import contract from '../../backend/api-contract.json';
+import contract from '../../backend/api-contract.json' with { type: 'json' };
 import type { TableOperation } from './auth.js';
 
 type RolePolicy = {

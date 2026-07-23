@@ -60,10 +60,10 @@ const SchoolRegistration = () => {
             variant: 'default'
           });
         } catch (error) {
-          console.error('PHP API connection error:', error);
+          console.error('SchoolXNow API connection error:', error);
           toast({
             title: 'Connection Error',
-            description: 'Unable to connect to the PHP API. Please try again later or contact support.',
+            description: 'Unable to connect to the SchoolXNow API. Please try again later or contact support.',
             variant: 'destructive'
           });
         }
@@ -167,7 +167,7 @@ const SchoolRegistration = () => {
         if (err instanceof Error) {
           if (err.message.includes('VITE_API_URL')) {
             errorTitle = 'Configuration Error';
-            errorMessage = 'PHP API URL is not properly configured. Please contact support.';
+            errorMessage = 'The SchoolXNow API URL is not properly configured. Please contact support.';
           } else if (err.message.includes('Failed to fetch')) {
             errorTitle = 'Network Error';
             errorMessage = 'Unable to connect to the server. Please check your internet connection.';
@@ -187,9 +187,9 @@ const SchoolRegistration = () => {
         if (Object.keys(err).length > 1) {
           console.log('Troubleshooting tips:');
           console.log('1. Check your internet connection');
-          console.log('2. Verify PHP API configuration in .env file');
+          console.log('2. Verify the SchoolXNow API configuration in .env file');
           console.log('3. Ensure the database is running');
-          console.log('4. Check if the PHP API service is operational');
+          console.log('4. Check if the SchoolXNow API service is operational');
         }
       }
     };

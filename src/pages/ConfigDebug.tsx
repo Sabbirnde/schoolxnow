@@ -97,7 +97,7 @@ const ConfigDebug = () => {
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>PHP API Status</CardTitle>
+            <CardTitle>SchoolXNow API Status</CardTitle>
             <CardDescription>Client initialization details</CardDescription>
           </CardHeader>
           <CardContent>
@@ -147,7 +147,7 @@ const ConfigDebug = () => {
                 <AlertDescription>
                   <ol className="mt-2 list-inside list-decimal space-y-2">
                     <li>Copy <code>.env.example</code> to <code>.env</code>.</li>
-                    <li>Set <code>VITE_API_URL</code> to your PHP API URL.</li>
+                    <li>Set <code>VITE_API_URL</code> to your SchoolXNow API URL.</li>
                     <li>Restart the development server.</li>
                     <li>Refresh this page.</li>
                   </ol>

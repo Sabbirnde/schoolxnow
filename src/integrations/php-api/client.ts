@@ -106,7 +106,7 @@ const API_TOKEN_KEY = 'schoolxnow-php-api-token';
 function getBaseUrl() {
   const baseUrl = import.meta.env.VITE_API_URL;
   if (!baseUrl) {
-    throw new Error('Missing VITE_API_URL for PHP/MySQL backend');
+    throw new Error('Missing VITE_API_URL for the SchoolXNow API');
   }
 
   return String(baseUrl).replace(/\/$/, '');

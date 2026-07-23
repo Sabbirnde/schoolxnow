@@ -54,7 +54,7 @@ export default function EnvironmentConfigError({
               <p className="text-sm font-medium">Developer setup</p>
               <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                 <li>Copy <code>.env.example</code> to <code>.env</code>.</li>
-                <li>Set <code>VITE_API_URL</code> to your PHP API URL, for example <code>/api</code>.</li>
+                <li>Set <code>VITE_API_URL</code> to your SchoolXNow API URL, for example <code>/api</code>.</li>
                 <li>Restart the dev server after changing environment variables.</li>
               </ol>
             </div>

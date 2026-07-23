@@ -76,7 +76,7 @@ const ConfigDebugger: React.FC = () => {
         <li>Verify that <code>.env</code> file exists in project root.</li>
         <li>Check that it contains <code>VITE_API_URL</code>.</li>
         <li>Restart the development server after changing <code>.env</code>.</li>
-        <li>Make sure the PHP API is reachable.</li>
+        <li>Make sure the SchoolXNow API is reachable.</li>
       </ol>
     </div>
   );
