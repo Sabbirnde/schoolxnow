@@ -178,11 +178,11 @@ const Landing = () => {
             </div>
             <span className="text-base sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
           </div>
-          <nav className="hidden items-center gap-6 text-sm text-muted-foreground lg:flex" aria-label="Main navigation">
-            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
-            <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
-          </nav>
           <div className="flex items-center gap-2 sm:gap-4">
+            <nav className="hidden items-center gap-5 text-sm text-muted-foreground md:flex" aria-label="Main navigation">
+              <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+              <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
+            </nav>
             <Button variant="ghost" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" asChild>
               <Link to="/auth">Login</Link>
             </Button>
