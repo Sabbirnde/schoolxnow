@@ -6,6 +6,9 @@ MySQL/MariaDB database through an HTTP API and can be deployed with either:
 - the Node.js serverless API included for Vercel; or
 - the PHP API included for shared hosting.
 
+Current release: **v0.2.0 — Production Hardening**. See
+[CHANGELOG.md](CHANGELOG.md) for release details.
+
 The application does **not** use Supabase. The frontend uses a neutral
 `apiClient` that preserves a chainable query interface while sending requests
 to the SchoolXNow Node/PHP API.
@@ -294,7 +297,7 @@ Copy `.env.example` to `.env`:
 VITE_API_MODE=mysql
 VITE_API_URL=/api
 VITE_ERROR_TELEMETRY_ENDPOINT=
-VITE_APP_VERSION=0.0.1
+VITE_APP_VERSION=0.2.0
 ```
 
 Install dependencies and start Vite:
@@ -335,7 +338,7 @@ Required/recommended configuration:
 VITE_API_MODE=mysql
 VITE_API_URL=/api
 VITE_ERROR_TELEMETRY_ENDPOINT=
-VITE_APP_VERSION=0.0.1
+VITE_APP_VERSION=0.2.0
 
 # Node API
 APP_DEBUG=false
