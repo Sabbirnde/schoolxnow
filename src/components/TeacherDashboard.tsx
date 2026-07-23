@@ -28,13 +28,13 @@ import {
   Zap,
   BarChart3
 } from 'lucide-react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeacherDashboardData, type TodayClass } from '@/hooks/useTeacherDashboardData';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 
 // Swipeable Class Card Component
 const SwipeableClassCard = ({ classItem, onSwipe, getClassStatusIcon, onTakeAttendance }: { 
@@ -240,7 +240,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
         description: "Latest data has been loaded",
       });
     } catch (error) {
-      const notice = handleSupabaseError('Refresh teacher dashboard', error, {
+      const notice = handleApiError('Refresh teacher dashboard', error, {
         context: { schoolId: profile?.school_id, userId: profile?.user_id },
         log: false,
       });
@@ -289,7 +289,7 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
   useEffect(() => {
     if (!dashboardError) return;
 
-    const notice = handleSupabaseError('Load teacher dashboard', dashboardError, {
+    const notice = handleApiError('Load teacher dashboard', dashboardError, {
       context: { schoolId: profile?.school_id, userId: profile?.user_id },
       log: false,
     });
@@ -312,9 +312,9 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
           return;
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await apiClient.auth.getUser();
         if (user) {
-          const { data } = await supabase
+          const { data } = await apiClient
             .from('user_profiles')
             .select('*')
             .eq('user_id', user.id)

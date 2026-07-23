@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { SchoolCombobox } from "@/components/SchoolCombobox";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -27,7 +27,7 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface Subject {
   id: string;
@@ -182,14 +182,14 @@ export function SubjectManagement() {
       // For teachers, only fetch subjects they teach (based on timetable)
       if (!canFull('subjects.manage')) {
         // First get the teacher record
-        const { data: teacherData, error: teacherError } = await supabase
+        const { data: teacherData, error: teacherError } = await apiClient
           .from('teachers')
           .select('id')
           .eq('user_id', profile.user_id)
           .single();
 
         if (teacherError) {
-          const notice = handleSupabaseError('Load subject teacher assignment', teacherError, {
+          const notice = handleApiError('Load subject teacher assignment', teacherError, {
             context: { schoolId, userId: profile?.user_id },
           });
           toast({
@@ -207,14 +207,14 @@ export function SubjectManagement() {
         }
 
         // Get unique subject IDs from timetable for this teacher
-        const { data: timetableData, error: timetableError } = await supabase
+        const { data: timetableData, error: timetableError } = await apiClient
           .from('timetable')
           .select('subject_id')
           .eq('teacher_id', teacherData.id)
           .eq('school_id', schoolId);
 
         if (timetableError) {
-          const notice = handleSupabaseError('Load teacher subject timetable', timetableError, {
+          const notice = handleApiError('Load teacher subject timetable', timetableError, {
             context: { schoolId, teacherId: teacherData.id },
           });
           toast({
@@ -235,7 +235,7 @@ export function SubjectManagement() {
         }
 
         // Fetch subjects
-        const { data, error } = await supabase
+        const { data, error } = await apiClient
           .from('subjects')
           .select('*')
           .in('id', subjectIds)
@@ -245,7 +245,7 @@ export function SubjectManagement() {
         setSubjects(data || []);
       } else {
         // For admins, fetch all subjects in the school
-        const { data, error } = await supabase
+        const { data, error } = await apiClient
           .from('subjects')
           .select('*')
           .eq('school_id', schoolId)
@@ -255,7 +255,7 @@ export function SubjectManagement() {
         setSubjects(data || []);
       }
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Load subjects', error, {
+      const notice = handleApiError('Load subjects', error, {
         context: { schoolId, userId: profile?.user_id },
       });
       toast({
@@ -332,7 +332,7 @@ export function SubjectManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('subjects')
         .insert({
           ...values,
@@ -377,7 +377,7 @@ export function SubjectManagement() {
       form.reset();
       fetchSubjects();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Create subject', error, {
+      const notice = handleApiError('Create subject', error, {
         context: {
           schoolId,
           subjectName: values.name,
@@ -440,7 +440,7 @@ export function SubjectManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('subjects')
         .update(values)
         .eq('id', editingSubject.id);
@@ -466,7 +466,7 @@ export function SubjectManagement() {
       form.reset();
       fetchSubjects();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Update subject', error, {
+      const notice = handleApiError('Update subject', error, {
         context: {
           subjectId: editingSubject.id,
           subjectName: values.name,
@@ -509,7 +509,7 @@ export function SubjectManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('subjects')
         .update({ is_active: false })
         .eq('id', subjectId);
@@ -530,7 +530,7 @@ export function SubjectManagement() {
 
       fetchSubjects();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Deactivate subject', error, {
+      const notice = handleApiError('Deactivate subject', error, {
         context: { subjectId },
       });
       

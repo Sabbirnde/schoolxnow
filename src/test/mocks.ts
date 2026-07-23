@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 
-// Mock Supabase client
-export const mockSupabase = {
+// Mock Api client
+export const mockApi = {
   from: vi.fn((table: string) => mockFromResponse),
   channel: vi.fn(() => mockChannelResponse),
   removeChannel: vi.fn(),

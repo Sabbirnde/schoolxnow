@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useDashboardMetricsExport } from '@/hooks/useReportExport';
@@ -95,7 +95,7 @@ export function SchoolAdminReportsDashboard() {
 
     const school = isPhpBackend
       ? await phpApi.table<SchoolNameRow>('schools').get(profile.school_id)
-      : (await supabase
+      : (await apiClient
           .from('schools')
           .select('name')
           .eq('id', profile.school_id)

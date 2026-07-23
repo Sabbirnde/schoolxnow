@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 
@@ -78,7 +78,7 @@ export function useSchoolStats() {
         }
 
         // Call RPC function and cast response to SchoolStats
-        const rpc = supabase.rpc as unknown as (
+        const rpc = apiClient.rpc as unknown as (
           fn: 'get_school_stats',
           args: { p_school_id: string }
         ) => Promise<RpcResponse<SchoolStats>>;

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useToast } from "@/hooks/use-toast";
@@ -87,7 +87,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       }
 
       // Get pending attendance records (classes without attendance marked today)
-      const attendanceData = await supabase
+      const attendanceData = await apiClient
         .from('classes')
         .select('id')
         .eq('school_id', profile.school_id)
@@ -95,7 +95,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       const pendingAttendanceCount = (attendanceData.data?.length || 0);
 
       // Get scheduled exams for today and this week
-      const examsData = await supabase
+      const examsData = await apiClient
         .from('exams')
         .select('id')
         .eq('school_id', profile.school_id)
@@ -105,7 +105,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       const examsCount = (examsData.data?.length || 0);
 
       // Get new admissions today
-      const admissionsData = await supabase
+      const admissionsData = await apiClient
         .from('students')
         .select('id')
         .eq('school_id', profile.school_id)
@@ -114,7 +114,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       const admissionsCount = (admissionsData.data?.length || 0);
 
       // Get pending teacher applications
-      const applicationsResp = await supabase
+      const applicationsResp = await apiClient
         .from('teacher_applications')
         .select('id');
       const applicationsData = applicationsResp;

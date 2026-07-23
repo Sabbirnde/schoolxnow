@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { Loader2 } from 'lucide-react';
@@ -50,7 +50,7 @@ const TeacherPortalEntry = () => {
         const fragment = window.location.hash;
         
         if (fragment && fragment.includes('access_token')) {
-          // Supabase automatically handles URL fragments with access_token
+          // Api automatically handles URL fragments with access_token
           // The onAuthStateChange listener in AuthProvider will pick it up
           console.log('[TeacherPortal] Magic link detected, session will restore...');
           
@@ -61,7 +61,7 @@ const TeacherPortalEntry = () => {
         // Check if user is already authenticated via localStorage session
         if (!user && !session && !fragment) {
           // Try to restore session from localStorage
-          const { data, error: sessionError } = await supabase.auth.getSession();
+          const { data, error: sessionError } = await apiClient.auth.getSession();
           
           if (sessionError) {
             console.error('[TeacherPortal] Session restore error:', sessionError);

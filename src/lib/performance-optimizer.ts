@@ -1,4 +1,4 @@
-// Performance optimization utilities for Supabase operations
+// Performance optimization utilities for Api operations
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import type { Database } from '@/integrations/database/types';
@@ -6,10 +6,10 @@ import type { Database } from '@/integrations/database/types';
 type Tables = Database['public']['Tables'];
 type TableName = keyof Tables;
 type CacheEntry = { data: unknown; timestamp: number; ttl: number };
-type SupabaseQueryResult<T> = { data: T[] | null; error: unknown; count?: number | null };
-type SupabaseQueryBuilder<T> = {
-  order: (column: string, options?: { ascending?: boolean }) => SupabaseQueryBuilder<T>;
-  then: Promise<SupabaseQueryResult<T>>['then'];
+type ApiQueryResult<T> = { data: T[] | null; error: unknown; count?: number | null };
+type ApiQueryBuilder<T> = {
+  order: (column: string, options?: { ascending?: boolean }) => ApiQueryBuilder<T>;
+  then: Promise<ApiQueryResult<T>>['then'];
 };
 type BatchOperation = {
   id: string;
@@ -161,7 +161,7 @@ export async function paginatedQuery<T extends TableName>(
     pageSize: number;
     orderBy?: string;
     orderAscending?: boolean;
-    filter?: (query: SupabaseQueryBuilder<Tables[T]['Row']>) => SupabaseQueryBuilder<Tables[T]['Row']>;
+    filter?: (query: ApiQueryBuilder<Tables[T]['Row']>) => ApiQueryBuilder<Tables[T]['Row']>;
   }
 ): Promise<{
   data: Tables[T]['Row'][];
@@ -177,7 +177,7 @@ export async function paginatedQuery<T extends TableName>(
 
   if (isPhpBackend) {
     if (filter) {
-      throw new Error('paginatedQuery filter callbacks are only supported with the Supabase backend.');
+      throw new Error('paginatedQuery filter callbacks are not supported by the direct PHP API path.');
     }
 
     const params: Record<string, string | number> = {
@@ -205,11 +205,11 @@ export async function paginatedQuery<T extends TableName>(
     };
   }
 
-  const { supabase } = await import('@/integrations/php-api/compat-client');
-  let query = supabase
+  const { apiClient } = await import('@/integrations/php-api/api-client');
+  let query = apiClient
     .from(table as never)
     .select('*', { count: 'exact' })
-    .range(from, to) as unknown as SupabaseQueryBuilder<Tables[T]['Row']>;
+    .range(from, to) as unknown as ApiQueryBuilder<Tables[T]['Row']>;
 
   if (orderBy) {
     query = query.order(orderBy, { ascending: orderAscending });
@@ -411,7 +411,7 @@ export async function bulkInsert<T extends TableName>(
     }
 
     try {
-      const { error } = await supabase
+      const { error } = await apiClient
         .from(table)
         .insert(chunk);
 
@@ -449,7 +449,7 @@ export async function bulkUpdate<T extends TableName>(
     
     const results = await Promise.allSettled(
       chunk.map(({ id, data }) =>
-        supabase
+        apiClient
           .from(table)
           .update(data)
           .eq('id', id)

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import type { Json } from "@/integrations/database/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -77,7 +77,7 @@ const AuditLogViewer = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('audit_logs')
         .select('*')
         .order('timestamp', { ascending: false })

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { 
   subscriptionManager, 
@@ -12,7 +12,7 @@ import {
 } from '@/lib/realtime-manager';
 
 /**
- * This component is a diagnostic tool for testing Supabase Realtime functionality
+ * Diagnostic tool for checking the MySQL API refresh strategy.
  */
 export default function RealtimeTest() {
   const [realtimeStatus, setRealtimeStatus] = useState(getRealtimeStatus());
@@ -29,7 +29,7 @@ export default function RealtimeTest() {
   const testDirectSubscription = async () => {
     if (isPhpBackend) {
       setError(null);
-      addMessage("PHP/MySQL mode uses polling refresh instead of Supabase realtime channels.");
+      addMessage("The MySQL API uses polling or explicit refresh; realtime channels are unavailable.");
       toast({
         title: "Polling Mode",
         description: "Realtime channels are disabled for the PHP/MySQL backend.",
@@ -41,7 +41,7 @@ export default function RealtimeTest() {
       setError(null);
       addMessage("🔄 Testing direct channel subscription...");
       
-      const channel = supabase
+      const channel = apiClient
         .channel('test-direct-channel')
         .on(
           'postgres_changes',
@@ -70,7 +70,7 @@ export default function RealtimeTest() {
         
       // Cleanup after 30 seconds
       setTimeout(() => {
-        supabase.removeChannel(channel);
+        apiClient.removeChannel(channel);
         addMessage("🧹 Cleaned up test channel");
       }, 30000);
       
@@ -164,7 +164,7 @@ export default function RealtimeTest() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Mode:</span>
                       <Badge variant="outline">
-                        {realtimeStatus.mode === 'php-polling' ? 'PHP Polling' : 'Supabase Realtime'}
+                        {realtimeStatus.mode === 'polling' ? 'Polling' : 'Unavailable'}
                       </Badge>
                     </div>
                     <div className="flex items-center justify-between">

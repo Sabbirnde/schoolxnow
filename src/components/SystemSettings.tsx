@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import type { Database, Json } from '@/integrations/database/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,12 +146,12 @@ const SystemSettings = () => {
       }
 
       const [schoolsResult, activeSchoolsResult, usersResult, studentsResult, teachersResult, pendingResult] = await Promise.all([
-        supabase.from('schools').select('*', { count: 'exact', head: true }),
-        supabase.from('schools').select('*', { count: 'exact', head: true }).eq('is_active', true),
-        supabase.from('user_profiles').select('*', { count: 'exact', head: true }),
-        supabase.from('students').select('*', { count: 'exact', head: true }),
-        supabase.from('teachers').select('*', { count: 'exact', head: true }),
-        supabase.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+        apiClient.from('schools').select('*', { count: 'exact', head: true }),
+        apiClient.from('schools').select('*', { count: 'exact', head: true }).eq('is_active', true),
+        apiClient.from('user_profiles').select('*', { count: 'exact', head: true }),
+        apiClient.from('students').select('*', { count: 'exact', head: true }),
+        apiClient.from('teachers').select('*', { count: 'exact', head: true }),
+        apiClient.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
       ]);
 
       setStats({
@@ -187,7 +187,7 @@ const SystemSettings = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('audit_logs')
         .select('id, action, user_id, metadata, entity_type, timestamp')
         .order('timestamp', { ascending: false })
@@ -243,7 +243,7 @@ const SystemSettings = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('system_settings')
         .select('*')
         .eq('config_key', 'global')
@@ -332,7 +332,7 @@ const SystemSettings = () => {
         return true;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('system_settings')
         .upsert(payload, { onConflict: 'config_key' });
 
@@ -342,7 +342,7 @@ const SystemSettings = () => {
         return false;
       }
 
-      await supabase.from('audit_logs').insert({
+      await apiClient.from('audit_logs').insert({
         user_id: profile.user_id,
         action,
         entity_type: 'system_settings',
@@ -412,7 +412,7 @@ const SystemSettings = () => {
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="p-4">
             <p className="text-sm text-destructive">
-              System settings persistence is unavailable because the `system_settings` table is missing. Apply latest Supabase migrations to enable real data updates.
+              System settings persistence is unavailable because the `system_settings` table is missing. Apply the latest MySQL schema migration to enable data updates.
             </p>
           </CardContent>
         </Card>

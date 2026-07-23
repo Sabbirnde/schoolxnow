@@ -3,7 +3,7 @@
  * Tracks all changes to school data for compliance, debugging, and accountability
  */
 
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import type { Json } from '@/integrations/database/types';
@@ -127,7 +127,7 @@ export async function logAuditEvent(
       return true;
     }
 
-    const { error } = await supabase.from('audit_logs').insert([
+    const { error } = await apiClient.from('audit_logs').insert([
       {
         user_id: userId,
         action,
@@ -173,7 +173,7 @@ export async function logFailedAuditEvent(
       return true;
     }
 
-    const { error } = await supabase.from('audit_logs').insert([
+    const { error } = await apiClient.from('audit_logs').insert([
       {
         user_id: userId,
         action,
@@ -216,7 +216,7 @@ export async function fetchAuditLogs(
       return data.map(normalizeAuditLog);
     }
 
-    let baseQuery = supabase
+    let baseQuery = apiClient
       .from('audit_logs')
       .select('*');
 
@@ -280,7 +280,7 @@ export async function fetchUserActivitySummary(
       };
     }
 
-    const baseQuery = supabase
+    const baseQuery = apiClient
       .from('audit_logs')
       .select('*')
       .eq('user_id', userId)
@@ -339,7 +339,7 @@ export async function validateClassDeletion(classId: string): Promise<Validation
       return null;
     }
 
-    const baseQuery = supabase
+    const baseQuery = apiClient
       .from('students')
       .select('id')
       .eq('class_id', classId)
@@ -383,7 +383,7 @@ export async function validateTeacherDeletion(teacherId: string): Promise<Valida
       return null;
     }
 
-    const baseQuery = supabase
+    const baseQuery = apiClient
       .from('timetable')
       .select('id')
       .eq('teacher_id', teacherId);
@@ -437,8 +437,8 @@ export async function validateSubjectDeletion(subjectId: string): Promise<Valida
       return null;
     }
 
-    const examsResult = await supabase.from('exam_results').select('id').eq('subject_id', subjectId);
-    const assignmentsResult = await supabase.from('timetable').select('id').eq('subject_id', subjectId);
+    const examsResult = await apiClient.from('exam_results').select('id').eq('subject_id', subjectId);
+    const assignmentsResult = await apiClient.from('timetable').select('id').eq('subject_id', subjectId);
     
     const exams = examsResult.data || [];
     const assignments = assignmentsResult.data || [];
@@ -493,7 +493,7 @@ export async function checkStudentIDDuplicate(
       return null;
     }
 
-    let query = supabase
+    let query = apiClient
       .from('students')
       .select('id')
       .eq('school_id', schoolId)
@@ -549,7 +549,7 @@ export async function checkTeacherEmailDuplicate(
       return null;
     }
 
-    let query = supabase
+    let query = apiClient
       .from('teachers')
       .select('id')
       .eq('school_id', schoolId)
@@ -605,7 +605,7 @@ export async function checkStudentEmailDuplicate(
       return null;
     }
 
-    const queryResult = await supabase.from('students')
+    const queryResult = await apiClient.from('students')
       .select('id')
       .eq('school_id', schoolId)
       .eq('guardian_email', email.toLowerCase());
@@ -658,7 +658,7 @@ export async function checkClassNameDuplicate(
       return null;
     }
 
-    let query = supabase
+    let query = apiClient
       .from('classes')
       .select('id')
       .eq('school_id', schoolId)

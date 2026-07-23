@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { mockSupabase, mockToast } from '../test/mocks';
+import { mockApi, mockToast } from '../test/mocks';
 import { mockSchools } from '../test/mockData';
 
 describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
@@ -14,10 +14,10 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
       });
 
       const mockFromSpy = vi.fn().mockReturnValue({ select: mockSelect });
-      mockSupabase.from.mockImplementation(mockFromSpy);
+      mockApi.from.mockImplementation(mockFromSpy);
 
       // Simulate the query
-      await mockSupabase.from('schools').select('*').order('created_at', { ascending: false });
+      await mockApi.from('schools').select('*').order('created_at', { ascending: false });
 
       expect(mockFromSpy).toHaveBeenCalledWith('schools');
       expect(mockSelect).toHaveBeenCalledWith('*');
@@ -28,46 +28,46 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
         eq: vi.fn().mockResolvedValue({ count: 1545, error: null }),
       });
 
-      mockSupabase.from.mockReturnValue({ select: mockSelect });
+      mockApi.from.mockReturnValue({ select: mockSelect });
 
       // Simulate the query
-      await mockSupabase.from('students').select('*', { count: 'exact', head: true });
+      await mockApi.from('students').select('*', { count: 'exact', head: true });
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('students');
+      expect(mockApi.from).toHaveBeenCalledWith('students');
     });
 
     it('should query COUNT for teachers table', async () => {
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockResolvedValue({ count: 89, error: null }),
       });
 
-      await mockSupabase.from('teachers').select('*', { count: 'exact', head: true });
+      await mockApi.from('teachers').select('*', { count: 'exact', head: true });
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('teachers');
+      expect(mockApi.from).toHaveBeenCalledWith('teachers');
     });
 
     it('should query pending teacher applications', async () => {
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ count: 5, error: null }),
         }),
       });
 
-      await mockSupabase.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+      await mockApi.from('teacher_applications').select('*', { count: 'exact', head: true }).eq('status', 'pending');
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('teacher_applications');
+      expect(mockApi.from).toHaveBeenCalledWith('teacher_applications');
     });
 
     it('should query school admins count', async () => {
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ count: 12, error: null }),
         }),
       });
 
-      await mockSupabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'school_admin');
+      await mockApi.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'school_admin');
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('user_roles');
+      expect(mockApi.from).toHaveBeenCalledWith('user_roles');
     });
 
     it('should query audit logs with correct limit', async () => {
@@ -77,11 +77,11 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
         }),
       });
 
-      mockSupabase.from.mockReturnValue({ select: mockSelect });
+      mockApi.from.mockReturnValue({ select: mockSelect });
 
-      await mockSupabase.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(8);
+      await mockApi.from('audit_logs').select('*').order('timestamp', { ascending: false }).limit(8);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('audit_logs');
+      expect(mockApi.from).toHaveBeenCalledWith('audit_logs');
     });
   });
 
@@ -105,22 +105,22 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
       const now = new Date();
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           gte: vi.fn().mockResolvedValue({ count: 1, error: null }),
         }),
       });
 
-      await mockSupabase.from('schools').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart);
+      await mockApi.from('schools').select('*', { count: 'exact', head: true }).gte('created_at', currentMonthStart);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('schools');
+      expect(mockApi.from).toHaveBeenCalledWith('schools');
     });
 
     it('should query schools from specific date range', async () => {
       const previousMonthStart = new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toISOString();
       const currentMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockReturnValue({
           gte: vi.fn().mockReturnValue({
             lt: vi.fn().mockResolvedValue({ count: 0, error: null }),
@@ -128,13 +128,13 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
         }),
       });
 
-      await mockSupabase
+      await mockApi
         .from('schools')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', previousMonthStart)
         .lt('created_at', currentMonthStart);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('schools');
+      expect(mockApi.from).toHaveBeenCalledWith('schools');
     });
   });
 
@@ -153,13 +153,13 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
         is_active: true,
       };
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         insert: vi.fn().mockResolvedValue({ data: { ...newSchool, id: 'new-id' }, error: null }),
       });
 
-      const result = await mockSupabase.from('schools').insert([newSchool]);
+      const result = await mockApi.from('schools').insert([newSchool]);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('schools');
+      expect(mockApi.from).toHaveBeenCalledWith('schools');
       expect(result.data).toMatchObject(newSchool);
       expect(result.error).toBeNull();
     });
@@ -167,11 +167,11 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
     it('should handle create error gracefully', async () => {
       const error = new Error('Unique constraint violation');
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         insert: vi.fn().mockResolvedValue({ data: null, error }),
       });
 
-      const result = await mockSupabase.from('schools').insert([{}]);
+      const result = await mockApi.from('schools').insert([{}]);
 
       expect(result.error).toBeDefined();
     });
@@ -194,28 +194,28 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
       const schoolId = mockSchools[0].id;
       const updateData = { name: 'Updated School Name' };
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: { ...mockSchools[0], ...updateData }, error: null }),
         }),
       });
 
-      const result = await mockSupabase.from('schools').update(updateData).eq('id', schoolId);
+      const result = await mockApi.from('schools').update(updateData).eq('id', schoolId);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('schools');
+      expect(mockApi.from).toHaveBeenCalledWith('schools');
       expect(result.data.name).toBe('Updated School Name');
     });
 
     it('should handle update error', async () => {
       const error = new Error('School not found');
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         update: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ data: null, error }),
         }),
       });
 
-      const result = await mockSupabase.from('schools').update({}).eq('id', 'non-existent');
+      const result = await mockApi.from('schools').update({}).eq('id', 'non-existent');
 
       expect(result.error).toBeDefined();
     });
@@ -225,28 +225,28 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
     it('should delete school by ID', async () => {
       const schoolId = mockSchools[0].id;
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error: null }),
         }),
       });
 
-      const result = await mockSupabase.from('schools').delete().eq('id', schoolId);
+      const result = await mockApi.from('schools').delete().eq('id', schoolId);
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('schools');
+      expect(mockApi.from).toHaveBeenCalledWith('schools');
       expect(result.error).toBeNull();
     });
 
     it('should handle delete error for non-existent school', async () => {
       const error = new Error('School not found');
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockResolvedValue({ error }),
         }),
       });
 
-      const result = await mockSupabase.from('schools').delete().eq('id', 'non-existent');
+      const result = await mockApi.from('schools').delete().eq('id', 'non-existent');
 
       expect(result.error).toBeDefined();
     });
@@ -325,12 +325,12 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
     it('should catch and log database errors', async () => {
       const error = new Error('Database connection failed');
 
-      mockSupabase.from.mockImplementation(() => {
+      mockApi.from.mockImplementation(() => {
         throw error;
       });
 
       try {
-        mockSupabase.from('schools');
+        mockApi.from('schools');
       } catch (e) {
         expect(e.message).toContain('Database connection failed');
       }
@@ -355,12 +355,12 @@ describe('SuperAdminDashboard - Query Logic & CRUD Operations', () => {
     it('should handle network timeout gracefully', async () => {
       const timeoutError = new Error('Network timeout');
 
-      mockSupabase.from.mockReturnValue({
+      mockApi.from.mockReturnValue({
         select: vi.fn().mockRejectedValue(timeoutError),
       });
 
       try {
-        await mockSupabase.from('schools').select('*');
+        await mockApi.from('schools').select('*');
       } catch (error: unknown) {
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain('timeout');

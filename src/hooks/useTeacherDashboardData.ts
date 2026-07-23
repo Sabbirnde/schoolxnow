@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useCachedQuery } from '@/hooks/useCachedQuery';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
@@ -173,7 +173,7 @@ export function buildTodaySchedule(
 async function fetchByIds<T>(table: 'classes' | 'subjects', ids: string[]): Promise<T[]> {
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase
+  const { data, error } = await apiClient
     .from(table)
     .select('*')
     .in('id', ids);
@@ -316,7 +316,7 @@ export async function fetchTeacherDashboardData(
     };
   }
 
-  const { data: teacher, error: teacherError } = await supabase
+  const { data: teacher, error: teacherError } = await apiClient
     .from('teachers')
     .select('*')
     .eq('user_id', profile.user_id)
@@ -326,7 +326,7 @@ export async function fetchTeacherDashboardData(
     throw teacherError;
   }
 
-  const { data: school, error: schoolError } = await supabase
+  const { data: school, error: schoolError } = await apiClient
     .from('schools')
     .select('name, name_bangla, school_type')
     .eq('id', profile.school_id)
@@ -341,7 +341,7 @@ export async function fetchTeacherDashboardData(
     };
   }
 
-  const { data: teacherTimetable, error: timetableError } = await supabase
+  const { data: teacherTimetable, error: timetableError } = await apiClient
     .from('timetable')
     .select('*')
     .eq('teacher_id', teacher.id)
@@ -361,7 +361,7 @@ export async function fetchTeacherDashboardData(
   let totalStudentsInMyClasses = 0;
   if (uniqueClassIds.length > 0) {
     totalStudentsInMyClasses = readCount(
-      await supabase
+      await apiClient
         .from('students')
         .select('*', { count: 'exact', head: true })
         .in('class_id', uniqueClassIds)
@@ -374,7 +374,7 @@ export async function fetchTeacherDashboardData(
   for (const classItem of todaySchedule) {
     if (classItem.class_id) {
       classItem.students = readCount(
-        await supabase
+        await apiClient
           .from('students')
           .select('*', { count: 'exact', head: true })
           .eq('class_id', classItem.class_id)
@@ -390,7 +390,7 @@ export async function fetchTeacherDashboardData(
     for (const classItem of todaySchedule) {
       if (classItem.class_id && classItem.status === 'completed') {
         const attendanceCount = readCount(
-          await supabase
+          await apiClient
             .from('attendance')
             .select('*', { count: 'exact', head: true })
             .eq('class_id', classItem.class_id)
@@ -406,7 +406,7 @@ export async function fetchTeacherDashboardData(
 
   let recentStudents: RecentStudent[] = [];
   if (uniqueClassIds.length > 0) {
-    const { data: students, error: studentsError } = await supabase
+    const { data: students, error: studentsError } = await apiClient
       .from('students')
       .select('id, full_name, student_id, class_id, admission_date, status, classes(name, section)')
       .in('class_id', uniqueClassIds)
@@ -420,7 +420,7 @@ export async function fetchTeacherDashboardData(
   }
 
   let upcomingDeadlines: UpcomingExam[] = [];
-  const { data: upcomingExams, error: examsError } = await supabase
+  const { data: upcomingExams, error: examsError } = await apiClient
     .from('exams')
     .select('id, name, exam_date, class_level')
     .eq('school_id', profile.school_id)

@@ -15,7 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 
@@ -42,7 +42,7 @@ export function SchoolCombobox({ value, onValueChange, disabled }: SchoolCombobo
           return;
         }
 
-        const { data } = await supabase
+        const { data } = await apiClient
           .from('schools')
           .select('id, name')
           .eq('id', value)
@@ -88,7 +88,7 @@ export function SchoolCombobox({ value, onValueChange, disabled }: SchoolCombobo
           return;
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await apiClient
           .from('schools')
           .select('id, name')
           .eq('is_active', true)

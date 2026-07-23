@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeacherMetricsExport, useTeacherClassReportExport } from '@/hooks/useReportExport';
@@ -147,7 +147,7 @@ export function TeacherPerformanceReports() {
       return;
     }
 
-    const { data: assignments } = await supabase
+    const { data: assignments } = await apiClient
       .from('timetable')
       .select('class_id, subject_id')
       .eq('teacher_id', teacherId);
@@ -156,12 +156,12 @@ export function TeacherPerformanceReports() {
       const classIds = Array.from(new Set(assignments.map(a => a.class_id)));
       const subjectIds = Array.from(new Set(assignments.map(a => a.subject_id)));
 
-      const { data: classesData } = await supabase
+      const { data: classesData } = await apiClient
         .from('classes')
         .select('id, name, section')
         .in('id', classIds);
 
-      const { data: subjectsData } = await supabase
+      const { data: subjectsData } = await apiClient
         .from('subjects')
         .select('id, name')
         .in('id', subjectIds);

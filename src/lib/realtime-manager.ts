@@ -1,6 +1,6 @@
 // Realtime subscription management utilities
-import { RealtimeChannel, RealtimePostgresChangesPayload } from '@/integrations/php-api/compat-types';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { RealtimeChannel, RealtimeChangePayload } from '@/integrations/php-api/api-types';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import type { Database } from '@/integrations/database/types';
 
@@ -10,10 +10,10 @@ type RealtimeSubscribeOptions<T extends TableName> = {
   event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
   filter?: string;
   schema?: string;
-  onInsert?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-  onUpdate?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-  onDelete?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-  onChange?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+  onInsert?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+  onUpdate?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+  onDelete?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+  onChange?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
 };
 type PresenceCallback = (
   key: string,
@@ -57,7 +57,7 @@ class SubscriptionManager {
     const { event = '*', filter, schema = 'public', onInsert, onUpdate, onDelete, onChange } = options;
 
     // Create channel
-    const channel = supabase
+    const channel = apiClient
       .channel(channelName)
       .on(
         'postgres_changes',
@@ -67,7 +67,7 @@ class SubscriptionManager {
           table: table as string,
           filter,
         },
-        (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => {
+        (payload: RealtimeChangePayload<Tables[T]['Row']>) => {
           if (import.meta.env.DEV) {
             console.log(`[Realtime ${channelName}] ${payload.eventType}:`, payload);
           }
@@ -138,7 +138,7 @@ class SubscriptionManager {
       this.unsubscribe(channelName);
     }
 
-    const channel = supabase.channel(channelName, {
+    const channel = apiClient.channel(channelName, {
       config: {
         presence: {
           key: '', // Will be set when tracking
@@ -146,7 +146,7 @@ class SubscriptionManager {
       },
     });
 
-    // Use the correct presence event API for Supabase 2.58.0
+    // Register presence callbacks through the legacy-compatible channel interface.
     if (options.onJoin) {
       channel.on('presence', { event: 'join' }, options.onJoin);
     }
@@ -192,7 +192,7 @@ class SubscriptionManager {
       this.unsubscribe(channelName);
     }
 
-    const channel = supabase
+    const channel = apiClient
       .channel(channelName)
       .on('broadcast', { event }, callback)
       .subscribe((status) => {
@@ -243,7 +243,7 @@ class SubscriptionManager {
     const channel = this.subscriptions.get(channelName);
     if (channel) {
       if (!isPhpBackend) {
-        await supabase.removeChannel(channel);
+        await apiClient.removeChannel(channel);
       }
       this.subscriptions.delete(channelName);
       this.reconnectAttempts.delete(channelName);
@@ -306,10 +306,10 @@ export function useRealtimeSubscription<T extends TableName>(
   options: {
     event?: 'INSERT' | 'UPDATE' | 'DELETE' | '*';
     filter?: string;
-    onInsert?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-    onUpdate?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-    onDelete?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
-    onChange?: (payload: RealtimePostgresChangesPayload<Tables[T]['Row']>) => void;
+    onInsert?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+    onUpdate?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+    onDelete?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
+    onChange?: (payload: RealtimeChangePayload<Tables[T]['Row']>) => void;
     enabled?: boolean;
   }
 ) {
@@ -382,7 +382,7 @@ export async function sendBroadcast(
     let channel = subscriptionManager.getChannel(channelName);
 
     if (!channel) {
-      channel = supabase.channel(channelName);
+      channel = apiClient.channel(channelName);
       await channel.subscribe((status) => {
         if (status !== 'SUBSCRIBED') {
           console.warn(`[Broadcast] Channel ${channelName} status: ${status}`);
@@ -407,7 +407,7 @@ export async function sendBroadcast(
  * Get connection status
  */
 export function getRealtimeStatus(): {
-  mode: 'supabase-realtime' | 'php-polling';
+  mode: 'polling' | 'unavailable';
   connected: boolean;
   activeSubscriptions: number;
   subscriptionNames: string[];
@@ -415,8 +415,8 @@ export function getRealtimeStatus(): {
   const activeSubscriptions = subscriptionManager.getActiveSubscriptions();
   
   return {
-    mode: isPhpBackend ? 'php-polling' : 'supabase-realtime',
-    connected: !isPhpBackend && activeSubscriptions.length > 0,
+    mode: isPhpBackend ? 'polling' : 'unavailable',
+    connected: false,
     activeSubscriptions: activeSubscriptions.length,
     subscriptionNames: activeSubscriptions,
   };

@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { useSchoolStats, type SchoolStats } from '@/hooks/useSchoolStats';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { queryKeys } from '@/lib/query-client';
@@ -77,7 +77,7 @@ export async function fetchSchoolAdminDashboardData(
     };
   }
 
-  const { data: school, error: schoolError } = await supabase
+  const { data: school, error: schoolError } = await apiClient
     .from('schools')
     .select('name, name_bangla, school_type')
     .eq('id', schoolId)
@@ -87,7 +87,7 @@ export async function fetchSchoolAdminDashboardData(
 
   const stats = await fetchSchoolStats(schoolId);
 
-  const { data: recentStudents, error: studentsError } = await supabase
+  const { data: recentStudents, error: studentsError } = await apiClient
     .from('students')
     .select('full_name, admission_date, class_id, classes(name)')
     .eq('school_id', schoolId)

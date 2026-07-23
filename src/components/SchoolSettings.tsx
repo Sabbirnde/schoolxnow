@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 import { 
   School, 
   Users, 
@@ -76,7 +76,7 @@ export default function SchoolSettings() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('schools')
         .select('*')
         .eq('id', profile?.school_id)
@@ -85,7 +85,7 @@ export default function SchoolSettings() {
       if (error) throw error;
       setSchoolInfo(data);
     } catch (error) {
-      const notice = handleSupabaseError('Load school settings', error, {
+      const notice = handleApiError('Load school settings', error, {
         context: { schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });
@@ -121,7 +121,7 @@ export default function SchoolSettings() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .update({
           name: schoolInfo.name,
@@ -138,7 +138,7 @@ export default function SchoolSettings() {
       if (error) throw error;
       toast.success('School information updated successfully');
     } catch (error) {
-      const notice = handleSupabaseError('Update school settings', error, {
+      const notice = handleApiError('Update school settings', error, {
         context: { schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });

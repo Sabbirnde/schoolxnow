@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -84,7 +84,7 @@ export function QuickAttendanceSheet({
       }
 
       // Load students
-      const { data: studentsData, error: studentsError } = await supabase
+      const { data: studentsData, error: studentsError } = await apiClient
         .from('students')
         .select('*')
         .eq('class_id', classId)
@@ -95,7 +95,7 @@ export function QuickAttendanceSheet({
       setStudents(studentsData || []);
 
       // Load existing attendance for this date
-      const { data: attendanceData, error: attendanceError } = await supabase
+      const { data: attendanceData, error: attendanceError } = await apiClient
         .from('attendance')
         .select('student_id, is_present')
         .eq('class_id', classId)
@@ -192,7 +192,7 @@ export function QuickAttendanceSheet({
       }
 
       // Delete existing records for this class and date
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await apiClient
         .from('attendance')
         .delete()
         .eq('class_id', classId)
@@ -201,7 +201,7 @@ export function QuickAttendanceSheet({
       if (deleteError) throw deleteError;
 
       // Insert new records
-      const { error: insertError } = await supabase
+      const { error: insertError } = await apiClient
         .from('attendance')
         .insert(records);
 

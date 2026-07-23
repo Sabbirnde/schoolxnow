@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,7 +30,7 @@ import {
 } from "@/lib/audit-log";
 import { AlertCircle } from "lucide-react";
 import type { Database } from "@/integrations/database/types";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 import { 
   Plus, 
   Download, 
@@ -185,7 +185,7 @@ export function StudentManagement() {
       }
 
       // Fetch students
-      const { data: studentsData, error: studentsError } = await supabase
+      const { data: studentsData, error: studentsError } = await apiClient
         .from('students')
         .select(`
           *,
@@ -200,7 +200,7 @@ export function StudentManagement() {
       if (studentsError) throw studentsError;
 
       // Fetch classes
-      const { data: classesData, error: classesError } = await supabase
+      const { data: classesData, error: classesError } = await apiClient
         .from('classes')
         .select('*')
         .eq('school_id', profile.school_id)
@@ -212,7 +212,7 @@ export function StudentManagement() {
       setStudents((studentsData || []) as unknown as Student[]);
       setClasses((classesData || []) as Class[]);
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Load students', error, {
+      const notice = handleApiError('Load students', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -281,7 +281,7 @@ export function StudentManagement() {
     }
 
     // Set up narrow real-time subscriptions for students (INSERT/UPDATE only)
-    const studentsInsertChannel = supabase
+    const studentsInsertChannel = apiClient
       .channel('students_inserts')
       .on(
         'postgres_changes',
@@ -299,7 +299,7 @@ export function StudentManagement() {
       )
       .subscribe();
 
-    const studentsUpdateChannel = supabase
+    const studentsUpdateChannel = apiClient
       .channel('students_updates')
       .on(
         'postgres_changes',
@@ -317,7 +317,7 @@ export function StudentManagement() {
       )
       .subscribe();
 
-    const classesInsertChannel = supabase
+    const classesInsertChannel = apiClient
       .channel('students_classes_inserts')
       .on(
         'postgres_changes',
@@ -335,7 +335,7 @@ export function StudentManagement() {
       )
       .subscribe();
 
-    const classesUpdateChannel = supabase
+    const classesUpdateChannel = apiClient
       .channel('students_classes_updates')
       .on(
         'postgres_changes',
@@ -354,10 +354,10 @@ export function StudentManagement() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(studentsInsertChannel);
-      supabase.removeChannel(studentsUpdateChannel);
-      supabase.removeChannel(classesInsertChannel);
-      supabase.removeChannel(classesUpdateChannel);
+      apiClient.removeChannel(studentsInsertChannel);
+      apiClient.removeChannel(studentsUpdateChannel);
+      apiClient.removeChannel(classesInsertChannel);
+      apiClient.removeChannel(classesUpdateChannel);
     };
   }, [profile?.school_id, fetchData, throttledFetch]);
 
@@ -479,14 +479,14 @@ export function StudentManagement() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('students')
         .insert(studentData)
         .select()
         .single();
 
       if (error) {
-        const notice = handleSupabaseError('Create student', error, {
+        const notice = handleApiError('Create student', error, {
           context: {
             schoolId: profile.school_id,
             studentId: values.student_id,
@@ -518,7 +518,7 @@ export function StudentManagement() {
       setValidationError(null);
       fetchData();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Create student', error, {
+      const notice = handleApiError('Create student', error, {
         context: {
           schoolId: profile?.school_id,
           studentId: values.student_id,
@@ -633,13 +633,13 @@ export function StudentManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('students')
         .update(studentUpdate)
         .eq('id', editingStudent.id);
 
       if (error) {
-        const notice = handleSupabaseError('Update student', error, {
+        const notice = handleApiError('Update student', error, {
           context: {
             studentId: editingStudent.id,
             schoolId: profile?.school_id,
@@ -665,7 +665,7 @@ export function StudentManagement() {
       setValidationError(null);
       fetchData();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Update student', error, {
+      const notice = handleApiError('Update student', error, {
         context: {
           studentId: editingStudent.id,
           schoolId: profile?.school_id,
@@ -714,13 +714,13 @@ export function StudentManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('students')
         .delete()
         .eq('id', studentId);
 
       if (error) {
-        const notice = handleSupabaseError('Delete student', error, {
+        const notice = handleApiError('Delete student', error, {
           context: { studentId, schoolId: profile?.school_id },
         });
         await auditLog.logFailedAction('DELETE', studentId, notice.description);
@@ -740,7 +740,7 @@ export function StudentManagement() {
 
       fetchData();
     } catch (error: unknown) {
-      const notice = handleSupabaseError('Delete student', error, {
+      const notice = handleApiError('Delete student', error, {
         context: { studentId, schoolId: profile?.school_id },
         log: false,
       });

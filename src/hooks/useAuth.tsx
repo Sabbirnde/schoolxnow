@@ -1,6 +1,6 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useRef, useCallback } from 'react';
-import { AuthError, RealtimeChannel, User, Session } from '@/integrations/php-api/compat-types';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { AuthError, RealtimeChannel, User, Session } from '@/integrations/php-api/api-types';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { phpApi, type PhpApiUser } from '@/integrations/php-api/client';
 import { useThrottledFetch } from '@/hooks/useThrottledFetch';
 
@@ -23,7 +23,7 @@ interface UserProfile {
 
 const usePhpBackend = import.meta.env.VITE_BACKEND_PROVIDER === 'php';
 
-function phpUserToSupabaseUser(apiUser: PhpApiUser): User {
+function phpUserToApiUser(apiUser: PhpApiUser): User {
   return {
     id: apiUser.id,
     aud: 'authenticated',
@@ -45,7 +45,7 @@ function phpUserToSession(apiUser: PhpApiUser, token: string): Session {
     refresh_token: '',
     expires_in: 86400,
     token_type: 'bearer',
-    user: phpUserToSupabaseUser(apiUser),
+    user: phpUserToApiUser(apiUser),
   } as Session;
 }
 
@@ -130,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       // Fetch user profile
-      const { data: profileData, error: profileError } = await supabase
+      const { data: profileData, error: profileError } = await apiClient
         .from('user_profiles')
         .select('*')
         .eq('user_id', userId)
@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Fetch user role from user_roles table
-      const { data: roleData, error: roleError } = await supabase
+      const { data: roleData, error: roleError } = await apiClient
         .from('user_roles')
         .select('role')
         .eq('user_id', userId)
@@ -208,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         try {
           const apiUser = await phpApi.me();
-          const mappedUser = phpUserToSupabaseUser(apiUser);
+          const mappedUser = phpUserToApiUser(apiUser);
           const mappedSession = phpUserToSession(apiUser, token);
 
           setSession(mappedSession);
@@ -235,7 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     // Set up auth state listener with improved error handling
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = apiClient.auth.onAuthStateChange(
       async (event, session) => {
         console.log('Auth state change:', event, session?.user?.id);
         
@@ -284,14 +284,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for existing session with error handling
     const initializeSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const { data: { session }, error } = await apiClient.auth.getSession();
         
         if (error) {
           console.error('Error getting session:', error);
           // If there's an error getting the session, try to refresh
           if (error.message?.includes('refresh')) {
             console.log('Attempting to recover from refresh token error');
-            await supabase.auth.refreshSession();
+            await apiClient.auth.refreshSession();
             return;
           }
         }
@@ -330,7 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const setupRealtimeSubscriptions = (userId: string) => {
       try {
         // Separate channel for profile updates only (narrowed to UPDATE events)
-        profileChannel = supabase.channel(`auth-profile-changes:${userId}`);
+        profileChannel = apiClient.channel(`auth-profile-changes:${userId}`);
         profileChannel.on(
           'postgres_changes',
           {
@@ -354,7 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         // Separate narrow channel for role changes (INSERT/UPDATE only, no DELETE)
-        roleChannel = supabase.channel(`auth-role-changes:${userId}`);
+        roleChannel = apiClient.channel(`auth-role-changes:${userId}`);
         roleChannel.on(
           'postgres_changes',
           {
@@ -404,10 +404,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       subscription.unsubscribe();
       if (profileChannel) {
-        supabase.removeChannel(profileChannel);
+        apiClient.removeChannel(profileChannel);
       }
       if (roleChannel) {
-        supabase.removeChannel(roleChannel);
+        apiClient.removeChannel(roleChannel);
       }
     };
   }, [user?.id, fetchProfile, throttledFetchProfile, transitionProfileState]);
@@ -416,7 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (usePhpBackend) {
       try {
         const { user: apiUser, session: apiSession } = await phpApi.login(email, password);
-        const mappedUser = phpUserToSupabaseUser(apiUser);
+        const mappedUser = phpUserToApiUser(apiUser);
         const mappedSession = phpUserToSession(apiUser, apiSession.access_token);
 
         setUser(mappedUser);
@@ -436,7 +436,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedPassword = password;
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await apiClient.auth.signInWithPassword({
         email: normalizedEmail,
         password: normalizedPassword,
       });
@@ -491,7 +491,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedFullName = fullName.trim();
     
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await apiClient.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
@@ -515,7 +515,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return {
           error: {
             ...error,
-            message: 'Account creation is temporarily unavailable due to a server profile setup issue. Please ask admin to run the latest Supabase migration and try again.'
+            message: 'Account creation is temporarily unavailable due to a server profile setup issue. Please ask an administrator to apply the latest MySQL schema migration and try again.'
           }
         };
       }
@@ -530,7 +530,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // For super admin, update the profile and role immediately after creation
       try {
         // Update profile
-        await supabase
+        await apiClient
           .from('user_profiles')
           .update({
             approval_status: 'approved',
@@ -540,7 +540,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .eq('user_id', data.user.id);
         
         // Ensure role is set in user_roles table
-        await supabase
+        await apiClient
           .from('user_roles')
           .upsert({
             user_id: data.user.id,
@@ -572,7 +572,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await apiClient.auth.signOut();
       
       // Always clear local state, even if signOut fails
       setUser(null);
@@ -613,7 +613,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const redirectUrl = options?.redirectTo || `${window.location.origin}/teacher-portal`;
       
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await apiClient.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo: redirectUrl,
@@ -644,7 +644,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { error } = await apiClient.auth.verifyOtp({
         email,
         token,
         type,

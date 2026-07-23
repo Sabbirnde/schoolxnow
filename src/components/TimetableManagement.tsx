@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import type { Database } from "@/integrations/database/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Calendar, Clock, Users, MapPin, Plus, Edit2, Trash2, AlertCircle } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface TimetableEntry {
   id: string;
@@ -249,7 +249,7 @@ export function TimetableManagement() {
       // For teachers, get their teacher record first
       let teacherRecord = null;
       if (!canFull('timetable.manage')) {
-        const { data: teacherData, error: teacherError } = await supabase
+        const { data: teacherData, error: teacherError } = await apiClient
           .from('teachers')
           .select('id')
           .eq('user_id', profile.user_id)
@@ -262,7 +262,7 @@ export function TimetableManagement() {
       }
 
       // Fetch timetable entries - filter by teacher if teacher role
-      let timetableQuery = supabase
+      let timetableQuery = apiClient
         .from('timetable')
         .select('*')
         .eq('school_id', profile.school_id);
@@ -280,9 +280,9 @@ export function TimetableManagement() {
 
       // Fetch classes, subjects, and teachers for mapping
       const [classesResponse, subjectsResponse, teachersResponse] = await Promise.all([
-        supabase.from('classes').select('id, name, section').eq('school_id', profile.school_id),
-        supabase.from('subjects').select('id, name, code').eq('school_id', profile.school_id),
-        supabase.from('teachers').select('id, full_name').eq('school_id', profile.school_id)
+        apiClient.from('classes').select('id, name, section').eq('school_id', profile.school_id),
+        apiClient.from('subjects').select('id, name, code').eq('school_id', profile.school_id),
+        apiClient.from('teachers').select('id, full_name').eq('school_id', profile.school_id)
       ]);
 
       const classesMap = new Map(classesResponse.data?.map(c => [c.id, c]) || []);
@@ -313,7 +313,7 @@ export function TimetableManagement() {
       setTimetableEntries(formattedTimetable);
 
       // Fetch teachers
-      const { data: teachersData, error: teachersError } = await supabase
+      const { data: teachersData, error: teachersError } = await apiClient
         .from('teachers')
         .select('id, full_name, subject_specialization')
         .eq('school_id', profile.school_id)
@@ -323,7 +323,7 @@ export function TimetableManagement() {
       setTeachers(teachersData || []);
 
       // Fetch classes
-      const { data: classesData, error: classesError } = await supabase
+      const { data: classesData, error: classesError } = await apiClient
         .from('classes')
         .select('id, name, section, class_level')
         .eq('school_id', profile.school_id)
@@ -333,7 +333,7 @@ export function TimetableManagement() {
       setClasses(classesData || []);
 
       // Fetch subjects
-      const { data: subjectsData, error: subjectsError } = await supabase
+      const { data: subjectsData, error: subjectsError } = await apiClient
         .from('subjects')
         .select('id, name, code, class_level')
         .eq('school_id', profile.school_id)
@@ -343,7 +343,7 @@ export function TimetableManagement() {
       setSubjects(subjectsData || []);
 
     } catch (error) {
-      const notice = handleSupabaseError('Load timetable data', error, {
+      const notice = handleApiError('Load timetable data', error, {
         context: { schoolId: profile?.school_id, userId: profile?.user_id },
       });
       toast.error(notice.title, { description: notice.description });
@@ -459,7 +459,7 @@ export function TimetableManagement() {
 
       if (editingEntry) {
         const dataToUpdate: TimetableUpdate = dataToSave;
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('timetable')
           .update(dataToUpdate)
           .eq('id', editingEntry.id);
@@ -467,7 +467,7 @@ export function TimetableManagement() {
         if (error) throw error;
         toast.success('Timetable entry updated successfully');
       } else {
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('timetable')
           .insert([dataToSave]);
 
@@ -488,7 +488,7 @@ export function TimetableManagement() {
       setConflicts([]);
       fetchData();
     } catch (error) {
-      const notice = handleSupabaseError('Save timetable entry', error, {
+      const notice = handleApiError('Save timetable entry', error, {
         context: {
           schoolId: profile.school_id,
           editingEntryId: editingEntry?.id,
@@ -525,7 +525,7 @@ export function TimetableManagement() {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('timetable')
         .delete()
         .eq('id', id);
@@ -534,7 +534,7 @@ export function TimetableManagement() {
       toast.success('Timetable entry deleted successfully');
       fetchData();
     } catch (error) {
-      const notice = handleSupabaseError('Delete timetable entry', error, {
+      const notice = handleApiError('Delete timetable entry', error, {
         context: { entryId: id, schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });

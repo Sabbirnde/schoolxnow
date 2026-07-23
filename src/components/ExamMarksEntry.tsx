@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
 import type { Database } from "@/integrations/database/types";
@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { Save, CheckCircle, GraduationCap, Award, TrendingUp, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 
 interface Exam {
   id: string;
@@ -114,7 +114,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('exams')
         .select('*')
         .eq('is_active', true);
@@ -128,7 +128,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       if (error) throw error;
       setExams(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load exams for marks entry', error, {
+      const notice = handleApiError('Load exams for marks entry', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -158,7 +158,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('subjects')
         .select('*')
         .eq('is_active', true);
@@ -172,7 +172,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       if (error) throw error;
       setSubjects(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load subjects for marks entry', error, {
+      const notice = handleApiError('Load subjects for marks entry', error, {
         context: { schoolId: profile?.school_id },
       });
       toast({
@@ -218,7 +218,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('students')
         .select(`
           *,
@@ -242,7 +242,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       
       setStudents(filteredStudents);
     } catch (error) {
-      const notice = handleSupabaseError('Load students for marks entry', error, {
+      const notice = handleApiError('Load students for marks entry', error, {
         context: { schoolId: profile?.school_id, examId: selectedExam },
       });
       toast({
@@ -281,7 +281,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('exam_results')
         .select('*')
         .eq('exam_id', selectedExam)
@@ -300,7 +300,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       setExistingResults(resultsMap);
       setMarks(marksMap);
     } catch (error) {
-      handleSupabaseError('Load existing exam results', error, {
+      handleApiError('Load existing exam results', error, {
         context: { examId: selectedExam, subjectId: selectedSubject },
       });
     }
@@ -442,7 +442,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       }
 
       if (existingResult?.id) {
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('exam_results')
           .update({
             obtained_marks: obtainedMarks,
@@ -462,7 +462,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
           grade: grade,
         };
 
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('exam_results')
           .insert(newResult);
 
@@ -477,7 +477,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
       
       await loadExistingResults();
     } catch (error) {
-      const notice = handleSupabaseError('Save student marks', error, {
+      const notice = handleApiError('Save student marks', error, {
         context: {
           schoolId: profile?.school_id,
           examId: selectedExam,
@@ -546,7 +546,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         }
 
         if (existingResult?.id) {
-          const { error } = await supabase
+          const { error } = await apiClient
             .from('exam_results')
             .update({
               obtained_marks: obtainedMarks,
@@ -566,7 +566,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
             grade: grade,
           };
 
-          const { error } = await supabase
+          const { error } = await apiClient
             .from('exam_results')
             .insert(newResult);
 
@@ -576,7 +576,7 @@ function ExamMarksEntry({ onComplete }: ExamMarksEntryProps) {
         setSavedStudents(prev => new Set(prev).add(student.id));
         successCount++;
       } catch (error) {
-        handleSupabaseError('Save student marks in bulk', error, {
+        handleApiError('Save student marks in bulk', error, {
           context: {
             schoolId: profile?.school_id,
             examId: selectedExam,

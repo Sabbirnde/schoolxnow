@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import { supabase } from "@/integrations/php-api/compat-client";
+import { apiClient } from "@/integrations/php-api/api-client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { toast } from "sonner";
-import { handleSupabaseError } from "@/lib/api-error-handler";
+import { handleApiError } from "@/lib/api-error-handler";
 import {
   BarChart,
   Bar,
@@ -240,14 +240,14 @@ export function ReportsAnalytics() {
 
       for (const classItem of classList) {
         // Get students count
-        const { count: studentCount } = await supabase
+        const { count: studentCount } = await apiClient
           .from('students')
           .select('*', { count: 'exact', head: true })
           .eq('class_id', classItem.id)
           .eq('status', 'active');
 
         // Get average attendance
-        const { data: attendanceData } = await supabase
+        const { data: attendanceData } = await apiClient
           .from('attendance')
           .select('is_present')
           .eq('class_id', classItem.id);
@@ -257,7 +257,7 @@ export function ReportsAnalytics() {
           : 0;
 
         // Get average marks
-        const { data: marksData } = await supabase
+        const { data: marksData } = await apiClient
           .from('exam_results')
           .select('obtained_marks, total_marks')
           .eq('school_id', profile?.school_id);
@@ -279,7 +279,7 @@ export function ReportsAnalytics() {
 
       setClassAnalytics(analytics);
     } catch (error) {
-      handleSupabaseError('Load class analytics', error, {
+      handleApiError('Load class analytics', error, {
         context: { schoolId: profile?.school_id, classCount: classList.length },
       });
     }
@@ -339,7 +339,7 @@ export function ReportsAnalytics() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('attendance')
         .select(`
           *,
@@ -400,7 +400,7 @@ export function ReportsAnalytics() {
         b.attendance_percentage - a.attendance_percentage
       ));
     } catch (error) {
-      const notice = handleSupabaseError('Load attendance analytics', error, {
+      const notice = handleApiError('Load attendance analytics', error, {
         context: { schoolId: profile?.school_id, selectedClass },
       });
       toast.error(notice.title, { description: notice.description });
@@ -447,7 +447,7 @@ export function ReportsAnalytics() {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('exam_results')
         .select(`
           *,
@@ -493,7 +493,7 @@ export function ReportsAnalytics() {
 
       setExamPerformance(performance);
     } catch (error) {
-      const notice = handleSupabaseError('Load exam performance analytics', error, {
+      const notice = handleApiError('Load exam performance analytics', error, {
         context: { schoolId: profile?.school_id, selectedExam, selectedStudent },
       });
       toast.error(notice.title, { description: notice.description });
@@ -511,7 +511,7 @@ export function ReportsAnalytics() {
       await loadExamPerformance();
       
     } catch (error) {
-      const notice = handleSupabaseError('Load report data', error, {
+      const notice = handleApiError('Load report data', error, {
         context: { schoolId: profile?.school_id, selectedClass, selectedExam, selectedStudent },
       });
       toast.error(notice.title, { description: notice.description });
@@ -561,7 +561,7 @@ export function ReportsAnalytics() {
       }
       
       // Load classes
-      let classQuery = supabase
+      let classQuery = apiClient
         .from('classes')
         .select('*')
         .eq('is_active', true);
@@ -575,7 +575,7 @@ export function ReportsAnalytics() {
       setClasses(classesData || []);
 
       // Load exams
-      let examQuery = supabase
+      let examQuery = apiClient
         .from('exams')
         .select('*')
         .eq('is_active', true);
@@ -589,7 +589,7 @@ export function ReportsAnalytics() {
       setExams(examsData || []);
 
       // Load students
-      let studentQuery = supabase
+      let studentQuery = apiClient
         .from('students')
         .select(`
           *,
@@ -613,7 +613,7 @@ export function ReportsAnalytics() {
       await loadClassAnalytics(classesData || []);
       
     } catch (error) {
-      const notice = handleSupabaseError('Load reports dashboard data', error, {
+      const notice = handleApiError('Load reports dashboard data', error, {
         context: { schoolId: profile?.school_id },
       });
       toast.error(notice.title, { description: notice.description });

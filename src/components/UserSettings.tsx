@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import {
@@ -122,7 +122,7 @@ export default function UserSettings() {
         });
         setUserProfile(updatedProfile);
       } else {
-        const { error } = await supabase
+        const { error } = await apiClient
           .from('user_profiles')
           .update({
             full_name: userProfile.full_name,
@@ -166,7 +166,7 @@ export default function UserSettings() {
       if (isPhpBackend) {
         await phpApi.changePassword(passwordData.current_password, passwordData.new_password);
       } else {
-        const { error } = await supabase.auth.updateUser({
+        const { error } = await apiClient.auth.updateUser({
           password: passwordData.new_password
         });
 

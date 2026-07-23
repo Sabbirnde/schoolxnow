@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Edit, Users, Eye, Shield, UserCheck, UserX, CheckCircle, XCircle } from 'lucide-react';
-import { handleSupabaseError, SupabaseErrorNotice } from '@/lib/api-error-handler';
+import { handleApiError, ApiErrorNotice } from '@/lib/api-error-handler';
 
 interface UserProfile {
   id: string;
@@ -53,7 +53,7 @@ const UserManagement = () => {
     school_id: '',
   });
 
-  const showErrorNotice = useCallback((notice: SupabaseErrorNotice) => {
+  const showErrorNotice = useCallback((notice: ApiErrorNotice) => {
     toast({
       title: notice.title,
       description: notice.description,
@@ -89,7 +89,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('user_profiles')
         .select(`
           *,
@@ -102,7 +102,7 @@ const UserManagement = () => {
 
       setUsers(data || []);
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Load users', error));
+      showErrorNotice(handleApiError('Load users', error));
     } finally {
       setLoading(false);
     }
@@ -121,7 +121,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('schools')
         .select('id, name')
         .eq('is_active', true);
@@ -129,7 +129,7 @@ const UserManagement = () => {
       if (error) throw error;
       setSchools(data || []);
     } catch (error) {
-      handleSupabaseError('Load schools for user management', error);
+      handleApiError('Load schools for user management', error);
     }
   }, []);
 
@@ -142,7 +142,7 @@ const UserManagement = () => {
     }
     
     // Set up real-time subscription for user_profiles changes
-    const channel = supabase
+    const channel = apiClient
       .channel('user_profiles_updates')
       .on(
         'postgres_changes',
@@ -159,7 +159,7 @@ const UserManagement = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      apiClient.removeChannel(channel);
     };
   }, [fetchUsers, fetchSchools]);
 
@@ -187,7 +187,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({
           full_name: formData.full_name,
@@ -209,7 +209,7 @@ const UserManagement = () => {
       setIsEditDialogOpen(false);
       fetchUsers();
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Update user', error, {
+      showErrorNotice(handleApiError('Update user', error, {
         context: { userId: selectedUser.id, role: formData.role, schoolId: formData.school_id || null },
       }));
     }
@@ -229,7 +229,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ approval_status: 'approved' })
         .eq('id', userId);
@@ -243,7 +243,7 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Approve user', error, {
+      showErrorNotice(handleApiError('Approve user', error, {
         context: { userId },
       }));
     }
@@ -263,7 +263,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ approval_status: 'rejected' })
         .eq('id', userId);
@@ -277,7 +277,7 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Reject user', error, {
+      showErrorNotice(handleApiError('Reject user', error, {
         context: { userId },
       }));
     }
@@ -297,7 +297,7 @@ const UserManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ is_active: false })
         .eq('id', userId);
@@ -311,7 +311,7 @@ const UserManagement = () => {
 
       fetchUsers();
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Deactivate user', error, {
+      showErrorNotice(handleApiError('Deactivate user', error, {
         context: { userId },
       }));
     }

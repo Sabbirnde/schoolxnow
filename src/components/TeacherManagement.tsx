@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,7 @@ import { useFeatureAccess } from '@/hooks/useFeatureAccess';
 import { Edit, Users, Eye, CheckCircle, XCircle, UserX, UserPlus, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { usePollingRefresh } from '@/hooks/usePollingRefresh';
-import { handleSupabaseError, SupabaseErrorNotice } from '@/lib/api-error-handler';
+import { handleApiError, ApiErrorNotice } from '@/lib/api-error-handler';
 
 interface Teacher {
   id: string;
@@ -92,7 +92,7 @@ const TeacherManagement = () => {
     designation: '',
   });
 
-  const showErrorNotice = useCallback((notice: SupabaseErrorNotice) => {
+  const showErrorNotice = useCallback((notice: ApiErrorNotice) => {
     toast({
       title: notice.title,
       description: notice.description,
@@ -145,7 +145,7 @@ const TeacherManagement = () => {
         return;
       }
 
-      let query = supabase
+      let query = apiClient
         .from('user_profiles')
         .select(`
           *,
@@ -164,7 +164,7 @@ const TeacherManagement = () => {
 
       setTeachers(data || []);
     } catch (error) {
-      showErrorNotice(handleSupabaseError('Load teachers', error, {
+      showErrorNotice(handleApiError('Load teachers', error, {
         context: { schoolId: profile?.school_id },
       }));
     } finally {
@@ -185,7 +185,7 @@ const TeacherManagement = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('schools')
         .select('id, name, school_type')
         .eq('is_active', true);
@@ -193,7 +193,7 @@ const TeacherManagement = () => {
       if (error) throw error;
       setSchools(data || []);
     } catch (error) {
-      handleSupabaseError('Load schools for teacher management', error);
+      handleApiError('Load schools for teacher management', error);
     }
   }, []);
 
@@ -206,7 +206,7 @@ const TeacherManagement = () => {
     }
     
     // Set up real-time subscription for user_profiles changes
-    const channel = supabase
+    const channel = apiClient
       .channel('teacher_updates')
       .on(
         'postgres_changes',
@@ -223,7 +223,7 @@ const TeacherManagement = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      apiClient.removeChannel(channel);
     };
   }, [fetchTeachers, fetchSchools]);
 
@@ -258,7 +258,7 @@ const TeacherManagement = () => {
         return;
       }
       
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({
           full_name: formData.full_name,
@@ -270,7 +270,7 @@ const TeacherManagement = () => {
         .eq('id', selectedTeacher.id);
 
       if (error) {
-        const notice = handleSupabaseError('Update teacher', error, {
+        const notice = handleApiError('Update teacher', error, {
           context: { teacherId: selectedTeacher.id, schoolId: formData.school_id },
         });
         await auditLog.logFailedAction(selectedTeacher.id, {
@@ -306,7 +306,7 @@ const TeacherManagement = () => {
       setIsEditDialogOpen(false);
       fetchTeachers();
     } catch (error) {
-      const notice = handleSupabaseError('Update teacher', error, {
+      const notice = handleApiError('Update teacher', error, {
         context: { teacherId: selectedTeacher.id, schoolId: formData.school_id },
       });
       await auditLog.logFailedAction(selectedTeacher.id, {
@@ -336,13 +336,13 @@ const TeacherManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ approval_status: 'approved' })
         .eq('id', teacherId);
 
       if (error) {
-        const notice = handleSupabaseError('Approve teacher', error, {
+        const notice = handleApiError('Approve teacher', error, {
           context: { teacherId, schoolId: teacher.school_id },
         });
         await auditLog.logFailedAction(teacherId, {
@@ -372,7 +372,7 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      const notice = handleSupabaseError('Approve teacher', error, {
+      const notice = handleApiError('Approve teacher', error, {
         context: { teacherId, schoolId: teacher.school_id },
       });
       await auditLog.logFailedAction(teacherId, {
@@ -403,13 +403,13 @@ const TeacherManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ approval_status: 'rejected' })
         .eq('id', teacherId);
 
       if (error) {
-        const notice = handleSupabaseError('Reject teacher', error, {
+        const notice = handleApiError('Reject teacher', error, {
           context: { teacherId, schoolId: teacher.school_id },
         });
         await auditLog.logFailedAction(teacherId, {
@@ -439,7 +439,7 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      const notice = handleSupabaseError('Reject teacher', error, {
+      const notice = handleApiError('Reject teacher', error, {
         context: { teacherId, schoolId: teacher.school_id },
       });
       await auditLog.logFailedAction(teacherId, {
@@ -470,13 +470,13 @@ const TeacherManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('user_profiles')
         .update({ is_active: false })
         .eq('id', teacherId);
 
       if (error) {
-        const notice = handleSupabaseError('Deactivate teacher', error, {
+        const notice = handleApiError('Deactivate teacher', error, {
           context: { teacherId, schoolId: teacher.school_id },
         });
         await auditLog.logFailedAction(teacherId, {
@@ -507,7 +507,7 @@ const TeacherManagement = () => {
 
       fetchTeachers();
     } catch (error) {
-      const notice = handleSupabaseError('Deactivate teacher', error, {
+      const notice = handleApiError('Deactivate teacher', error, {
         context: { teacherId, schoolId: teacher.school_id },
       });
       await auditLog.logFailedAction(teacherId, {
@@ -619,7 +619,7 @@ const TeacherManagement = () => {
       }
 
       // Create auth user with teacher role
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const { data: authData, error: authError } = await apiClient.auth.signUp({
         email: createFormData.email,
         password: createFormData.password,
         options: {
@@ -633,7 +633,7 @@ const TeacherManagement = () => {
       });
 
       if (authError) {
-        const notice = handleSupabaseError('Create teacher auth account', authError, {
+        const notice = handleApiError('Create teacher auth account', authError, {
           context: { schoolId: profile.school_id, email: createFormData.email },
         });
         setValidationError(notice.description);
@@ -648,8 +648,8 @@ const TeacherManagement = () => {
       }
 
       if (!authData.user) {
-        const accountError = new Error('Supabase did not return a user account after signup');
-        const notice = handleSupabaseError('Create teacher auth account', accountError, {
+        const accountError = new Error('Api did not return a user account after signup');
+        const notice = handleApiError('Create teacher auth account', accountError, {
           context: { schoolId: profile.school_id, email: createFormData.email },
         });
         setValidationError(notice.description);
@@ -669,7 +669,7 @@ const TeacherManagement = () => {
       const teacherId = `TCH-${timestamp}-${random}`;
 
       // Create teacher record
-      const { error: teacherError } = await supabase
+      const { error: teacherError } = await apiClient
         .from('teachers')
         .insert({
           user_id: authData.user.id,
@@ -685,7 +685,7 @@ const TeacherManagement = () => {
       });
 
       if (teacherError) {
-        const notice = handleSupabaseError('Create teacher record', teacherError, {
+        const notice = handleApiError('Create teacher record', teacherError, {
           context: { schoolId: profile.school_id, userId: authData.user.id, teacherId },
         });
         await auditLog.logFailedAction(authData.user.id, {
@@ -722,7 +722,7 @@ const TeacherManagement = () => {
       });
       fetchTeachers();
     } catch (error) {
-      const notice = handleSupabaseError('Create teacher', error, {
+      const notice = handleApiError('Create teacher', error, {
         context: { schoolId: profile.school_id, email: createFormData.email },
       });
       setValidationError(notice.description);

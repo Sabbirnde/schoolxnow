@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildTodaySchedule } from './useTeacherDashboardData';
 
-vi.mock('@/integrations/php-api/compat-client', () => ({
-  supabase: {
+vi.mock('@/integrations/php-api/api-client', () => ({
+  apiClient: {
     from: vi.fn(),
   },
 }));

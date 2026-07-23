@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, type ComponentProps } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/hooks/useFeatureAccess';
-import { supabase } from '@/integrations/php-api/compat-client';
+import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Search, Plus, Edit, Trash2, School, MapPin, Phone, Mail } from 'lucide-react';
-import { handleSupabaseError } from '@/lib/api-error-handler';
+import { handleApiError } from '@/lib/api-error-handler';
 
 type SchoolType = 'madrasha' | 'bangla_medium' | 'english_medium';
 type BadgeVariant = ComponentProps<typeof Badge>['variant'];
@@ -86,7 +86,7 @@ const SchoolManagement = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await apiClient
         .from('schools')
         .select('*')
         .order('created_at', { ascending: false });
@@ -95,7 +95,7 @@ const SchoolManagement = () => {
 
       setSchools(data || []);
     } catch (error) {
-      const notice = handleSupabaseError('Load schools', error);
+      const notice = handleApiError('Load schools', error);
       toast({
         title: notice.title,
         description: notice.description,
@@ -139,7 +139,7 @@ const SchoolManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .insert([{
           name: formData.name,
@@ -165,7 +165,7 @@ const SchoolManagement = () => {
       resetForm();
       fetchSchools();
     } catch (error) {
-      const notice = handleSupabaseError('Create school', error, {
+      const notice = handleApiError('Create school', error, {
         context: { schoolName: formData.name, schoolType: formData.school_type },
       });
       toast({
@@ -204,7 +204,7 @@ const SchoolManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .update({
           name: formData.name,
@@ -230,7 +230,7 @@ const SchoolManagement = () => {
       setIsDialogOpen(false);
       fetchSchools();
     } catch (error) {
-      const notice = handleSupabaseError('Update school', error, {
+      const notice = handleApiError('Update school', error, {
         context: { schoolId: selectedSchool.id, schoolName: formData.name },
       });
       toast({
@@ -259,7 +259,7 @@ const SchoolManagement = () => {
         return;
       }
 
-      const { error } = await supabase
+      const { error } = await apiClient
         .from('schools')
         .delete()
         .eq('id', schoolId);
@@ -273,7 +273,7 @@ const SchoolManagement = () => {
 
       fetchSchools();
     } catch (error) {
-      const notice = handleSupabaseError('Delete school', error, {
+      const notice = handleApiError('Delete school', error, {
         context: { schoolId },
       });
       toast({
