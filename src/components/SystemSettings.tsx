@@ -93,6 +93,7 @@ const parseJsonField = (value: string | Json | null): Json | null => {
 const SystemSettings = () => {
   const { profile } = useAuth();
   const { canFull } = useFeatureAccess();
+  const canManageSystemSettings = canFull('system_settings.manage');
 
   const [stats, setStats] = useState<SystemStats>({
     totalSchools: 0,
@@ -109,7 +110,7 @@ const SystemSettings = () => {
   const [isSettingsTableAvailable, setIsSettingsTableAvailable] = useState(true);
 
   useEffect(() => {
-    if (!canFull('system_settings.manage')) {
+    if (!canManageSystemSettings) {
       return;
     }
 
@@ -120,7 +121,7 @@ const SystemSettings = () => {
     };
 
     load();
-  }, [profile, canFull]);
+  }, [canManageSystemSettings]);
 
   const fetchSystemStats = async () => {
     try {
@@ -733,9 +734,9 @@ const SystemSettings = () => {
         </TabsContent>
       </Tabs>
 
-      {loading && (
-        <p className="text-xs text-muted-foreground">Refreshing live system data...</p>
-      )}
+      <p className="sr-only" role="status" aria-live="polite">
+        {loading ? 'Refreshing live system data' : 'System data is current'}
+      </p>
     </div>
   );
 };
