@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { lazy, Suspense, useState, useCallback } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useModuleAccess } from "@/hooks/useModuleAccess";
@@ -8,8 +8,6 @@ import { AccessDeniedFallback, ModuleLoadingSkeleton } from "@/components/Access
 import { StudentManagement } from "@/components/StudentManagement";
 import { ClassManagement } from "@/components/ClassManagement";
 import { SubjectManagement } from "@/components/SubjectManagement";
-import { AttendanceManagement } from "@/components/AttendanceManagement";
-import { ExamManagement } from "@/components/ExamManagement";
 import { TimetableManagement } from "@/components/TimetableManagement";
 import UserManagement from "@/components/UserManagement";
 import SchoolAdminManagement from "@/components/SchoolAdminManagement";
@@ -28,6 +26,17 @@ import TeacherPerformanceReports from "@/components/TeacherPerformanceReports";
 import { ClassAssignment } from "@/components/ClassAssignment";
 import { AcademicOperations } from "@/components/AcademicOperations";
 import { BillingManagement } from "@/components/BillingManagement";
+
+const AttendanceManagement = lazy(() =>
+  import("@/components/AttendanceManagement").then((module) => ({
+    default: module.AttendanceManagement,
+  })),
+);
+const ExamManagement = lazy(() =>
+  import("@/components/ExamManagement").then((module) => ({
+    default: module.ExamManagement,
+  })),
+);
 
 const Index = () => {
   const { user, profile, loading, profileState } = useAuth();
@@ -158,7 +167,9 @@ const Index = () => {
 
   return (
     <Layout activeModule={activeModule} setActiveModule={handleSetActiveModule}>
-      {renderContent()}
+      <Suspense fallback={<ModuleLoadingSkeleton />}>
+        {renderContent()}
+      </Suspense>
     </Layout>
   );
 };

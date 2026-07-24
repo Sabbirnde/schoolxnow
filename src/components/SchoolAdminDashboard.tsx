@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,6 @@ import { useSchoolAdminDashboardData } from "@/hooks/useSchoolAdminDashboardData
 import { useToast } from "@/hooks/use-toast";
 import { PendingAssignmentCard } from "@/components/PendingAssignmentCard";
 import { DashboardSkeleton } from "@/components/ui/skeleton-loader";
-import { TeacherApplicationsManager } from "@/components/TeacherApplicationsManager";
-import { AttendanceManagement } from "@/components/AttendanceManagement";
-import { ExamManagement } from "@/components/ExamManagement";
 import { EnhancedActivityFeed } from "@/components/SchoolAdmin/EnhancedActivityFeed";
 import { TodaysTasksOverview } from "@/components/SchoolAdmin/TodaysTasksOverview";
 import { StatsCardWithTrends } from "@/components/SchoolAdmin/StatsCardWithTrends";
@@ -40,6 +37,28 @@ import {
 interface SchoolAdminDashboardProps {
   setActiveModule?: (moduleId: string) => void;
 }
+
+const AttendanceManagement = lazy(() =>
+  import("@/components/AttendanceManagement").then((module) => ({
+    default: module.AttendanceManagement,
+  })),
+);
+const ExamManagement = lazy(() =>
+  import("@/components/ExamManagement").then((module) => ({
+    default: module.ExamManagement,
+  })),
+);
+const TeacherApplicationsManager = lazy(() =>
+  import("@/components/TeacherApplicationsManager").then((module) => ({
+    default: module.TeacherApplicationsManager,
+  })),
+);
+
+const DashboardTabFallback = () => (
+  <div className="flex min-h-48 items-center justify-center rounded-lg border bg-card">
+    <p className="text-sm text-muted-foreground">Loading module...</p>
+  </div>
+);
 
 const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) => {
   const { profile } = useAuth();
@@ -454,15 +473,21 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
         </TabsContent>
 
         <TabsContent value="attendance">
-          <AttendanceManagement />
+          <Suspense fallback={<DashboardTabFallback />}>
+            <AttendanceManagement />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="exams">
-          <ExamManagement />
+          <Suspense fallback={<DashboardTabFallback />}>
+            <ExamManagement />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="applications">
-          <TeacherApplicationsManager />
+          <Suspense fallback={<DashboardTabFallback />}>
+            <TeacherApplicationsManager />
+          </Suspense>
         </TabsContent>
       </Tabs>
 

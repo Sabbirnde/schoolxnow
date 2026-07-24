@@ -78,24 +78,26 @@ export async function fetchSchoolAdminDashboardData(
     };
   }
 
-  const { data: school, error: schoolError } = await apiClient
-    .from('schools')
-    .select('name, name_bangla, school_type')
-    .eq('id', schoolId)
-    .single();
+  const [schoolResponse, stats, studentsResponse] = await Promise.all([
+    apiClient
+      .from('schools')
+      .select('name, name_bangla, school_type')
+      .eq('id', schoolId)
+      .single(),
+    fetchSchoolStats(schoolId),
+    apiClient
+      .from('students')
+      .select('full_name, admission_date, class_id, classes(name)')
+      .eq('school_id', schoolId)
+      .order('admission_date', { ascending: false })
+      .limit(5),
+  ]);
 
-  if (schoolError) throw schoolError;
+  if (schoolResponse.error) throw schoolResponse.error;
+  if (studentsResponse.error) throw studentsResponse.error;
 
-  const stats = await fetchSchoolStats(schoolId);
-
-  const { data: recentStudents, error: studentsError } = await apiClient
-    .from('students')
-    .select('full_name, admission_date, class_id, classes(name)')
-    .eq('school_id', schoolId)
-    .order('admission_date', { ascending: false })
-    .limit(5);
-
-  if (studentsError) throw studentsError;
+  const school = schoolResponse.data;
+  const recentStudents = studentsResponse.data;
 
   return {
     stats,
