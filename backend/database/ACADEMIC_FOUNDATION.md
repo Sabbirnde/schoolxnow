@@ -4,6 +4,10 @@ Migration `0003_academic_enrollment_guardians.mysql.sql` introduces the
 historical and account-linking model used by admissions, report cards,
 promotion, and guardian access.
 
+Migration `0004_academic_operations.mysql.sql` implements the v0.3.0
+operational layer: admissions, yearly offerings, assessments, grading scales,
+report cards, guardian invitations, and year-aware attendance/timetable links.
+
 ## Model
 
 - `academic_years`: school-owned years with at most one `active` year.
@@ -46,15 +50,15 @@ is the identity; enrollment rows are the history.
 
 ## Report cards
 
-A report card should be keyed by `student_enrollment_id` and
-`academic_term_id` when its dedicated migration is introduced. Until then,
-read results only after resolving the student's enrollment and verifying that
-the term belongs to the same academic year. Never infer historical class from
-the mutable `students.class_id` field.
+Report cards are keyed by `student_enrollment_id` and `academic_term_id`.
+Subject rows reference `subject_offerings`, while scores reference both the
+assessment and enrollment. Students and guardians can retrieve only published
+cards connected to their account relationships. Never infer historical class
+from the mutable `students.class_id` field.
 
 ## Promotion and repetition
 
-Run promotion as a transaction:
+Use `/api/academic/promote`, which runs promotion as a transaction:
 
 1. Mark the current enrollment `promoted`, `repeated`, or `graduated` and set
    `ended_on`.
@@ -66,6 +70,16 @@ Run promotion as a transaction:
 
 The unique `(student_id, academic_year_id)` key prevents accidental duplicate
 placements in one year.
+
+## Dedicated academic endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/academic/bulk-enroll` | Enroll up to 500 students atomically |
+| `POST /api/academic/promote` | Close source enrollments and create destination enrollments |
+| `POST /api/academic/admissions/{id}/accept` | Convert an eligible application into a student and enrollment |
+| `POST /api/academic/guardian-invitations` | Create a seven-day invitation token |
+| `POST /api/academic/accept-guardian-invitation` | Link an authenticated, email-matched guardian |
 
 ## Guardian access
 

@@ -148,6 +148,26 @@ export const MODULE_REGISTRY: Record<string, ModuleConfig> = {
     allowedRoles: ["super_admin", "school_admin"],
     category: "management",
   },
+  "academic-operations": {
+    id: "academic-operations",
+    name: "academic-operations",
+    title: "Academic Operations",
+    description: "Manage admissions, yearly offerings, enrollment, promotion, assessments, and guardian access",
+    feature: "students.enroll",
+    requiredLevel: "full",
+    allowedRoles: ["school_admin"],
+    category: "operations",
+  },
+  billing: {
+    id: "billing",
+    name: "billing",
+    title: "Fees & Billing",
+    description: "Configure fees, issue invoices, record payments, and manage balances",
+    feature: "students.enroll",
+    requiredLevel: "full",
+    allowedRoles: ["school_admin"],
+    category: "operations",
+  },
 
   // Reporting Modules
   reports: {

@@ -5,6 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../src/bootstrap.php';
 
 use SchoolXNow\Api\AuthController;
+use SchoolXNow\Api\AcademicController;
+use SchoolXNow\Api\BillingController;
 use SchoolXNow\Api\TableController;
 use SchoolXNow\Api\UploadController;
 use SchoolXNow\Core\Response;
@@ -48,6 +50,15 @@ $router->post('/auth/logout', [AuthController::class, 'logout']);
 
 $router->get('/bootstrap/status', [AuthController::class, 'bootstrapStatus']);
 $router->post('/bootstrap/create-super-admin', [AuthController::class, 'createSuperAdmin']);
+
+$router->post('/academic/bulk-enroll', [AcademicController::class, 'bulkEnroll']);
+$router->post('/academic/promote', [AcademicController::class, 'promote']);
+$router->post('/academic/admissions/{id}/accept', [AcademicController::class, 'acceptAdmission']);
+$router->post('/academic/guardian-invitations', [AcademicController::class, 'inviteGuardian']);
+$router->post('/academic/accept-guardian-invitation', [AcademicController::class, 'acceptGuardianInvitation']);
+$router->post('/billing/invoices/generate', [BillingController::class, 'generateInvoices']);
+$router->post('/billing/invoices/{id}/adjustments', [BillingController::class, 'addAdjustment']);
+$router->post('/billing/payments', [BillingController::class, 'recordPayment']);
 
 $router->get('/tables/{table}', [TableController::class, 'index']);
 $router->get('/tables/{table}/count', [TableController::class, 'count']);

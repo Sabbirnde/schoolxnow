@@ -1,7 +1,7 @@
 {
   "name": "schoolxnow-essential-v2",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host --port 8080",
@@ -33,6 +33,7 @@
     "test:coverage": "vitest --coverage"
   },
   "dependencies": {
+    "@fontsource-variable/outfit": "^5.3.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",

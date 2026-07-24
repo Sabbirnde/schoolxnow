@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0] - 2026-07-24
+
+### Fees, Billing, and Payments
+
+- Added fee categories, year-specific fee plans, and fixed-precision plan items.
+- Added bulk invoices, line items, approved adjustments, discounts, waivers,
+  credits, and charges.
+- Added transactional payments, allocations, unique receipts, balance updates,
+  currency validation, and overpayment protection.
+- Added a school-admin billing workspace and student/guardian financial-record
+  isolation with explicit guardian financial-update consent.
+- Extended the shared Node/PHP contract and MySQL integration coverage.
+
+## [0.3.0] - 2026-07-24
+
+### Academic Operations Foundation
+
+- Added admissions, offerings, enrollment and promotion, assessments, grading,
+  report cards, year-aware timetable and attendance, and guardian linking.
+
 ## [0.2.0] - 2026-07-24
 
 ### Production Hardening
@@ -36,3 +56,5 @@ The Node/Vercel API is the primary production backend. The PHP API remains a
 contract-tested compatibility backend for shared-hosting installations.
 
 [0.2.0]: https://github.com/Sabbirnde/schoolxnow/compare/v0.1.0...v0.2.0
+[0.3.0]: https://github.com/Sabbirnde/schoolxnow/compare/v0.2.0...v0.3.0
+[0.4.0]: https://github.com/Sabbirnde/schoolxnow/compare/v0.3.0...v0.4.0

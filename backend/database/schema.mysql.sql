@@ -1,5 +1,6 @@
--- SchoolXNow PHP/MySQL shared-hosting schema
--- Import this file in phpMyAdmin or the MySQL CLI before using the PHP API.
+-- SchoolXNow legacy schema snapshot through migration 0003.
+-- New installations and all upgrades must use the numbered migration runner;
+-- migration 0004 and later are intentionally maintained only in migrations/.
 
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';

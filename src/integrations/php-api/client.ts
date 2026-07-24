@@ -311,6 +311,77 @@ export const phpApi = {
     });
   },
 
+  academic: {
+    bulkEnroll(input: { academic_year_id: string; class_id: string; student_ids: string[] }) {
+      return request<{ enrolled: number }>('/academic/bulk-enroll', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    promote(input: {
+      source_academic_year_id: string;
+      target_academic_year_id: string;
+      target_class_id: string;
+      student_ids: string[];
+    }) {
+      return request<{ promoted: number }>('/academic/promote', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    acceptAdmission(id: string, input: { student_number: string; class_id: string; decision_notes?: string }) {
+      return request<{ student_id: string; enrollment_id: string }>(
+        `/academic/admissions/${encodeURIComponent(id)}/accept`,
+        { method: 'POST', body: JSON.stringify(input) },
+      );
+    },
+    inviteGuardian(input: { student_id: string; email: string; relationship_type: string }) {
+      return request<{ token: string; invitation_url: string | null; expires_at: string }>('/academic/guardian-invitations', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    acceptGuardianInvitation(token: string) {
+      return request<{ relationship_id: string }>('/academic/accept-guardian-invitation', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      });
+    },
+  },
+
+  billing: {
+    generateInvoices(input: {
+      fee_plan_id: string;
+      student_enrollment_ids: string[];
+      issue_date: string;
+      due_date: string;
+    }) {
+      return request<{ created: number; invoice_ids: string[] }>('/billing/invoices/generate', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    recordPayment(input: {
+      student_invoice_id: string;
+      amount: number;
+      currency: string;
+      payment_method: string;
+      external_reference?: string;
+      notes?: string;
+    }) {
+      return request<{ payment_id: string; receipt_number: string; allocated_amount: number }>('/billing/payments', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    addAdjustment(invoiceId: string, input: { adjustment_type: string; amount: number; reason: string }) {
+      return request<{ adjustment_id: string }>(
+        `/billing/invoices/${encodeURIComponent(invoiceId)}/adjustments`,
+        { method: 'POST', body: JSON.stringify(input) },
+      );
+    },
+  },
+
   table<T extends object>(table: string) {
     return {
       list(params: Record<string, string | number | boolean | null | undefined> = {}) {

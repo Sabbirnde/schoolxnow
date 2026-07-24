@@ -39,6 +39,7 @@ const ids = {
   classB: '50000000-0000-4000-8000-000000000002',
   yearA: '60000000-0000-4000-8000-000000000001',
   yearB: '60000000-0000-4000-8000-000000000002',
+  yearA2: '60000000-0000-4000-8000-000000000003',
   enrollmentA: '70000000-0000-4000-8000-000000000001',
   enrollmentB: '70000000-0000-4000-8000-000000000002',
   guardianLinkA: '80000000-0000-4000-8000-000000000001',
@@ -370,7 +371,7 @@ suite('Vercel API + MySQL integration', () => {
     expect(rows[0].version).toMatch(/^8\./);
     expect(rows[0].sql_mode).toContain('STRICT_TRANS_TABLES');
     const status = await migrationStatus(connection);
-    expect(status.applied).toHaveLength(3);
+    expect(status.applied).toHaveLength(5);
     expect(status.pending).toHaveLength(0);
   });
 
@@ -464,7 +465,7 @@ suite('Vercel API + MySQL integration', () => {
       await legacy.query(readFileSync('backend/database/migrations/0001_baseline_schema.mysql.sql', 'utf8'));
       const status = await applyMigrations(legacy, { appliedBy: 'legacy-adoption-test' });
       expect(status.pending).toHaveLength(0);
-      expect(status.applied).toHaveLength(3);
+      expect(status.applied).toHaveLength(5);
       expect(status.applied[0].applied_by).toBe('legacy-adoption-test:baseline');
       const [rateTables] = await legacy.query<any[]>(
         "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'api_rate_limits'",
@@ -648,7 +649,13 @@ suite('Vercel API + MySQL integration', () => {
   });
 
   it('exposes academic foundation tables only within the authenticated school', async () => {
-    for (const table of ['academic_years', 'academic_terms', 'student_enrollments', 'guardian_relationships']) {
+    for (const table of [
+      'academic_years', 'academic_terms', 'student_enrollments', 'guardian_relationships',
+      'admission_applications', 'class_offerings', 'subject_offerings',
+      'assessment_categories', 'grading_scales', 'grading_scale_bands',
+      'assessments', 'assessment_scores', 'report_cards', 'report_card_items',
+      'guardian_invitations',
+    ]) {
       const result = await invoke(tableRoute, 'GET', `/api/tables/${table}`, {
         token: adminAToken,
         query: { table },
@@ -669,6 +676,180 @@ suite('Vercel API + MySQL integration', () => {
     });
     expect(crossTenantEnrollment.statusCode).toBe(500);
     expect(crossTenantEnrollment.body.error.message).toBe('Internal server error');
+  });
+
+  it('runs admission, bulk enrollment, promotion, and guardian linking workflows across Node and PHP', async () => {
+    await connection.query(
+      `INSERT INTO academic_years (id, school_id, name, start_date, end_date, status)
+       VALUES (?, ?, '2027', '2027-01-01', '2027-12-31', 'planned')`,
+      [ids.yearA2, ids.schoolA],
+    );
+
+    const enrolled = await invoke(handler, 'POST', '/api/academic/bulk-enroll', {
+      token: adminAToken,
+      query: { path: ['academic', 'bulk-enroll'] },
+      body: { academic_year_id: ids.yearA, class_id: ids.classA, student_ids: [ids.studentA2] },
+    });
+    expect(enrolled.statusCode).toBe(201);
+    expect(enrolled.body.data.enrolled).toBe(1);
+
+    const promoted = await phpRequest(phpBase, 'POST', '/academic/promote', {
+      token: phpAdminToken,
+      body: {
+        source_academic_year_id: ids.yearA,
+        target_academic_year_id: ids.yearA2,
+        target_class_id: ids.classA,
+        student_ids: [ids.studentA2],
+      },
+    });
+    expect(promoted.statusCode).toBe(200);
+    expect(promoted.body.data.promoted).toBe(1);
+
+    const application = await invoke(tableRoute, 'POST', '/api/tables/admission_applications', {
+      token: adminAToken,
+      query: { table: 'admission_applications' },
+      body: {
+        academic_year_id: ids.yearA2,
+        requested_class_id: ids.classA,
+        application_number: 'APP-2027-001',
+        applicant_name: 'Eva Applicant',
+        date_of_birth: '2014-05-10',
+        gender: 'female',
+        guardian_name: 'Eva Guardian',
+        guardian_email: 'eva.guardian@example.test',
+        guardian_phone: '01710000000',
+        status: 'submitted',
+      },
+    });
+    expect(application.statusCode).toBe(201);
+    const accepted = await phpRequest(phpBase, 'POST', `/academic/admissions/${application.body.data.id}/accept`, {
+      token: phpAdminToken,
+      body: { student_number: 'A-2027-001', class_id: ids.classA },
+    });
+    expect(accepted.statusCode).toBe(201);
+    expect(accepted.body.data.student_id).toBeTruthy();
+    expect(accepted.body.data.enrollment_id).toBeTruthy();
+
+    const invitation = await invoke(handler, 'POST', '/api/academic/guardian-invitations', {
+      token: adminAToken,
+      query: { path: ['academic', 'guardian-invitations'] },
+      body: {
+        student_id: ids.studentA3,
+        email: 'guardian-a@example.test',
+        relationship_type: 'legal_guardian',
+      },
+    });
+    expect(invitation.statusCode).toBe(201);
+    const phpGuardianLogin = await phpRequest(phpBase, 'POST', '/auth/login', {
+      body: { email: 'guardian-a@example.test', password: loginPassword },
+    });
+    const linked = await phpRequest(phpBase, 'POST', '/academic/accept-guardian-invitation', {
+      token: phpGuardianLogin.body.data.session.access_token,
+      body: { token: invitation.body.data.token },
+    });
+    expect(linked.statusCode).toBe(200);
+
+    const guardianStudents = await invoke(tableRoute, 'GET', '/api/tables/students', {
+      token: guardianAToken,
+      query: { table: 'students', sort: 'student_id', order: 'asc' },
+    });
+    expect(guardianStudents.body.data.map((row: any) => row.id)).toEqual([ids.studentA1, ids.studentA3]);
+
+    const teacherDenied = await invoke(handler, 'POST', '/api/academic/bulk-enroll', {
+      token: teacherAToken,
+      query: { path: ['academic', 'bulk-enroll'] },
+      body: { academic_year_id: ids.yearA2, class_id: ids.classA, student_ids: [ids.studentA3] },
+    });
+    expect(teacherDenied.statusCode).toBe(403);
+  });
+
+  it('runs isolated invoice, adjustment, payment, receipt, and guardian billing workflows across Node and PHP', async () => {
+    const category = await invoke(tableRoute, 'POST', '/api/tables/fee_categories', {
+      token: adminAToken,
+      query: { table: 'fee_categories' },
+      body: { code: 'TUITION', name: 'Tuition', is_active: 1 },
+    });
+    expect(category.statusCode).toBe(201);
+    const plan = await invoke(tableRoute, 'POST', '/api/tables/fee_plans', {
+      token: adminAToken,
+      query: { table: 'fee_plans' },
+      body: {
+        academic_year_id: ids.yearA, name: 'Annual tuition', currency: 'USD',
+        billing_frequency: 'annual', status: 'active',
+      },
+    });
+    expect(plan.statusCode).toBe(201);
+    const planItem = await invoke(tableRoute, 'POST', '/api/tables/fee_plan_items', {
+      token: adminAToken,
+      query: { table: 'fee_plan_items' },
+      body: {
+        fee_plan_id: plan.body.data.id, fee_category_id: category.body.data.id,
+        description: 'Annual tuition', amount: 1200, due_offset_days: 0, is_optional: 0,
+      },
+    });
+    expect(planItem.statusCode).toBe(201);
+
+    const generated = await invoke(handler, 'POST', '/api/billing/invoices/generate', {
+      token: adminAToken,
+      query: { path: ['billing', 'invoices', 'generate'] },
+      body: {
+        fee_plan_id: plan.body.data.id, student_enrollment_ids: [ids.enrollmentA],
+        issue_date: '2026-01-01', due_date: '2026-02-01',
+      },
+    });
+    expect(generated.statusCode).toBe(201);
+    expect(generated.body.data.created).toBe(1);
+    const invoiceId = generated.body.data.invoice_ids[0];
+
+    const adjusted = await invoke(handler, 'POST', `/api/billing/invoices/${invoiceId}/adjustments`, {
+      token: adminAToken,
+      query: { path: ['billing', 'invoices', invoiceId, 'adjustments'] },
+      body: { adjustment_type: 'discount', amount: 200, reason: 'Merit scholarship' },
+    });
+    expect(adjusted.statusCode).toBe(201);
+
+    const paid = await phpRequest(phpBase, 'POST', '/billing/payments', {
+      token: phpAdminToken,
+      body: {
+        student_invoice_id: invoiceId, amount: 400, currency: 'USD',
+        payment_method: 'bank_transfer', external_reference: 'BANK-001',
+      },
+    });
+    expect(paid.statusCode).toBe(201);
+    expect(paid.body.data.receipt_number).toMatch(/^RCT-/);
+
+    const invoice = await invoke(idRoute, 'GET', `/api/tables/student_invoices/${invoiceId}`, {
+      token: adminAToken,
+      query: { table: 'student_invoices', id: invoiceId },
+    });
+    expect(Number(invoice.body.data.total_amount)).toBe(1000);
+    expect(Number(invoice.body.data.paid_amount)).toBe(400);
+    expect(Number(invoice.body.data.balance_amount)).toBe(600);
+    expect(invoice.body.data.status).toBe('partially_paid');
+
+    await connection.query(
+      'UPDATE guardian_relationships SET receives_financial_updates = 1 WHERE id = ?',
+      [ids.guardianLinkA],
+    );
+    const guardianInvoices = await invoke(tableRoute, 'GET', '/api/tables/student_invoices', {
+      token: guardianAToken,
+      query: { table: 'student_invoices' },
+    });
+    expect(guardianInvoices.statusCode).toBe(200);
+    expect(guardianInvoices.body.data.map((row: any) => row.id)).toContain(invoiceId);
+
+    const adminBInvoices = await invoke(tableRoute, 'GET', '/api/tables/student_invoices', {
+      token: issueToken({ sub: ids.adminB }),
+      query: { table: 'student_invoices' },
+    });
+    expect(adminBInvoices.body.data).toHaveLength(0);
+
+    const teacherDenied = await invoke(handler, 'POST', '/api/billing/payments', {
+      token: teacherAToken,
+      query: { path: ['billing', 'payments'] },
+      body: { student_invoice_id: invoiceId, amount: 10, currency: 'USD', payment_method: 'cash' },
+    });
+    expect(teacherDenied.statusCode).toBe(403);
   });
 
   it('logs in valid accounts and rejects invalid credentials', async () => {

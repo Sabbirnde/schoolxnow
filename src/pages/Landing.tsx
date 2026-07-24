@@ -1,738 +1,395 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { useNavigate, Link } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
-import { 
-  Users, 
-  BookOpen, 
-  Calendar, 
-  TrendingUp, 
-  Shield, 
-  School,
-  CheckCircle2,
-  ArrowRight,
-  BarChart3,
-  Clock,
-  Globe,
-  Mail,
-  Phone,
-  MessageSquare
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  ArrowRight, Banknote, BookOpen, CalendarCheck, Check, ChevronRight,
+  CircleDollarSign, Clock3, FileCheck2, GraduationCap, Mail, Menu,
+  Phone, School, ShieldCheck, Sparkles, UsersRound,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+
+const workflows = [
+  {
+    number: "01",
+    icon: FileCheck2,
+    title: "Admissions become records",
+    description: "Review applications, accept students, and create the correct year enrollment in one transaction.",
+    detail: "Applications · enrollment · guardians",
+  },
+  {
+    number: "02",
+    icon: BookOpen,
+    title: "The year stays connected",
+    description: "Classes, subjects, timetable, attendance, assessments, and report cards share the same academic context.",
+    detail: "Years · terms · class offerings",
+  },
+  {
+    number: "03",
+    icon: CircleDollarSign,
+    title: "Billing follows enrollment",
+    description: "Build fee plans, issue invoices in bulk, record payments, and keep an auditable balance for each student.",
+    detail: "Fees · invoices · receipts",
+  },
+];
+
+const pricingPlans = [
+  {
+    name: "Starter",
+    description: "Core administration for a smaller school.",
+    monthlyPrice: 39,
+    annualPrice: 390,
+    studentLimit: "Up to 300 students",
+    features: ["Student and teacher records", "Classes, timetable, attendance", "Exams and standard reports", "Email support"],
+    action: "Start with Starter",
+  },
+  {
+    name: "Growth",
+    description: "Connected operations for a growing school.",
+    monthlyPrice: 89,
+    annualPrice: 890,
+    studentLimit: "Up to 1,000 students",
+    features: ["Everything in Starter", "Admissions and academic years", "Guardian access and notifications", "Fees, invoices, and payments", "Assisted onboarding"],
+    action: "Choose Growth",
+    featured: true,
+  },
+  {
+    name: "Professional",
+    description: "More control for established institutions.",
+    monthlyPrice: 179,
+    annualPrice: 1790,
+    studentLimit: "Up to 3,000 students",
+    features: ["Everything in Growth", "Advanced reporting", "Custom branding", "Priority support", "Bulk import and API access"],
+    action: "Choose Professional",
+  },
+  {
+    name: "Enterprise",
+    description: "A tailored rollout for groups and districts.",
+    monthlyPrice: null,
+    annualPrice: null,
+    studentLimit: "3,000+ students",
+    features: ["Multiple schools", "Dedicated infrastructure options", "SSO and custom integrations", "Service-level agreement", "Migration support"],
+    action: "Talk to sales",
+  },
+];
 
 const Landing = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [salesDialogOpen, setSalesDialogOpen] = useState(false);
   const [annualBilling, setAnnualBilling] = useState(true);
+  const [salesDialogOpen, setSalesDialogOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [salesForm, setSalesForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    schoolName: "",
-    message: ""
+    name: "", email: "", phone: "", schoolName: "", message: "",
   });
 
-  const handleSalesSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Here you would typically send this to your backend
-    toast({
-      title: "Thank you for your interest!",
-      description: "Our sales team will contact you within 24 hours.",
-    });
+  const handleSalesSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    toast({ title: "Request received", description: "Our sales team will contact you within one business day." });
     setSalesDialogOpen(false);
     setSalesForm({ name: "", email: "", phone: "", schoolName: "", message: "" });
   };
 
-  const features = [
-    {
-      icon: Users,
-      title: "Student Management",
-      description: "Comprehensive student records, attendance, and performance tracking"
-    },
-    {
-      icon: BookOpen,
-      title: "Academic Management",
-      description: "Manage classes, subjects, exams, and results seamlessly"
-    },
-    {
-      icon: Calendar,
-      title: "Smart Timetabling",
-      description: "Automated timetable generation and conflict resolution"
-    },
-    {
-      icon: BarChart3,
-      title: "Analytics & Reports",
-      description: "Real-time insights and comprehensive reporting tools"
-    },
-    {
-      icon: Globe,
-      title: "Bangla & English",
-      description: "Full bilingual support for local and international curricula"
-    },
-    {
-      icon: Shield,
-      title: "Secure & Reliable",
-      description: "Enterprise-grade security with role-based access control"
-    }
-  ];
-
-  const benefits = [
-    "Reduce administrative workload by 60%",
-    "Access from anywhere, anytime",
-    "Real-time parent communication",
-    "Automated attendance tracking",
-    "Digital exam management",
-    "Cloud-based data security"
-  ];
-
-  const schoolTypes = [
-    "Bangla Medium",
-    "English Medium", 
-    "Madrasha",
-    "English Version",
-    "Kindergarten"
-  ];
-
-  const pricingPlans = [
-    {
-      name: "Starter",
-      description: "Essential administration for smaller schools.",
-      monthlyPrice: 39,
-      annualPrice: 390,
-      studentLimit: "Up to 300 students",
-      features: [
-        "Student and teacher management",
-        "Classes, subjects, and timetable",
-        "Attendance, exams, and results",
-        "Standard dashboards",
-        "Email support",
-      ],
-      action: "Start free trial",
-    },
-    {
-      name: "Growth",
-      description: "The complete operating system for growing schools.",
-      monthlyPrice: 89,
-      annualPrice: 890,
-      studentLimit: "Up to 1,000 students",
-      features: [
-        "Everything in Starter",
-        "Guardian access and notifications",
-        "Reports and academic analytics",
-        "Teacher application management",
-        "Audit logs and assisted onboarding",
-      ],
-      action: "Choose Growth",
-      featured: true,
-    },
-    {
-      name: "Professional",
-      description: "Advanced control, support, and customization.",
-      monthlyPrice: 179,
-      annualPrice: 1790,
-      studentLimit: "Up to 3,000 students",
-      features: [
-        "Everything in Growth",
-        "Advanced reporting",
-        "Custom branding",
-        "Priority support",
-        "Bulk import and API access",
-      ],
-      action: "Choose Professional",
-    },
-    {
-      name: "Enterprise",
-      description: "Flexible deployment for school groups and districts.",
-      monthlyPrice: null,
-      annualPrice: null,
-      studentLimit: "3,000+ students",
-      features: [
-        "Multiple schools",
-        "Dedicated infrastructure options",
-        "SSO and custom integrations",
-        "Service-level agreement",
-        "Migration and implementation support",
-      ],
-      action: "Contact sales",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 sm:h-16 items-center justify-between px-4">
-          <div className="flex items-center gap-2 sm:gap-3 group cursor-pointer">
-            <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-lg sm:rounded-xl blur-sm sm:blur-md group-hover:blur-lg transition-all duration-300" />
-              <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:scale-110">
-                <BrandLogo className="h-6 w-6 sm:h-8 sm:w-8 drop-shadow-lg" />
+    <div className="min-h-[100dvh] overflow-x-hidden bg-background">
+      <a href="#landing-main" className="skip-link">Skip to content</a>
+
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/88 backdrop-blur-xl">
+        <div className="container flex h-[4.5rem] items-center justify-between px-4">
+          <Link to="/" className="group flex items-center gap-3" aria-label="SchoolXNow home">
+            <span className="rounded-lg border border-primary/15 bg-primary/5 p-1.5 transition-transform duration-300 group-hover:-rotate-2">
+              <BrandLogo className="h-8 w-8" />
+            </span>
+            <span>
+              <span className="block text-lg font-semibold leading-none tracking-tight">SchoolXNow</span>
+              <span className="mt-1 hidden text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block">School operations</span>
+            </span>
+          </Link>
+
+          <nav className="hidden items-center gap-8 text-sm font-medium text-muted-foreground md:flex" aria-label="Main navigation">
+            <a href="#workflows" className="transition-colors hover:text-foreground">How it works</a>
+            <a href="#capabilities" className="transition-colors hover:text-foreground">Capabilities</a>
+            <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
+          </nav>
+
+          <div className="hidden items-center gap-2 md:flex">
+            <Button variant="ghost" asChild><Link to="/auth">Sign in</Link></Button>
+            <Button onClick={() => navigate("/school-registration")}>Register a school<ArrowRight /></Button>
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="md:hidden"
+            aria-label="Toggle navigation"
+            aria-expanded={mobileNavOpen}
+            onClick={() => setMobileNavOpen((open) => !open)}
+          >
+            <Menu />
+          </Button>
+        </div>
+        {mobileNavOpen && (
+          <nav className="border-t border-border/70 bg-background px-4 py-4 md:hidden" aria-label="Mobile navigation">
+            <div className="container grid gap-1">
+              {[
+                ["How it works", "#workflows"], ["Capabilities", "#capabilities"], ["Pricing", "#pricing"],
+              ].map(([label, href]) => (
+                <a key={href} href={href} className="rounded-md px-3 py-2 text-sm font-medium hover:bg-secondary" onClick={() => setMobileNavOpen(false)}>{label}</a>
+              ))}
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
+                <Button variant="outline" asChild><Link to="/auth">Sign in</Link></Button>
+                <Button onClick={() => navigate("/school-registration")}>Register</Button>
               </div>
             </div>
-            <span className="text-base sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <nav className="hidden items-center gap-5 text-sm text-muted-foreground md:flex" aria-label="Main navigation">
-              <a href="#features" className="transition-colors hover:text-foreground">Features</a>
-              <a href="#pricing" className="transition-colors hover:text-foreground">Pricing</a>
-            </nav>
-            <Button variant="ghost" size="sm" className="text-xs sm:text-sm px-2 sm:px-4" asChild>
-              <Link to="/auth">Login</Link>
-            </Button>
-            <Button size="sm" className="text-xs sm:text-sm px-3 sm:px-4 h-8 sm:h-10" onClick={() => navigate('/school-registration')}>
-              <span className="hidden sm:inline">Register Your School</span>
-              <span className="sm:hidden">Register</span>
-              <ArrowRight className="ml-1 sm:ml-2 h-3 w-3 sm:h-4 sm:w-4" />
-            </Button>
-          </div>
-        </div>
+          </nav>
+        )}
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden border-b bg-gradient-to-br from-primary/5 via-background to-accent/5">
-        <div className="container px-4 py-12 sm:py-16 lg:py-28">
-          <div className="grid gap-8 lg:gap-12 lg:grid-cols-2 items-center">
-            <div className="space-y-6 sm:space-y-8 text-center lg:text-left">
-              <div className="space-y-4">
-                <Badge variant="secondary" className="mb-2 sm:mb-4 text-xs sm:text-sm">
-                  {/* <TrendingUp className="mr-1 h-3 w-3" /> */}
-                  {/* <span className="hidden sm:inline">Trusted by 1000+ Schools in Bangladesh</span>
-                  <span className="sm:hidden">1000+ Schools</span> */}
-                </Badge>
-                <h1 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl lg:text-6xl leading-tight">
-                  Complete School Management
-                  <span className="text-primary block mt-2">Made Simple</span>
-                </h1>
-                <p className="text-base sm:text-lg lg:text-xl text-muted-foreground max-w-lg mx-auto lg:mx-0">
-                  Empower your institution with Bangladesh's most comprehensive cloud-based school management system. 
-                  Built for schools, by educators.
-                </p>
+      <main id="landing-main">
+        <section className="surface-grid relative border-b border-border/70">
+          <div className="pointer-events-none absolute -right-40 top-16 h-[32rem] w-[32rem] rounded-full bg-primary/10 blur-3xl" />
+          <div className="container relative grid gap-14 px-4 pb-20 pt-16 lg:grid-cols-[1.08fr_.92fr] lg:items-center lg:gap-20 lg:pb-28 lg:pt-24">
+            <div>
+              <div className="mb-7 inline-flex items-center gap-2 border-l-2 border-primary pl-3 text-xs font-semibold uppercase tracking-[0.17em] text-primary">
+                <Sparkles className="h-3.5 w-3.5" /> Admissions to payments, connected
               </div>
-              
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center lg:justify-start">
-                <Button size="lg" asChild className="gap-2 h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto">
-                  <Link to="/auth">
-                    Start Free Trial
-                    <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
-                  </Link>
+              <h1 className="max-w-3xl text-[clamp(3.35rem,7vw,6.75rem)] font-semibold leading-[0.88] tracking-[-0.058em]">
+                Run the school year <span className="text-primary">without the gaps.</span>
+              </h1>
+              <p className="mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground">
+                SchoolXNow keeps academic operations, people, and billing in one reliable workspace—so every team works from the same record.
+              </p>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Button size="lg" className="h-12 px-6" onClick={() => navigate("/school-registration")}>
+                  Register your school <ArrowRight />
                 </Button>
-              <Dialog open={salesDialogOpen} onOpenChange={setSalesDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="lg" variant="outline" className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto">
-                      Schedule Demo
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                      <DialogTitle>Talk to Our Sales Team</DialogTitle>
-                      <DialogDescription>
-                        Fill out the form below and our team will get back to you within 24 hours.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleSalesSubmit} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="sales-name">Full Name *</Label>
-                        <Input
-                          id="sales-name"
-                          value={salesForm.name}
-                          onChange={(e) => setSalesForm({...salesForm, name: e.target.value})}
-                          placeholder="Your name"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="sales-email">Email *</Label>
-                        <Input
-                          id="sales-email"
-                          type="email"
-                          value={salesForm.email}
-                          onChange={(e) => setSalesForm({...salesForm, email: e.target.value})}
-                          placeholder="your@email.com"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="sales-phone">Phone Number *</Label>
-                        <Input
-                          id="sales-phone"
-                          value={salesForm.phone}
-                          onChange={(e) => setSalesForm({...salesForm, phone: e.target.value})}
-                          placeholder="+880..."
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="sales-school">School Name</Label>
-                        <Input
-                          id="sales-school"
-                          value={salesForm.schoolName}
-                          onChange={(e) => setSalesForm({...salesForm, schoolName: e.target.value})}
-                          placeholder="Your school name"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="sales-message">Message</Label>
-                        <Textarea
-                          id="sales-message"
-                          value={salesForm.message}
-                          onChange={(e) => setSalesForm({...salesForm, message: e.target.value})}
-                          placeholder="Tell us about your requirements..."
-                          rows={4}
-                        />
-                      </div>
-                      <div className="flex flex-col gap-3 pt-2">
-                        <Button type="submit" className="w-full">
-                          Submit Request
-                          <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                        <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-                          <a href="mailto:sales@schoolxnow.com" className="flex items-center gap-2 hover:text-foreground transition-colors">
-                            <Mail className="h-4 w-4" />
-                            <span className="hidden sm:inline">sales@schoolxnow.com</span>
-                          </a>
-                          <a href="tel:+8801734222467" className="flex items-center gap-2 hover:text-foreground transition-colors">
-                            <Phone className="h-4 w-4" />
-                            <span>+880 1734-222467</span>
-                          </a>
-                        </div>
-                      </div>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                <button type="button" className="group inline-flex h-12 items-center justify-center gap-2 px-4 text-sm font-semibold text-foreground" onClick={() => setSalesDialogOpen(true)}>
+                  Book a product walkthrough <ChevronRight className="transition-transform group-hover:translate-x-1" />
+                </button>
               </div>
-
-              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 sm:gap-6 text-xs sm:text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
-                  <span>No credit card required</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 sm:h-5 sm:w-5 text-success flex-shrink-0" />
-                  <span>Setup in 5 minutes</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative mt-8 lg:mt-0">
-              <div className="absolute -inset-2 sm:-inset-4 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl sm:rounded-3xl blur-2xl sm:blur-3xl opacity-30" />
-              <Card className="relative shadow-elegant border-primary/10">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-                    <School className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0" />
-                    Quick Stats
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 sm:space-y-4">
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
-                    <div className="space-y-1 p-3 sm:p-4 bg-primary/5 rounded-lg">
-                      <p className="text-2xl sm:text-3xl font-bold text-primary">10+</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Active Schools</p>
-                    </div>
-                    <div className="space-y-1 p-3 sm:p-4 bg-accent/5 rounded-lg">
-                      <p className="text-2xl sm:text-3xl font-bold text-accent">5K+</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Students</p>
-                    </div>
-                    <div className="space-y-1 p-3 sm:p-4 bg-success/5 rounded-lg">
-                      <p className="text-2xl sm:text-3xl font-bold text-success">99.9%</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Uptime</p>
-                    </div>
-                    <div className="space-y-1 p-3 sm:p-4 bg-primary/5 rounded-lg">
-                      <p className="text-2xl sm:text-3xl font-bold text-primary">24/7</p>
-                      <p className="text-xs sm:text-sm text-muted-foreground">Support</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features Section */}
-      <section id="features" className="container scroll-mt-20 px-4 py-12 sm:py-16 lg:py-20">
-        <div className="text-center space-y-3 sm:space-y-4 mb-8 sm:mb-12">
-          <Badge variant="secondary" className="text-xs sm:text-sm">Features</Badge>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight px-4">
-            Everything Your School Needs
-          </h2>
-          <p className="text-sm sm:text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
-            From admissions to alumni, manage every aspect of your institution with one powerful platform
-          </p>
-        </div>
-
-        <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature, index) => (
-            <Card key={index} className="border-primary/10 hover:shadow-elegant transition-all duration-300 hover:border-primary/30">
-              <CardHeader className="p-4 sm:p-6">
-                <div className="bg-primary/10 w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center mb-3 sm:mb-4">
-                  <feature.icon className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-                </div>
-                <CardTitle className="text-base sm:text-lg lg:text-xl">{feature.title}</CardTitle>
-                <CardDescription className="text-sm sm:text-base">
-                  {feature.description}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="border-y bg-muted/30">
-        <div className="container px-4 py-12 sm:py-16 lg:py-20">
-          <div className="grid gap-8 lg:gap-12 lg:grid-cols-2 items-center">
-            <div className="space-y-4 sm:space-y-6 text-center lg:text-left order-2 lg:order-1">
-              <div className="space-y-3 sm:space-y-4">
-                <Badge variant="secondary" className="text-xs sm:text-sm">Why Choose Us</Badge>
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
-                  Transform Your School Operations
-                </h2>
-                <p className="text-sm sm:text-base lg:text-lg text-muted-foreground">
-                  Join hundreds of schools across Bangladesh that have modernized their management systems with SchoolXNow
-                </p>
-              </div>
-
-              <div className="space-y-2 sm:space-y-3 text-left max-w-lg mx-auto lg:mx-0">
-                {benefits.map((benefit, index) => (
-                  <div key={index} className="flex items-start gap-2 sm:gap-3">
-                    <CheckCircle2 className="h-5 w-5 sm:h-6 sm:w-6 text-success flex-shrink-0 mt-0.5" />
-                    <span className="text-sm sm:text-base">{benefit}</span>
-                  </div>
+              <div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-muted-foreground">
+                {["No card required", "Role-based access", "Node and PHP deployment"].map((item) => (
+                  <span key={item} className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" />{item}</span>
                 ))}
               </div>
-
-              <Button size="lg" onClick={() => navigate('/auth')} className="gap-2 w-full sm:w-auto h-11 sm:h-12 text-sm sm:text-base">
-                Start Your Free Trial
-                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
             </div>
 
-            <Card className="shadow-elegant order-1 lg:order-2">
-              <CardHeader className="p-4 sm:p-6">
-                <CardTitle className="text-lg sm:text-xl">Supported School Types</CardTitle>
-                <CardDescription className="text-sm sm:text-base">
-                  We support all types of educational institutions in Bangladesh
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2 sm:space-y-3 p-4 sm:p-6 pt-0">
-                {schoolTypes.map((type, index) => (
-                  <div key={index} className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 bg-primary/5 rounded-lg">
-                    <School className="h-4 w-4 sm:h-5 sm:w-5 text-primary flex-shrink-0" />
-                    <span className="font-medium text-sm sm:text-base">{type}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="relative scroll-mt-20 overflow-hidden border-y bg-muted/20">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-primary/5 to-transparent" />
-        <div className="container relative px-4 py-12 sm:py-16 lg:py-24">
-          <div className="mx-auto mb-8 max-w-3xl space-y-4 text-center sm:mb-12">
-            <Badge variant="secondary" className="text-xs sm:text-sm">Simple international pricing</Badge>
-            <h2 className="text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
-              A plan that grows with your school
-            </h2>
-            <p className="px-4 text-sm text-muted-foreground sm:text-base lg:text-lg">
-              Start with the tools you need today. Upgrade as enrollment and operational needs grow.
-            </p>
-
-            <div
-              className="mx-auto inline-flex rounded-full border bg-background p-1 shadow-sm"
-              role="group"
-              aria-label="Billing period"
-            >
-              <Button
-                type="button"
-                size="sm"
-                variant={annualBilling ? "ghost" : "default"}
-                className="rounded-full px-4"
-                onClick={() => setAnnualBilling(false)}
-              >
-                Monthly
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={annualBilling ? "default" : "ghost"}
-                className="rounded-full px-4"
-                onClick={() => setAnnualBilling(true)}
-              >
-                Annual
-                <span className="ml-2 rounded-full bg-background/90 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                  Save 2 months
-                </span>
-              </Button>
-            </div>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {pricingPlans.map((plan) => (
-              <Card
-                key={plan.name}
-                className={`relative flex h-full flex-col transition-all duration-300 hover:-translate-y-1 hover:shadow-elegant ${
-                  plan.featured
-                    ? "border-primary shadow-lg shadow-primary/10 xl:-translate-y-2"
-                    : "border-border/80"
-                }`}
-              >
-                {plan.featured && (
-                  <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
-                    Most popular
-                  </Badge>
-                )}
-                <CardHeader className="space-y-4 pb-4">
+            <div className="relative lg:translate-y-8">
+              <div className="absolute -inset-8 rounded-[2.5rem] bg-primary/10 blur-3xl" />
+              <div className="relative overflow-hidden rounded-[1.5rem] border border-primary/15 bg-card/95 shadow-strong">
+                <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
                   <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Friday · 24 July</p>
+                    <p className="mt-1 font-semibold">Operations overview</p>
+                  </div>
+                  <span className="flex items-center gap-2 text-xs font-medium text-primary"><span className="h-2 w-2 rounded-full bg-primary" />Updated now</span>
+                </div>
+                <div className="grid grid-cols-2 gap-px bg-border/70">
+                  {[
+                    ["94.7%", "Attendance today", CalendarCheck],
+                    ["৳86,420", "Fees collected", Banknote],
+                    ["12", "Admissions to review", GraduationCap],
+                    ["4", "Classes need cover", UsersRound],
+                  ].map(([value, label, Icon]) => (
+                    <div key={String(label)} className="bg-card p-5 sm:p-6">
+                      <Icon className="mb-7 h-5 w-5 text-primary" />
+                      <p className="text-2xl font-semibold tracking-tight sm:text-3xl">{value}</p>
+                      <p className="mt-1 text-xs text-muted-foreground sm:text-sm">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-0 px-5">
+                  {[
+                    ["08:30", "Morning attendance completed", "Grade 6 · Section A"],
+                    ["10:15", "Admission review", "4 applications ready"],
+                    ["13:40", "Invoice batch issued", "128 active enrollments"],
+                  ].map(([time, title, detail]) => (
+                    <div key={time} className="grid grid-cols-[3.5rem_1fr] gap-3 border-b border-border/60 py-4 last:border-0">
+                      <span className="font-mono text-xs text-muted-foreground">{time}</span>
+                      <div><p className="text-sm font-medium">{title}</p><p className="text-xs text-muted-foreground">{detail}</p></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-border/70 bg-primary-dark text-primary-foreground">
+          <div className="container grid gap-6 px-4 py-7 sm:grid-cols-[auto_1fr] sm:items-center sm:gap-12">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary-foreground/55">Designed around real school structures</p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm font-medium sm:grid-cols-5">
+              {["Bangla medium", "English medium", "English version", "Madrasa", "Kindergarten"].map((type) => <span key={type}>{type}</span>)}
+            </div>
+          </div>
+        </section>
+
+        <section id="workflows" className="container scroll-mt-24 px-4 py-20 lg:py-28">
+          <div className="grid gap-10 lg:grid-cols-[.72fr_1.28fr] lg:gap-20">
+            <div className="lg:sticky lg:top-28 lg:self-start">
+              <p className="text-xs font-semibold uppercase tracking-[0.17em] text-primary">One operating model</p>
+              <h2 className="mt-4 text-4xl font-semibold leading-[1.02] tracking-[-0.045em] sm:text-5xl">Every handoff keeps its context.</h2>
+              <p className="mt-5 max-w-md leading-relaxed text-muted-foreground">
+                Each workflow builds on the one before it. That means fewer duplicate records, fewer reconciliation errors, and a clearer school year.
+              </p>
+            </div>
+            <div className="divide-y divide-border/80 border-y border-border/80">
+              {workflows.map(({ number, icon: Icon, title, description, detail }) => (
+                <article key={number} className="group grid gap-5 py-8 sm:grid-cols-[3rem_3rem_1fr] sm:gap-5 sm:py-10">
+                  <span className="font-mono text-xs text-muted-foreground">{number}</span>
+                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-secondary text-primary transition-transform duration-300 group-hover:-rotate-3 group-hover:scale-105"><Icon className="h-5 w-5" /></span>
+                  <div>
+                    <h3 className="text-2xl font-semibold tracking-tight">{title}</h3>
+                    <p className="mt-3 max-w-xl leading-relaxed text-muted-foreground">{description}</p>
+                    <p className="mt-5 font-mono text-[0.68rem] uppercase tracking-[0.12em] text-primary">{detail}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="capabilities" className="scroll-mt-24 border-y border-border/70 bg-muted/45">
+          <div className="container px-4 py-20 lg:py-28">
+            <div className="mb-12 grid gap-5 lg:grid-cols-2 lg:items-end">
+              <div><p className="text-xs font-semibold uppercase tracking-[0.17em] text-primary">Built-in control</p>
+                <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Serious foundations, already in place.</h2></div>
+              <p className="max-w-lg leading-relaxed text-muted-foreground lg:justify-self-end">The system handles the operational details that become expensive to retrofit later.</p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
+              {[
+                [ShieldCheck, "School and role isolation", "Every table and workflow is scoped by school and role.", "lg:col-span-7"],
+                [CalendarCheck, "Academic-year history", "Enrollment, attendance, reports, and billing retain their year context.", "lg:col-span-5"],
+                [Banknote, "Auditable payments", "Fixed-precision money, transactional allocation, receipts, and overpayment protection.", "lg:col-span-5"],
+                [Clock3, "Deployment visibility", "Health checks, request IDs, sanitized errors, and migration verification.", "lg:col-span-7"],
+              ].map(([Icon, title, copy, width]) => (
+                <article key={String(title)} className={`group rounded-xl border border-border/60 bg-card/80 p-7 transition-all duration-300 hover:-translate-y-1 hover:border-primary/25 hover:shadow-medium ${width}`}>
+                  <Icon className="h-6 w-6 text-primary" />
+                  <h3 className="mt-12 text-2xl font-semibold tracking-tight">{title}</h3>
+                  <p className="mt-3 max-w-lg leading-relaxed text-muted-foreground">{copy}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="pricing" className="scroll-mt-24">
+          <div className="container px-4 py-20 lg:py-28">
+            <div className="mb-12 flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-2xl">
+                <p className="text-xs font-semibold uppercase tracking-[0.17em] text-primary">International pricing</p>
+                <h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">A plan that grows with your school</h2>
+                <p className="mt-4 max-w-xl leading-relaxed text-muted-foreground">Start with the operating capacity you need now. Move up when enrollment and support requirements change.</p>
+              </div>
+              <div className="inline-flex self-start rounded-lg border border-border/80 bg-muted/65 p-1" role="group" aria-label="Billing period">
+                <Button type="button" size="sm" variant={annualBilling ? "ghost" : "default"} onClick={() => setAnnualBilling(false)}>Monthly</Button>
+                <Button type="button" size="sm" variant={annualBilling ? "default" : "ghost"} onClick={() => setAnnualBilling(true)}>Annual <span className="text-[0.65rem] opacity-70">2 months free</span></Button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {pricingPlans.map((plan) => (
+                <Card key={plan.name} className={`relative flex flex-col overflow-hidden ${plan.featured ? "border-primary bg-primary-dark text-primary-foreground shadow-strong" : ""}`}>
+                  {plan.featured && <div className="bg-primary px-5 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-primary-foreground">Most popular</div>}
+                  <CardHeader className="min-h-[14.5rem]">
                     <CardTitle className="text-xl">{plan.name}</CardTitle>
-                    <CardDescription className="mt-2 min-h-10">
-                      {plan.description}
-                    </CardDescription>
-                  </div>
-                  <div>
-                    {plan.monthlyPrice === null ? (
-                      <div className="text-3xl font-bold">Custom</div>
-                    ) : (
-                      <div className="flex items-end gap-1">
-                        <span className="text-4xl font-bold tracking-tight">
-                          ${annualBilling ? plan.annualPrice : plan.monthlyPrice}
-                        </span>
-                        <span className="pb-1 text-sm text-muted-foreground">
-                          /{annualBilling ? "year" : "month"}
-                        </span>
-                      </div>
-                    )}
-                    <p className="mt-2 text-sm font-medium text-primary">{plan.studentLimit}</p>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-1 flex-col gap-6">
-                  <ul className="flex-1 space-y-3">
-                    {plan.features.map((feature) => (
-                      <li key={feature} className="flex items-start gap-2.5 text-sm">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-none text-success" aria-hidden="true" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    type="button"
-                    variant={plan.featured ? "default" : "outline"}
-                    className="w-full"
-                    onClick={() => {
-                      if (plan.name === "Enterprise") {
-                        setSalesDialogOpen(true);
-                      } else {
-                        navigate("/school-registration");
-                      }
-                    }}
-                  >
-                    {plan.action}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+                    <CardDescription className={plan.featured ? "text-primary-foreground/65" : ""}>{plan.description}</CardDescription>
+                    <div className="pt-6">
+                      {plan.monthlyPrice === null ? <p className="text-4xl font-semibold tracking-tight">Custom</p> : (
+                        <p><span className="text-4xl font-semibold tracking-tight">${annualBilling ? plan.annualPrice : plan.monthlyPrice}</span><span className={plan.featured ? "text-primary-foreground/60" : "text-muted-foreground"}>/{annualBilling ? "year" : "month"}</span></p>
+                      )}
+                      <p className={`mt-3 text-sm font-medium ${plan.featured ? "text-primary-foreground/75" : "text-primary"}`}>{plan.studentLimit}</p>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col gap-7">
+                    <ul className="flex-1 space-y-3">
+                      {plan.features.map((feature) => <li key={feature} className="flex gap-2.5 text-sm"><Check className={`mt-0.5 h-4 w-4 flex-none ${plan.featured ? "text-primary-foreground" : "text-primary"}`} />{feature}</li>)}
+                    </ul>
+                    <Button
+                      variant={plan.featured ? "secondary" : "outline"}
+                      className="w-full"
+                      onClick={() => plan.name === "Enterprise" ? setSalesDialogOpen(true) : navigate("/school-registration")}
+                    >
+                      {plan.action}<ArrowRight />
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <p className="mt-7 text-sm text-muted-foreground">Prices are in USD. SMS, payment processing, migration, and custom implementation are quoted separately.</p>
           </div>
+        </section>
 
-          <p className="mt-8 text-center text-xs text-muted-foreground sm:text-sm">
-            Prices are in USD. Onboarding, SMS, payment processing, and custom development are quoted separately.
-          </p>
+        <section className="container px-4 pb-20 lg:pb-28">
+          <div className="surface-grid relative overflow-hidden rounded-[1.5rem] border border-primary/15 bg-primary-dark px-6 py-12 text-primary-foreground shadow-strong sm:px-10 lg:grid lg:grid-cols-[1fr_auto] lg:items-end lg:px-14 lg:py-16">
+            <div className="relative max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.17em] text-primary-foreground/55">Start with your school structure</p>
+              <h2 className="mt-4 text-4xl font-semibold leading-[1.02] tracking-[-0.045em] sm:text-5xl">See how your next school year could run.</h2>
+              <p className="mt-5 max-w-xl leading-relaxed text-primary-foreground/65">Register a school workspace or talk through your migration, hosting, and rollout requirements with us.</p>
+            </div>
+            <div className="relative mt-8 flex flex-col gap-3 sm:flex-row lg:mt-0 lg:flex-col">
+              <Button size="lg" variant="secondary" onClick={() => navigate("/school-registration")}>Register your school<ArrowRight /></Button>
+              <Button size="lg" variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground" onClick={() => setSalesDialogOpen(true)}>Talk to sales</Button>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer className="border-t border-border/70">
+        <div className="container flex flex-col gap-7 px-4 py-10 sm:flex-row sm:items-end sm:justify-between">
+          <div className="max-w-sm">
+            <div className="flex items-center gap-3"><BrandLogo className="h-8 w-8" /><span className="text-lg font-semibold tracking-tight">SchoolXNow</span></div>
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">Connected school operations for admissions, academics, attendance, billing, and guardian access.</p>
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted-foreground">
+            <a href="#workflows" className="hover:text-foreground">How it works</a>
+            <a href="#pricing" className="hover:text-foreground">Pricing</a>
+            <a href="mailto:sales@schoolxnow.com" className="hover:text-foreground">Contact</a>
+            <Link to="/auth" className="hover:text-foreground">Sign in</Link>
+          </div>
         </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="container px-4 py-12 sm:py-16 lg:py-20">
-        <Card className="relative overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-accent/10">
-          <div className="absolute inset-0 bg-grid-pattern opacity-5 pointer-events-none" />
-          <CardContent className="relative p-6 sm:p-8 lg:p-12 text-center space-y-4 sm:space-y-6">
-            <div className="space-y-3 sm:space-y-4">
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
-                Ready to Modernize Your School?
-              </h2>
-              <p className="text-sm sm:text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
-                Join thousands of schools using SchoolXNow. Get started in minutes with our easy setup process.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center max-w-md mx-auto">
-              <Button size="lg" onClick={() => navigate('/auth')} className="gap-2 h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto">
-                <span className="hidden sm:inline">Create Your School Account</span>
-                <span className="sm:hidden">Get Started</span>
-                <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <Dialog open={salesDialogOpen} onOpenChange={setSalesDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button size="lg" variant="outline" className="h-11 sm:h-12 text-sm sm:text-base w-full sm:w-auto">
-                    Talk to Sales
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[500px]">
-                  <DialogHeader>
-                    <DialogTitle>Talk to Our Sales Team</DialogTitle>
-                    <DialogDescription>
-                      Fill out the form below and our team will get back to you within 24 hours.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleSalesSubmit} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="cta-sales-name">Full Name *</Label>
-                      <Input
-                        id="cta-sales-name"
-                        value={salesForm.name}
-                        onChange={(e) => setSalesForm({...salesForm, name: e.target.value})}
-                        placeholder="Your name"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cta-sales-email">Email *</Label>
-                      <Input
-                        id="cta-sales-email"
-                        type="email"
-                        value={salesForm.email}
-                        onChange={(e) => setSalesForm({...salesForm, email: e.target.value})}
-                        placeholder="your@email.com"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cta-sales-phone">Phone Number *</Label>
-                      <Input
-                        id="cta-sales-phone"
-                        value={salesForm.phone}
-                        onChange={(e) => setSalesForm({...salesForm, phone: e.target.value})}
-                        placeholder="+880..."
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cta-sales-school">School Name</Label>
-                      <Input
-                        id="cta-sales-school"
-                        value={salesForm.schoolName}
-                        onChange={(e) => setSalesForm({...salesForm, schoolName: e.target.value})}
-                        placeholder="Your school name"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="cta-sales-message">Message</Label>
-                      <Textarea
-                        id="cta-sales-message"
-                        value={salesForm.message}
-                        onChange={(e) => setSalesForm({...salesForm, message: e.target.value})}
-                        placeholder="Tell us about your requirements..."
-                        rows={4}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-3 pt-2">
-                      <Button type="submit" className="w-full">
-                        Submit Request
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                      <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-                        <a href="mailto:sales@schoolxnow.com" className="flex items-center gap-2 hover:text-foreground transition-colors">
-                          <Mail className="h-4 w-4" />
-                          <span className="hidden sm:inline">sales@schoolxnow.com</span>
-                        </a>
-                        <a href="tel:+8801234567890" className="flex items-center gap-2 hover:text-foreground transition-colors">
-                          <Phone className="h-4 w-4" />
-                          <span>+880 1734-222467</span>
-                        </a>
-                      </div>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-xs sm:text-sm text-muted-foreground pt-2 sm:pt-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span>5-minute setup</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span>Bank-level security</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-                <span>Free support</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t bg-muted/30">
-        <div className="container px-4 py-8 sm:py-12">
-          <div className="grid gap-6 sm:gap-8 grid-cols-2 md:grid-cols-4">
-            <div className="space-y-3 sm:space-y-4 col-span-2 md:col-span-1">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg blur-sm" />
-                  <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 sm:p-2 rounded-lg border border-primary/20">
-                    <BrandLogo className="h-6 w-6 sm:h-7 sm:w-7 drop-shadow-md" />
-                  </div>
-                </div>
-                <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">SchoolXNow</span>
-              </div>
-              <p className="text-xs sm:text-sm text-muted-foreground max-w-xs">
-                Bangladesh's leading school management system. Empowering education through technology.
-              </p>
-            </div>
-
-            <div className="space-y-3 sm:space-y-4">
-              <h3 className="font-semibold text-sm sm:text-base">Product</h3>
-              <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <li><a href="#features" className="hover:text-foreground transition-colors">Features</a></li>
-                <li><a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a></li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Security</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Roadmap</li>
-              </ul>
-            </div>
-
-            <div className="space-y-3 sm:space-y-4">
-              <h3 className="font-semibold text-sm sm:text-base">Support</h3>
-              <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <li className="hover:text-foreground cursor-pointer transition-colors">Documentation</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Help Center</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Contact Us</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Status</li>
-              </ul>
-            </div>
-
-            <div className="space-y-3 sm:space-y-4">
-              <h3 className="font-semibold text-sm sm:text-base">Company</h3>
-              <ul className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm text-muted-foreground">
-                <li className="hover:text-foreground cursor-pointer transition-colors">About</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Blog</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Careers</li>
-                <li className="hover:text-foreground cursor-pointer transition-colors">Privacy</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t pt-6 text-center text-xs text-muted-foreground sm:mt-12 sm:flex-row sm:pt-8 sm:text-left">
-            <p>&copy; {new Date().getFullYear()} SchoolXNow. All rights reserved.</p>
-            <p className="inline-flex items-center gap-1.5">
-              <Shield className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-              First-party SchoolXNow experience
-            </p>
+        <div className="border-t border-border/60">
+          <div className="container flex flex-col gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:justify-between">
+            <p>© {new Date().getFullYear()} SchoolXNow. All rights reserved.</p>
+            <p>First-party SchoolXNow experience</p>
           </div>
         </div>
       </footer>
+
+      <Dialog open={salesDialogOpen} onOpenChange={setSalesDialogOpen}>
+        <DialogContent className="sm:max-w-[32rem]">
+          <DialogHeader>
+            <DialogTitle>Plan your SchoolXNow rollout</DialogTitle>
+            <DialogDescription>Tell us about your school. Our team will respond within one business day.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSalesSubmit} className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Full name" id="sales-name"><Input id="sales-name" value={salesForm.name} onChange={(event) => setSalesForm({ ...salesForm, name: event.target.value })} required /></Field>
+              <Field label="Work email" id="sales-email"><Input id="sales-email" type="email" value={salesForm.email} onChange={(event) => setSalesForm({ ...salesForm, email: event.target.value })} required /></Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Phone number" id="sales-phone"><Input id="sales-phone" type="tel" value={salesForm.phone} onChange={(event) => setSalesForm({ ...salesForm, phone: event.target.value })} required /></Field>
+              <Field label="School name" id="sales-school"><Input id="sales-school" value={salesForm.schoolName} onChange={(event) => setSalesForm({ ...salesForm, schoolName: event.target.value })} /></Field>
+            </div>
+            <Field label="What do you need?" id="sales-message"><Textarea id="sales-message" value={salesForm.message} onChange={(event) => setSalesForm({ ...salesForm, message: event.target.value })} rows={4} /></Field>
+            <Button type="submit" className="w-full">Send request<ArrowRight /></Button>
+            <div className="flex flex-wrap justify-center gap-5 text-xs text-muted-foreground">
+              <a href="mailto:sales@schoolxnow.com" className="flex items-center gap-1.5 hover:text-foreground"><Mail className="h-3.5 w-3.5" />sales@schoolxnow.com</a>
+              <a href="tel:+8801734222467" className="flex items-center gap-1.5 hover:text-foreground"><Phone className="h-3.5 w-3.5" />+880 1734-222467</a>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
+
+function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
+  return <div className="space-y-1.5"><Label htmlFor={id}>{label}</Label>{children}</div>;
+}
 
 export default Landing;

@@ -120,6 +120,10 @@ vi.mock('@/components/ClassAssignment', () => ({
   ClassAssignment: () => <div data-testid="class-assignment">Class Assignment</div>,
 }));
 
+vi.mock('@/components/AcademicOperations', () => ({
+  AcademicOperations: () => <div data-testid="academic-operations">Academic Operations</div>,
+}));
+
 import Index from './Index';
 
 const renderIndex = () => {

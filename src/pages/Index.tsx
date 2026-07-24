@@ -25,6 +25,8 @@ import SchoolAdminReportsDashboard from "@/components/SchoolAdminReportsDashboar
 import AcademicReports from "@/components/AcademicReports";
 import TeacherPerformanceReports from "@/components/TeacherPerformanceReports";
 import { ClassAssignment } from "@/components/ClassAssignment";
+import { AcademicOperations } from "@/components/AcademicOperations";
+import { BillingManagement } from "@/components/BillingManagement";
 
 const Index = () => {
   const { user, profile, loading, profileState } = useAuth();
@@ -111,6 +113,8 @@ const Index = () => {
         case 'reports': return <SchoolAdminReportsDashboard />;
         case 'teacher-reports': return <TeacherPerformanceReports />;
         case 'class-assignment': return <ClassAssignment />;
+        case 'academic-operations': return <AcademicOperations />;
+        case 'billing': return <BillingManagement />;
         case 'settings': return <Settings />;
         case 'dashboard':
         default: return <SchoolAdminDashboard setActiveModule={handleSetActiveModule} />;

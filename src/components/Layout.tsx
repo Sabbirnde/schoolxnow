@@ -19,31 +19,35 @@ interface LayoutProps {
 }
 
 export function Layout({ children, activeModule, setActiveModule }: LayoutProps) {
+  const moduleTitle = activeModule
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
   return (
     <SidebarProvider defaultOpen={false}>
-      <div className="flex min-h-screen w-full min-w-0">
+      <div className="flex min-h-[100dvh] w-full min-w-0">
+        <a href="#main-content" className="skip-link">Skip to content</a>
         <AppSidebar activeModule={activeModule} setActiveModule={setActiveModule} />
         <SidebarInset className="min-w-0 flex-1">
-          <header className="sticky top-0 z-40 flex h-14 md:h-16 shrink-0 items-center gap-2 border-b px-3 md:px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <header className="sticky top-0 z-40 flex h-16 shrink-0 items-center gap-3 border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl md:h-[4.5rem] md:px-6">
             <SidebarTrigger className="touch-target -ml-1">
               <Menu className="h-5 w-5" />
             </SidebarTrigger>
-            <div className="flex items-center gap-2 md:gap-3 group">
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg blur-sm group-hover:blur-md transition-all duration-300" />
-                <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-1.5 md:p-2 rounded-lg border border-primary/20 group-hover:border-primary/40 transition-all duration-300 group-hover:scale-105">
-                  <BrandLogo className="h-6 w-6 md:h-7 md:w-7 drop-shadow-md" />
-                </div>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="hidden rounded-lg border border-primary/15 bg-primary/5 p-1.5 sm:block">
+                <BrandLogo className="h-6 w-6" />
               </div>
-              <h1 className="text-base sm:text-lg md:text-xl font-semibold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent truncate">
-                SchoolXNow
-              </h1>
+              <div className="min-w-0">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">SchoolXNow workspace</p>
+                <h1 className="truncate text-base font-semibold tracking-tight sm:text-lg">{moduleTitle}</h1>
+              </div>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <ThemeToggle />
             </div>
           </header>
-          <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-x-hidden bg-background p-3 md:min-h-[calc(100vh-4rem)] md:gap-4 md:p-4 lg:p-6 min-h-[calc(100vh-3.5rem)]">
+          <main id="main-content" className="surface-grid flex min-h-[calc(100dvh-4rem)] min-w-0 flex-1 flex-col gap-4 overflow-x-hidden bg-background/55 p-3 sm:p-5 lg:p-7">
             {children}
           </main>
           <BrandFooter compact />

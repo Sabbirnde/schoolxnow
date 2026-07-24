@@ -116,6 +116,63 @@ function scopeWhere(table: string, user: ApiUser, params: Record<string, unknown
     ];
   }
 
+  if (table === 'assessment_scores' && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const access = user.role === 'student'
+      ? 'EXISTS (SELECT 1 FROM student_enrollments se JOIN students s ON s.id = se.student_id WHERE se.id = assessment_scores.student_enrollment_id AND s.user_id = :scope_user_id)'
+      : 'EXISTS (SELECT 1 FROM student_enrollments se JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE se.id = assessment_scores.student_enrollment_id AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1)';
+    return ['school_id = :scope_school_id', access];
+  }
+
+  if (table === 'report_cards' && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const access = user.role === 'student'
+      ? 'EXISTS (SELECT 1 FROM student_enrollments se JOIN students s ON s.id = se.student_id WHERE se.id = report_cards.student_enrollment_id AND s.user_id = :scope_user_id)'
+      : 'EXISTS (SELECT 1 FROM student_enrollments se JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE se.id = report_cards.student_enrollment_id AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1)';
+    return ['school_id = :scope_school_id', "status = 'published'", access];
+  }
+
+  if (table === 'report_card_items' && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const access = user.role === 'student'
+      ? 'EXISTS (SELECT 1 FROM report_cards rc JOIN student_enrollments se ON se.id = rc.student_enrollment_id JOIN students s ON s.id = se.student_id WHERE rc.id = report_card_items.report_card_id AND rc.status = \'published\' AND s.user_id = :scope_user_id)'
+      : 'EXISTS (SELECT 1 FROM report_cards rc JOIN student_enrollments se ON se.id = rc.student_enrollment_id JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE rc.id = report_card_items.report_card_id AND rc.status = \'published\' AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1)';
+    return ['school_id = :scope_school_id', access];
+  }
+
+  if (table === 'student_invoices' && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const access = user.role === 'student'
+      ? 'EXISTS (SELECT 1 FROM student_enrollments se JOIN students s ON s.id = se.student_id WHERE se.id = student_invoices.student_enrollment_id AND s.user_id = :scope_user_id)'
+      : 'EXISTS (SELECT 1 FROM student_enrollments se JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE se.id = student_invoices.student_enrollment_id AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1 AND gr.receives_financial_updates = 1)';
+    return ['school_id = :scope_school_id', "status != 'draft'", access];
+  }
+
+  if (table === 'student_invoice_items' && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const access = user.role === 'student'
+      ? 'EXISTS (SELECT 1 FROM student_invoices si JOIN student_enrollments se ON se.id = si.student_enrollment_id JOIN students s ON s.id = se.student_id WHERE si.id = student_invoice_items.student_invoice_id AND si.status != \'draft\' AND s.user_id = :scope_user_id)'
+      : 'EXISTS (SELECT 1 FROM student_invoices si JOIN student_enrollments se ON se.id = si.student_enrollment_id JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE si.id = student_invoice_items.student_invoice_id AND si.status != \'draft\' AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1 AND gr.receives_financial_updates = 1)';
+    return ['school_id = :scope_school_id', access];
+  }
+
+  if (['payments', 'payment_allocations'].includes(table) && ['student', 'guardian'].includes(user.role)) {
+    params.scope_school_id = user.school_id;
+    params.scope_user_id = user.id;
+    const allocationInvoice = table === 'payments'
+      ? 'pa.payment_id = payments.id'
+      : 'pa.id = payment_allocations.id';
+    const access = user.role === 'student'
+      ? `EXISTS (SELECT 1 FROM payment_allocations pa JOIN student_invoices si ON si.id = pa.student_invoice_id JOIN student_enrollments se ON se.id = si.student_enrollment_id JOIN students s ON s.id = se.student_id WHERE ${allocationInvoice} AND s.user_id = :scope_user_id)`
+      : `EXISTS (SELECT 1 FROM payment_allocations pa JOIN student_invoices si ON si.id = pa.student_invoice_id JOIN student_enrollments se ON se.id = si.student_enrollment_id JOIN guardian_relationships gr ON gr.student_id = se.student_id WHERE ${allocationInvoice} AND gr.guardian_user_id = :scope_user_id AND gr.has_portal_access = 1 AND gr.receives_financial_updates = 1)`;
+    return ['school_id = :scope_school_id', access];
+  }
+
   if (schoolScopedTables.includes(table)) {
     params.scope_school_id = user.school_id;
     return ['school_id = :scope_school_id'];

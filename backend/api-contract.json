@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.3.0",
   "primaryBackend": "node",
   "basePath": "/api",
   "requestIdHeader": "X-Request-ID",
@@ -28,6 +28,14 @@
     { "path": "/tables/{table}", "methods": ["GET", "POST"], "auth": true, "envelope": "success" },
     { "path": "/tables/{table}/count", "methods": ["GET"], "auth": true, "envelope": "success" },
     { "path": "/tables/{table}/{id}", "methods": ["GET", "PATCH", "DELETE"], "auth": true, "envelope": "success" },
+    { "path": "/academic/bulk-enroll", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/academic/promote", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/academic/admissions/{id}/accept", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/academic/guardian-invitations", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/academic/accept-guardian-invitation", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/billing/invoices/generate", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/billing/invoices/{id}/adjustments", "methods": ["POST"], "auth": true, "envelope": "success" },
+    { "path": "/billing/payments", "methods": ["POST"], "auth": true, "envelope": "success" },
     { "path": "/uploads/{bucket}", "methods": ["POST"], "auth": true, "envelope": "success" }
   ],
   "tables": {
@@ -36,32 +44,60 @@
       "subjects", "teachers", "attendance", "exams", "exam_results",
       "timetable", "teacher_applications", "audit_logs", "system_settings",
       "notifications", "notification_settings", "feedback_submissions",
-      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
+      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships",
+      "admission_applications", "class_offerings", "subject_offerings",
+      "assessment_categories", "grading_scales", "grading_scale_bands",
+      "assessments", "assessment_scores", "report_cards", "report_card_items",
+      "guardian_invitations", "fee_categories", "fee_plans", "fee_plan_items",
+      "student_invoices", "student_invoice_items", "payments", "payment_allocations",
+      "invoice_adjustments"
     ],
     "schoolScoped": [
       "classes", "students", "subjects", "teachers", "attendance", "exams",
       "exam_results", "timetable", "teacher_applications", "audit_logs",
       "notifications", "notification_settings", "feedback_submissions",
-      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
+      "academic_years", "academic_terms", "student_enrollments", "guardian_relationships",
+      "admission_applications", "class_offerings", "subject_offerings",
+      "assessment_categories", "grading_scales", "grading_scale_bands",
+      "assessments", "assessment_scores", "report_cards", "report_card_items",
+      "guardian_invitations", "fee_categories", "fee_plans", "fee_plan_items",
+      "student_invoices", "student_invoice_items", "payments", "payment_allocations",
+      "invoice_adjustments"
     ]
   },
   "authorization": {
     "super_admin": {
       "all": ["read", "create", "update", "delete"],
-      "overrides": { "audit_logs": ["read", "create"] }
+      "overrides": {
+        "audit_logs": ["read", "create"],
+        "student_invoices": ["read"],
+        "student_invoice_items": ["read"],
+        "payments": ["read"],
+        "payment_allocations": ["read"],
+        "invoice_adjustments": ["read"]
+      }
     },
     "school_admin": {
       "read": [
         "schools", "user_profiles", "classes", "students", "subjects", "teachers",
         "attendance", "exams", "exam_results", "timetable", "teacher_applications",
         "audit_logs", "notifications", "notification_settings", "feedback_submissions",
-        "academic_years", "academic_terms", "student_enrollments", "guardian_relationships"
+        "academic_years", "academic_terms", "student_enrollments", "guardian_relationships",
+        "admission_applications", "class_offerings", "subject_offerings",
+        "assessment_categories", "grading_scales", "grading_scale_bands",
+        "assessments", "assessment_scores", "report_cards", "report_card_items",
+        "guardian_invitations", "fee_categories", "fee_plans", "fee_plan_items",
+        "student_invoices", "student_invoice_items", "payments", "payment_allocations",
+        "invoice_adjustments"
       ],
       "write": [
         "user_profiles", "classes", "students", "subjects", "teachers", "attendance",
         "exams", "exam_results", "timetable", "teacher_applications", "notifications",
         "notification_settings", "feedback_submissions", "academic_years", "academic_terms",
-        "student_enrollments", "guardian_relationships"
+        "student_enrollments", "guardian_relationships", "admission_applications",
+        "class_offerings", "subject_offerings", "assessment_categories",
+        "grading_scales", "grading_scale_bands", "assessments", "assessment_scores",
+        "report_cards", "report_card_items", "fee_categories", "fee_plans", "fee_plan_items"
       ],
       "appendOnly": ["audit_logs"]
     },
@@ -70,16 +106,24 @@
         "schools", "user_profiles", "classes", "students", "subjects", "teachers",
         "attendance", "exams", "exam_results", "timetable", "teacher_applications",
         "notifications", "notification_settings", "feedback_submissions",
-        "academic_years", "academic_terms", "student_enrollments"
+        "academic_years", "academic_terms", "student_enrollments",
+        "class_offerings", "subject_offerings", "assessment_categories",
+        "grading_scales", "grading_scale_bands", "assessments", "assessment_scores",
+        "report_cards", "report_card_items"
       ],
-      "write": ["attendance", "exam_results", "notification_settings", "feedback_submissions"],
+      "write": [
+        "attendance", "exam_results", "notification_settings", "feedback_submissions",
+        "assessments", "assessment_scores", "report_cards", "report_card_items"
+      ],
       "appendOnly": ["audit_logs"]
     },
     "student": {
       "read": [
         "schools", "user_profiles", "students", "notifications", "notification_settings",
         "feedback_submissions", "academic_years", "academic_terms",
-        "student_enrollments", "guardian_relationships"
+        "student_enrollments", "guardian_relationships", "assessment_scores",
+        "report_cards", "report_card_items", "student_invoices", "student_invoice_items",
+        "payments", "payment_allocations"
       ],
       "write": ["notification_settings", "feedback_submissions"]
     },
@@ -87,7 +131,9 @@
       "read": [
         "schools", "user_profiles", "students", "notifications", "notification_settings",
         "feedback_submissions", "academic_years", "academic_terms",
-        "student_enrollments", "guardian_relationships"
+        "student_enrollments", "guardian_relationships", "assessment_scores",
+        "report_cards", "report_card_items", "student_invoices", "student_invoice_items",
+        "payments", "payment_allocations"
       ],
       "write": ["notification_settings", "feedback_submissions"]
     }

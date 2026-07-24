@@ -42,6 +42,10 @@ describe('table authorization policy', () => {
     allowed('teacher', 'attendance', ['read', 'create', 'update', 'delete']);
     allowed('teacher', 'exam_results', ['read', 'create', 'update', 'delete']);
     allowed('teacher', 'user_profiles', ['read']);
+    allowed('teacher', 'class_offerings', ['read']);
+    allowed('teacher', 'assessments', ['read', 'create', 'update', 'delete']);
+    allowed('teacher', 'assessment_scores', ['read', 'create', 'update', 'delete']);
+    allowed('teacher', 'admission_applications', []);
   });
 
   it('limits students and guardians to linked academic and self-service data', () => {
@@ -53,6 +57,9 @@ describe('table authorization policy', () => {
     allowed('guardian', 'students', ['read']);
     allowed('guardian', 'student_enrollments', ['read']);
     allowed('guardian', 'guardian_relationships', ['read']);
+    allowed('guardian', 'report_cards', ['read']);
+    allowed('guardian', 'report_card_items', ['read']);
+    allowed('guardian', 'admission_applications', []);
     allowed('guardian', 'feedback_submissions', ['read', 'create', 'update', 'delete']);
   });
 });

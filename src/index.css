@@ -135,27 +135,27 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 220 20% 98%;
-    --foreground: 220 20% 10%;
+    --background: 42 32% 97%;
+    --foreground: 213 34% 12%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 20% 10%;
+    --card: 40 30% 99%;
+    --card-foreground: 213 34% 12%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 10%;
 
-    --primary: 221 83% 53%;
+    --primary: 198 72% 30%;
     --primary-foreground: 0 0% 100%;
-    --primary-light: 221 83% 63%;
-    --primary-dark: 221 83% 43%;
+    --primary-light: 198 58% 42%;
+    --primary-dark: 199 78% 22%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 198 22% 92%;
+    --secondary-foreground: 199 55% 20%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 40 18% 92%;
+    --muted-foreground: 213 12% 42%;
 
-    --accent: 142 76% 36%;
+    --accent: 198 72% 30%;
     --accent-foreground: 0 0% 100%;
     --accent-light: 142 76% 46%;
 
@@ -172,37 +172,37 @@ All colors MUST be HSL.
     --green-600: 142 76% 36%;
     --green-600-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 217 91% 60%;
+    --border: 205 18% 85%;
+    --input: 205 18% 82%;
+    --ring: 198 72% 30%;
 
     /* Educational gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 60%), hsl(217 91% 70%));
-    --gradient-secondary: linear-gradient(135deg, hsl(220 14% 96%), hsl(220 14% 98%));
-    --gradient-accent: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 46%));
+    --gradient-primary: linear-gradient(135deg, hsl(199 78% 22%), hsl(198 58% 42%));
+    --gradient-secondary: linear-gradient(135deg, hsl(42 32% 97%), hsl(198 22% 92%));
+    --gradient-accent: linear-gradient(135deg, hsl(198 72% 30%), hsl(198 58% 42%));
     
     /* Shadows */
-    --shadow-soft: 0 2px 8px -2px hsl(var(--foreground) / 0.05), 0 4px 16px -8px hsl(var(--foreground) / 0.1);
-    --shadow-medium: 0 4px 16px -4px hsl(220 20% 10% / 0.15);
-    --shadow-strong: 0 8px 32px -8px hsl(220 20% 10% / 0.2);
+    --shadow-soft: 0 1px 2px hsl(199 50% 18% / 0.05), 0 12px 34px -24px hsl(199 50% 18% / 0.3);
+    --shadow-medium: 0 18px 40px -26px hsl(199 55% 16% / 0.38);
+    --shadow-strong: 0 28px 60px -32px hsl(199 55% 14% / 0.48);
     --shadow-elegant: 0 8px 32px -8px hsl(var(--primary) / 0.15), 0 2px 8px -2px hsl(var(--foreground) / 0.1);
     --shadow-glow: 0 0 32px hsl(var(--primary) / 0.2), 0 8px 32px -8px hsl(var(--primary) / 0.1);
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 199 45% 14%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-foreground: 42 24% 94%;
 
-    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary: 42 72% 70%;
 
-    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-primary-foreground: 199 55% 13%;
 
-    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent: 199 32% 20%;
 
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-accent-foreground: 42 24% 96%;
 
-    --sidebar-border: 220 13% 91%;
+    --sidebar-border: 199 28% 24%;
 
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
@@ -286,6 +286,11 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Outfit Variable", "Segoe UI Variable", sans-serif;
+    background-image:
+      radial-gradient(circle at 8% 4%, hsl(var(--primary) / 0.055), transparent 26rem),
+      radial-gradient(circle at 92% 12%, hsl(42 72% 70% / 0.08), transparent 24rem);
+    font-variant-numeric: tabular-nums;
     /* Improve text rendering on mobile */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -300,6 +305,23 @@ All colors MUST be HSL.
     -webkit-tap-highlight-color: transparent;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 3px;
+  }
+
   /* Ensure inputs are properly sized on iOS */
   input, textarea, select {
     font-size: 16px; /* Prevents zoom on iOS */
@@ -309,5 +331,27 @@ All colors MUST be HSL.
     input, textarea, select {
       font-size: 14px; /* Restore normal size on desktop */
     }
+  }
+}
+
+@layer components {
+  .skip-link {
+    @apply fixed left-4 top-3 z-50 -translate-y-20 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform focus:translate-y-0;
+  }
+
+  .surface-grid {
+    background-image:
+      linear-gradient(hsl(var(--primary) / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--primary) / 0.045) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

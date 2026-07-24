@@ -71,6 +71,9 @@ vi.mock('@/components/Layout', () => ({
       <button type="button" onClick={() => setActiveModule('exam-marks')}>
         Exam Marks
       </button>
+      <button type="button" onClick={() => setActiveModule('academic-operations')}>
+        Academic Operations
+      </button>
       {children}
     </div>
   ),
@@ -165,6 +168,10 @@ vi.mock('@/components/TeacherPerformanceReports', () => ({
 
 vi.mock('@/components/ClassAssignment', () => ({
   ClassAssignment: () => <div data-testid="class-assignment">Class Assignment</div>,
+}));
+
+vi.mock('@/components/AcademicOperations', () => ({
+  AcademicOperations: () => <div data-testid="academic-operations">Academic Operations</div>,
 }));
 
 import { FeatureGuard, ProtectedRoute, RoleGuard } from '@/components/FeatureGuard';
@@ -289,6 +296,16 @@ describe('Auth/RBAC integration', () => {
 
     expect(screen.getByTestId('teacher-management')).toBeInTheDocument();
     expect(screen.queryByTestId('school-admin-management')).not.toBeInTheDocument();
+  });
+
+  it('routes school administrators to the academic operations workspace', () => {
+    mockAuthState = authStateFor('school_admin');
+    renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Academic Operations' }));
+
+    expect(screen.getByTestId('academic-operations')).toBeInTheDocument();
+    expect(mockCanAccessModule).toHaveBeenCalledWith('academic-operations');
   });
 
   it('renders the teacher dashboard and routes exam marks to marks entry', () => {

@@ -20,6 +20,7 @@ import RealtimeTest from "./pages/RealtimeTest";
 import TeacherPortalEntry from "./pages/TeacherPortalEntry";
 import { ProtectedRoute } from "./components/FeatureGuard";
 import { RouteBrandFooter } from "./components/BrandFooter";
+import GuardianInvitation from "./pages/GuardianInvitation";
 
 // Full app with diagnostic routes added
 const App = () => (
@@ -36,6 +37,11 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/school-registration" element={<SchoolRegistration />} />
             <Route path="/reset-password" element={<PasswordReset />} />
+            <Route path="/guardian-invitation" element={
+              <ProtectedRoute roles="guardian" redirectTo="/auth">
+                <GuardianInvitation />
+              </ProtectedRoute>
+            } />
             
             {/* Teacher auto-login portal - Protected for teachers only */}
             <Route path="/teacher-portal" element={

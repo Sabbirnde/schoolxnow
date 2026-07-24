@@ -11,7 +11,9 @@ import {
   ClipboardList,
   LogOut,
   Award,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Layers3,
+  WalletCards
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +27,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useModuleAccess } from "@/hooks/useModuleAccess";
+import { BrandLogo } from "@/components/BrandLogo";
 
 interface AppSidebarProps {
   activeModule: string;
@@ -65,6 +68,8 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
     classes: BookOpen,
     subjects: ClipboardList,
     "class-assignment": ArrowRightLeft,
+    "academic-operations": Layers3,
+    billing: WalletCards,
     attendance: UserCheck,
     exams: FileText,
     "exam-marks": Award,
@@ -87,20 +92,24 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
   const mainModules = orderedModules.filter((module) => module.id !== "settings");
 
   return (
-    <Sidebar className="border-r">
+    <Sidebar className="border-r border-sidebar-border">
       <SidebarContent className="gap-0">
-        <SidebarGroup className="border-b px-0">
-          <SidebarGroupLabel className="px-4 py-2 text-base md:text-lg font-bold text-primary bg-primary/5">
-            <div className="flex items-center gap-2">
-              <div className="h-6 w-6 md:h-8 md:w-8 rounded bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground text-xs md:text-sm font-bold">S</span>
+        <SidebarGroup className="border-b border-sidebar-border px-0 py-2">
+          <SidebarGroupLabel className="h-auto px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-sidebar-primary p-1.5 shadow-soft">
+                <BrandLogo className="h-7 w-7" />
               </div>
-              <span className="hidden md:inline">SchoolXNow</span>
+              <div className="hidden min-w-0 md:block">
+                <div className="truncate text-base font-semibold tracking-tight text-sidebar-foreground">SchoolXNow</div>
+                <div className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-sidebar-foreground/55">Essential suite</div>
+              </div>
             </div>
           </SidebarGroupLabel>
         </SidebarGroup>
         
-        <SidebarGroup>
+        <SidebarGroup className="py-4">
+          <SidebarGroupLabel className="px-3 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/45">Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {mainModules.map((module) => {
@@ -111,7 +120,7 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
                   <SidebarMenuButton
                     onClick={() => setActiveModule(module.id)}
                     isActive={activeModule === module.id}
-                    className="w-full justify-start h-10 px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+                    className="h-10 w-full justify-start rounded-md px-3 text-sm font-medium text-sidebar-foreground/72 transition-all duration-200 hover:translate-x-0.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary-foreground"
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className="truncate">{module.title}</span>
@@ -143,13 +152,13 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
 
         {/* User Profile Section */}
         {profile && (
-          <SidebarGroup className="border-t pt-4">
+          <SidebarGroup className="border-t border-sidebar-border pt-4">
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <div className="px-3 py-2 border rounded-lg bg-muted/50">
-                    <div className="font-medium text-sm truncate">{profile.full_name}</div>
-                    <div className="text-xs text-muted-foreground capitalize truncate">
+                  <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/65 px-3 py-2.5">
+                    <div className="truncate text-sm font-semibold text-sidebar-foreground">{profile.full_name}</div>
+                    <div className="truncate text-xs capitalize text-sidebar-foreground/55">
                       {profile.role.replace('_', ' ')}
                     </div>
                   </div>

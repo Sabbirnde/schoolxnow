@@ -6,6 +6,7 @@ import EnvironmentConfigError from './components/EnvironmentConfigError';
 import SecureConfig from './lib/secure-config';
 import { queryClient } from './lib/query-client';
 import './index.css';
+import '@fontsource-variable/outfit';
 
 const createFallbackRoot = () => {
   const fallbackRoot = document.createElement('div');

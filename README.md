@@ -6,7 +6,7 @@ MySQL/MariaDB database through an HTTP API and can be deployed with either:
 - the Node.js serverless API included for Vercel; or
 - the PHP API included for shared hosting.
 
-Current release: **v0.2.0 — Production Hardening**. See
+Current release: **v0.4.0 — Fees, Billing, and Payments**. See
 [CHANGELOG.md](CHANGELOG.md) for release details.
 
 The application does **not** use Supabase. The frontend uses a neutral
@@ -70,7 +70,7 @@ Row Level Security, and realtime services are not required.
 Use a current MySQL/MariaDB release that supports InnoDB foreign keys, JSON
 columns, `utf8mb4`, and `DATETIME ... ON UPDATE CURRENT_TIMESTAMP`.
 
-The schema currently creates these 25 tables:
+The numbered migrations currently create these 40 tables:
 
 | Area | Tables |
 | --- | --- |
@@ -80,6 +80,8 @@ The schema currently creates these 25 tables:
 | People | `students`, `teachers`, `teacher_applications` |
 | Academic structure | `academic_years`, `academic_terms`, `student_enrollments` |
 | Guardian access | `guardian_relationships` |
+| Academic operations | `admission_applications`, `class_offerings`, `subject_offerings`, `assessment_categories`, `grading_scales`, `grading_scale_bands`, `assessments`, `assessment_scores`, `report_cards`, `report_card_items`, `guardian_invitations` |
+| Fees and billing | `fee_categories`, `fee_plans`, `fee_plan_items`, `student_invoices`, `student_invoice_items`, `payments`, `payment_allocations`, `invoice_adjustments` |
 | Academics | `attendance`, `exams`, `exam_results`, `timetable` |
 | Operations | `audit_logs`, `system_settings`, `notifications`, `notification_settings`, `feedback_submissions` |
 
@@ -111,6 +113,42 @@ Student and guardian API reads are restricted to these links. Disabling
 visibility. See
 [backend/database/ACADEMIC_FOUNDATION.md](backend/database/ACADEMIC_FOUNDATION.md)
 for the admissions, promotion, report-card, and guardian-access workflows.
+
+### v0.3.0 academic operations
+
+The school-admin **Academic Operations** workspace supports:
+
+- admission applications and transactional acceptance into a student plus
+  enrollment;
+- year-specific class and subject offerings;
+- atomic bulk enrollment and promotion, including current-class updates;
+- assessment categories, grading scales and bands, assessments, and scores;
+- enrollment- and term-linked report cards;
+- year, term, and enrollment links on timetable and attendance;
+- expiring guardian invitations with email-matched acceptance.
+
+Bulk academic mutations use dedicated `/api/academic/*` endpoints because
+multi-record promotion and account linking must commit or roll back as one
+transaction. Generic CRUD remains available only according to the shared
+role/table contract. Students and guardians can read only linked academic
+records, and only published report cards are visible to them.
+
+### v0.4.0 fees, billing, and payments
+
+The school-admin **Fees & Billing** workspace supports:
+
+- reusable fee categories and year-specific fee plans in ISO currencies;
+- fixed-precision fee items and bulk invoice generation for active enrollments;
+- discounts, waivers, credits, and charges with mandatory reasons;
+- cash, bank transfer, card, mobile money, cheque, and online payments;
+- atomic allocation, overpayment protection, receipts, and balance updates;
+- invoice ledgers with collected and outstanding summaries.
+
+Dedicated `/api/billing/*` endpoints perform invoice, adjustment, and payment
+operations transactionally in both Node and PHP. Students see only invoices
+and receipts linked to their enrollment. Guardians additionally require
+`receives_financial_updates` on an active portal relationship. Draft invoices
+and internal adjustment records are not exposed to these roles.
 
 ### Create or migrate the schema
 
