@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -760,16 +760,20 @@ export function StudentManagement() {
   };
 
   // Add class_name for filtering
-  const studentsWithClassName = students.map(s => ({
-    ...s,
-    class_name: s.classes ? `${s.classes.name} ${s.classes.section}` : ''
-  }));
+  const studentsWithClassName = useMemo(
+    () =>
+      students.map((s) => ({
+        ...s,
+        class_name: s.classes ? `${s.classes.name} ${s.classes.section}` : '',
+      })),
+    [students]
+  );
 
   const filteredStudents = useAdvancedFilter(
     studentsWithClassName,
     advancedFilters,
     searchTerm,
-    ['full_name', 'student_id', 'guardian_phone', 'guardian_email']
+    ['full_name', 'student_id', 'guardian_phone', 'guardian_email', 'class_name']
   );
 
   const handleExportStudents = () => {
@@ -1150,7 +1154,7 @@ export function StudentManagement() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Class</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select class" />

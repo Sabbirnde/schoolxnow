@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -121,20 +121,31 @@ export function ClassManagement() {
       setLoading(true);
 
       if (isPhpBackend) {
-        const classRows = await phpApi.table<Class>('classes').list({
-          school_id: profile.school_id,
-          sort: 'name',
-          order: 'asc',
-          limit: 200,
-        });
+        const [classRows, studentRows] = await Promise.all([
+          phpApi.table<Class>('classes').list({
+            school_id: profile.school_id,
+            sort: 'name',
+            order: 'asc',
+            limit: 200,
+          }),
+          phpApi.table<{ class_id: string | null }>('students').list({
+            school_id: profile.school_id,
+            select: 'class_id',
+            limit: 200,
+          }),
+        ]);
 
-        const classesWithCount = await Promise.all(
-          (classRows || []).map(async (classItem) => {
-            const { count } = await phpApi.table('students').count({
-              school_id: profile.school_id,
-              class_id: classItem.id,
-            });
-            return normalizeClass({ ...classItem, student_count: count });
+        const studentCounts = (studentRows || []).reduce<Record<string, number>>((acc, student) => {
+          if (student.class_id) {
+            acc[student.class_id] = (acc[student.class_id] || 0) + 1;
+          }
+          return acc;
+        }, {});
+
+        const classesWithCount = (classRows || []).map((classItem) =>
+          normalizeClass({
+            ...classItem,
+            student_count: studentCounts[classItem.id] || 0,
           })
         );
 
@@ -515,19 +526,24 @@ export function ClassManagement() {
     }
   };
 
-  const classesWithStringBooleans = classes.map(c => ({
-    ...c,
-    is_active_string: String(c.is_active)
-  }));
+  const classesWithStringBooleans = useMemo(() =>
+    classes.map((c) => ({
+      ...c,
+      is_active_string: String(c.is_active),
+    })),
+    [classes]
+  );
 
   const filteredClassesWithMeta = useAdvancedFilter(
     classesWithStringBooleans,
-    advancedFilters.map(f => f.field === 'is_active' ? { ...f, field: 'is_active_string' } : f),
+    advancedFilters.map((f) =>
+      f.field === 'is_active' ? { ...f, field: 'is_active_string' } : f
+    ),
     searchTerm,
     ['name', 'section', 'class_level']
   );
 
-  const filteredClasses = filteredClassesWithMeta.map(c => classes.find(orig => orig.id === c.id)!).filter(Boolean);
+  const filteredClasses = filteredClassesWithMeta as Class[];
 
   const openEditDialog = (classItem: Class) => {
     if (!isAdmin) {
