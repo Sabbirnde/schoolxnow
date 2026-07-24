@@ -5,7 +5,35 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/bootstrap",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/auth",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/school-registration",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/guardian-invitation",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/teacher-portal",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/system-admin-access",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard",
       "destination": "/index.html"
     }
   ]

@@ -49,11 +49,31 @@ function checkVercelConfig() {
   try {
     const configPath = path.join(root, 'vercel.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const hasSpaFallback = Array.isArray(config.rewrites) && config.rewrites.some(
-      (rewrite) => rewrite?.source === '/(.*)' && rewrite?.destination === '/index.html',
+    const requiredSpaRoutes = [
+      '/bootstrap',
+      '/auth',
+      '/school-registration',
+      '/reset-password',
+      '/guardian-invitation',
+      '/teacher-portal',
+      '/system-admin-access',
+      '/dashboard',
+    ];
+    const rewrites = Array.isArray(config.rewrites) ? config.rewrites : [];
+    const hasUnsafeCatchAll = rewrites.some((rewrite) => rewrite?.source === '/(.*)');
+    const missingSpaRoutes = requiredSpaRoutes.filter(
+      (route) => !rewrites.some(
+        (rewrite) => rewrite?.source === route && rewrite?.destination === '/index.html',
+      ),
     );
-    console.log(`${hasSpaFallback ? 'OK  ' : 'MISS'} vercel.json SPA fallback rewrite`);
-    return hasSpaFallback;
+    const valid = !hasUnsafeCatchAll && missingSpaRoutes.length === 0;
+
+    console.log(`${hasUnsafeCatchAll ? 'MISS' : 'OK  '} vercel.json does not rewrite API requests`);
+    console.log(
+      `${missingSpaRoutes.length === 0 ? 'OK  ' : 'MISS'} vercel.json client routes`
+      + (missingSpaRoutes.length > 0 ? ` (${missingSpaRoutes.join(', ')})` : ''),
+    );
+    return valid;
   } catch (error) {
     console.log(`MISS vercel.json is invalid: ${error instanceof Error ? error.message : String(error)}`);
     return false;
