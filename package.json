@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate-mysql.mjs",
     "db:migrate:status": "node scripts/migrate-mysql.mjs",
     "db:backup": "node scripts/backup-mysql.mjs",
+    "db:explain": "node scripts/explain-mysql.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:api-contract": "node scripts/check-api-contract.mjs",
     "db:provision:preview": "node scripts/provision-preview-db.mjs",

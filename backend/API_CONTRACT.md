@@ -1,5 +1,11 @@
 # Shared API contract
 
+Contract version: `1.5.0`
+
+Table list routes accept `select=id,name,...`, `limit`, and `offset`. New
+performance-sensitive callers request only rendered columns. Both backends
+validate projection identifiers and clamp pages to 200 rows.
+
 [`api-contract.json`](api-contract.json) is the machine-readable source of truth shared by the Node/Vercel and PHP APIs. It defines the public endpoints, response envelopes, request-ID header, exposed tables, school-scoped tables, and table permissions for every role.
 
 Both implementations load authorization and table metadata from this file:

@@ -35,14 +35,14 @@ export function BillingManagement() {
     setBusy(true);
     try {
       const data = await Promise.all([
-        phpApi.table<Row>("fee_categories").list({ sort: "name", order: "asc" }),
-        phpApi.table<Row>("fee_plans").list({ sort: "created_at", order: "desc" }),
-        phpApi.table<Row>("fee_plan_items").list({ sort: "created_at", order: "desc" }),
-        phpApi.table<Row>("academic_years").list({ sort: "start_date", order: "desc" }),
-        phpApi.table<Row>("student_enrollments").list({ status: "active", limit: 500 }),
-        phpApi.table<Row>("students").list({ status: "active", sort: "full_name", order: "asc", limit: 500 }),
-        phpApi.table<Row>("student_invoices").list({ sort: "created_at", order: "desc", limit: 200 }),
-        phpApi.table<Row>("payments").list({ sort: "paid_at", order: "desc", limit: 100 }),
+        phpApi.table<Row>("fee_categories").list({ select: "id,code,name,is_active", sort: "name", order: "asc" }),
+        phpApi.table<Row>("fee_plans").list({ select: "id,academic_year_id,class_id,name,currency,billing_frequency,status", sort: "created_at", order: "desc" }),
+        phpApi.table<Row>("fee_plan_items").list({ select: "id,fee_plan_id,fee_category_id,description,amount,is_optional", sort: "created_at", order: "desc" }),
+        phpApi.table<Row>("academic_years").list({ select: "id,name,status,start_date,end_date", sort: "start_date", order: "desc" }),
+        phpApi.table<Row>("student_enrollments").list({ select: "id,student_id,class_id,status", status: "active", limit: 200 }),
+        phpApi.table<Row>("students").list({ select: "id,full_name,student_id,status", status: "active", sort: "full_name", order: "asc", limit: 200 }),
+        phpApi.table<Row>("student_invoices").list({ select: "id,student_enrollment_id,invoice_number,currency,issue_date,due_date,status,total_amount,paid_amount,balance_amount", sort: "created_at", order: "desc", limit: 200 }),
+        phpApi.table<Row>("payments").list({ select: "id,receipt_number,amount,currency,payment_method,status,paid_at", sort: "paid_at", order: "desc", limit: 100 }),
       ]);
       setCategories(data[0]); setPlans(data[1]); setPlanItems(data[2]); setYears(data[3]);
       setEnrollments(data[4]); setStudents(data[5]); setInvoices(data[6]); setPayments(data[7]);

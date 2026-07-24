@@ -108,6 +108,7 @@ export function AttendanceManagement() {
         }
 
         const allClasses = await phpApi.table<Class>('classes').list({
+          select: 'id,school_id,name,section,class_level',
           school_id: profile.school_id,
           is_active: 1,
           sort: 'name',
@@ -117,6 +118,7 @@ export function AttendanceManagement() {
 
         if (canFull('attendance.record')) {
           const teachers = await phpApi.table<TeacherRecord>('teachers').list({
+            select: 'id,user_id,school_id',
             school_id: profile.school_id,
             user_id: profile.user_id,
             limit: 1,
@@ -129,6 +131,7 @@ export function AttendanceManagement() {
           }
 
           const timetableRows = await phpApi.table<TimetableRecord>('timetable').list({
+            select: 'id,school_id,teacher_id,class_id',
             school_id: profile.school_id,
             teacher_id: teacher.id,
             limit: 200,
@@ -198,6 +201,7 @@ export function AttendanceManagement() {
       if (isPhpBackend) {
         const [studentRows, classRows] = await Promise.all([
           phpApi.table<Student>('students').list({
+            select: 'id,school_id,student_id,full_name,class_id',
             class_id: selectedClass,
             status: 'active',
             sort: 'student_id',
@@ -205,6 +209,7 @@ export function AttendanceManagement() {
             limit: 300,
           }),
           phpApi.table<Class>('classes').list({
+            select: 'id,school_id,name,section,class_level',
             limit: 300,
           }),
         ]);
@@ -243,6 +248,7 @@ export function AttendanceManagement() {
         const date = format(selectedDate, 'yyyy-MM-dd');
         const [attendanceRows, studentRows] = await Promise.all([
           phpApi.table<AttendanceRecord>('attendance').list({
+            select: 'id,school_id,student_id,class_id,date,is_present,remarks',
             class_id: selectedClass,
             date,
             sort: 'created_at',
@@ -250,6 +256,7 @@ export function AttendanceManagement() {
             limit: 300,
           }),
           phpApi.table<Student>('students').list({
+            select: 'id,school_id,student_id,full_name,class_id',
             class_id: selectedClass,
             status: 'active',
             limit: 300,

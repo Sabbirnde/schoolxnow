@@ -165,12 +165,14 @@ export function StudentManagement() {
       if (isPhpBackend) {
         const [studentsData, classesData] = await Promise.all([
           phpApi.table<Student>('students').list({
+            select: 'id,school_id,full_name,student_id,gender,date_of_birth,guardian_phone,guardian_email,address,status,admission_date,class_id,father_name,mother_name,blood_group',
             school_id: profile.school_id,
             sort: 'admission_date',
             order: 'desc',
             limit: 200,
           }),
           phpApi.table<Class>('classes').list({
+            select: 'id,name,section,class_level',
             school_id: profile.school_id,
             is_active: 1,
             sort: 'name',

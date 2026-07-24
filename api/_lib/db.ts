@@ -3,6 +3,7 @@ import { ApiError } from './http.js';
 import { logMySqlError, monitorDatabaseError } from './monitoring.js';
 
 let pool: Pool | null = null;
+const queryTimeoutMs = Math.max(Number(process.env.DB_QUERY_TIMEOUT_MS || 8_000), 1_000);
 
 function env(...keys: string[]) {
   for (const key of keys) {
@@ -40,7 +41,12 @@ export function db(): Pool {
     user,
     password,
     waitForConnections: true,
-    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 5),
+    connectionLimit: Math.min(Math.max(Number(process.env.DB_CONNECTION_LIMIT || 3), 1), 10),
+    maxIdle: Math.min(Math.max(Number(process.env.DB_MAX_IDLE_CONNECTIONS || 1), 0), 5),
+    idleTimeout: Math.max(Number(process.env.DB_IDLE_TIMEOUT_MS || 60_000), 10_000),
+    queueLimit: 0,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
     namedPlaceholders: true,
     timezone: 'Z',
     connectTimeout: 5000,
@@ -62,7 +68,7 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
 ): Promise<T> {
   const executor = connection ?? db();
   try {
-    const [rows] = await executor.execute<T>(sql, params as any);
+    const [rows] = await executor.execute<T>({ sql, timeout: queryTimeoutMs }, params as any);
     return rows;
   } catch (error) {
     logMySqlError(error, 'query');
@@ -78,7 +84,7 @@ export async function execute(
 ) {
   const executor = connection ?? db();
   try {
-    const [result] = await executor.execute(sql, params as any);
+    const [result] = await executor.execute({ sql, timeout: queryTimeoutMs }, params as any);
     return result;
   } catch (error) {
     logMySqlError(error, 'execute');

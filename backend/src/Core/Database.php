@@ -30,6 +30,7 @@ final class Database
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::ATTR_TIMEOUT => max(1, (int) Config::get('DB_CONNECT_TIMEOUT_SECONDS', '5')),
         ];
 
         if (Config::get('DB_SSL', 'false') === 'true') {
@@ -44,6 +45,8 @@ final class Database
 
         try {
             self::$pdo = new PDO($dsn, $user, $pass, $options);
+            $queryTimeout = max(1000, (int) Config::get('DB_QUERY_TIMEOUT_MS', '8000'));
+            self::$pdo->exec("SET SESSION MAX_EXECUTION_TIME = {$queryTimeout}");
         } catch (Throwable $error) {
             Monitoring::logError($error, 'mysql_connection_error');
             throw $error;

@@ -69,6 +69,22 @@ gunzip --stdout schoolxnow-before-migration.sql.gz |
 - `0002_security_hardening`: after rolling back application code, the table can
   be removed with `DROP TABLE api_rate_limits`, but this deletes rate-limit
   history. A forward fix is safer.
+- `0006_mysql_query_performance`: indexes contain no application data and may be
+  removed after restoring the previous application. Drop the ten `idx_*`
+  indexes declared by that migration individually; prefer a forward migration
+  after production traffic resumes.
+
+## Verify query plans
+
+After applying performance migrations, audit representative bounded reads:
+
+```bash
+npm run db:explain -- --env .env.vercel.local --school-id <uuid> --class-id <uuid>
+```
+
+`EXPLAIN ANALYZE` executes each limited `SELECT` to report actual rows and
+timing. Use a replica or quiet window and confirm the new composite index names
+appear instead of full table scans.
 
 Never delete or edit a row in `schema_migrations` merely to bypass a checksum
 or failed migration. Repair the schema, then apply a new numbered migration.

@@ -205,7 +205,7 @@ function appendFilters(req: VercelRequest, where: string[], params: Record<strin
   for (const [rawKey, rawValue] of Object.entries(req.query)) {
     // Vercel adds dynamic filesystem route parameters to req.query. They
     // identify the route and must never be interpreted as database columns.
-    if (['path', 'table', 'id', 'limit', 'offset', 'sort', 'order'].includes(rawKey)) {
+    if (['path', 'table', 'id', 'limit', 'offset', 'sort', 'order', 'select'].includes(rawKey)) {
       continue;
     }
 
@@ -231,6 +231,16 @@ function appendFilters(req: VercelRequest, where: string[], params: Record<strin
     where.push(`${column} ${operator} :${param}`);
     params[param] = firstQueryValue(rawValue);
   }
+}
+
+function selectedColumns(req: VercelRequest) {
+  const requested = String(firstQueryValue(req.query.select) || '').trim();
+  if (!requested) return '*';
+  const columns = requested.split(',').map((column) => column.trim()).filter(isIdentifier);
+  if (columns.length === 0 || columns.join(',') !== requested.replace(/\s+/g, '')) {
+    throw new ApiError(422, 'select must contain comma-separated column names');
+  }
+  return columns.join(', ');
 }
 
 function orderBy(req: VercelRequest) {
@@ -288,7 +298,7 @@ export async function handleTable(req: VercelRequest, res: VercelResponse, segme
     const limit = Math.min(Math.max(Number(firstQueryValue(req.query.limit) || 50), 1), 200);
     const offset = Math.max(Number(firstQueryValue(req.query.offset) || 0), 0);
     const rows = await query(
-      `SELECT * FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT ${limit} OFFSET ${offset}`,
+      `SELECT ${selectedColumns(req)} FROM ${table}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY ${orderBy(req)} LIMIT ${limit} OFFSET ${offset}`,
       params,
     );
     return sendData(res, rows);

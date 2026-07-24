@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "primaryBackend": "node",
   "basePath": "/api",
   "requestIdHeader": "X-Request-ID",
@@ -40,6 +40,11 @@
     { "path": "/uploads/{bucket}", "methods": ["POST"], "auth": true, "envelope": "success" }
   ],
   "tables": {
+    "listQueryParameters": {
+      "select": "Optional comma-separated column allowlist; defaults to all columns for backward compatibility",
+      "limit": "Server-side page size, clamped to 1-200",
+      "offset": "Server-side pagination offset"
+    },
     "allowed": [
       "schools", "user_profiles", "user_roles", "classes", "students",
       "subjects", "teachers", "attendance", "exams", "exam_results",

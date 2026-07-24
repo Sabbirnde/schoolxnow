@@ -25,7 +25,7 @@ final class TableController
         $this->appendFilters($where, $params);
         $orderBy = $this->orderBy();
 
-        $sql = "SELECT * FROM {$table}" . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . " ORDER BY {$orderBy} LIMIT :limit OFFSET :offset";
+        $sql = "SELECT {$this->selectedColumns()} FROM {$table}" . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . " ORDER BY {$orderBy} LIMIT :limit OFFSET :offset";
         $stmt = Database::connection()->prepare($sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue(":{$key}", $value);
@@ -334,7 +334,7 @@ final class TableController
     private function appendFilters(array &$where, array &$params): void
     {
         foreach ($_GET as $key => $value) {
-            if (in_array($key, ['limit', 'offset', 'sort', 'order'], true)) {
+            if (in_array($key, ['limit', 'offset', 'sort', 'order', 'select'], true)) {
                 continue;
             }
 
@@ -356,6 +356,21 @@ final class TableController
             $where[] = "{$column} {$operator} :{$param}";
             $params[$param] = $value;
         }
+    }
+
+    private function selectedColumns(): string
+    {
+        $requested = trim((string) ($_GET['select'] ?? ''));
+        if ($requested === '') {
+            return '*';
+        }
+        $columns = array_map('trim', explode(',', $requested));
+        if (!$columns || array_filter($columns, static fn (string $column): bool =>
+            preg_match('/^[a-zA-Z_][a-zA-Z0-9_]*$/', $column) !== 1
+        )) {
+            Response::json(['error' => ['message' => 'select must contain comma-separated column names']], 422);
+        }
+        return implode(', ', $columns);
     }
 
     private function orderBy(): string
