@@ -1,6 +1,6 @@
 import mysql, { type Pool, type PoolConnection, type RowDataPacket } from 'mysql2/promise';
 import { ApiError } from './http.js';
-import { logMySqlError, monitorDatabaseError } from './monitoring.js';
+import { logMySqlError, monitorDatabaseError, recordLatencyMetric } from './monitoring.js';
 
 let pool: Pool | null = null;
 const queryTimeoutMs = Math.max(Number(process.env.DB_QUERY_TIMEOUT_MS || 8_000), 1_000);
@@ -67,6 +67,7 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
   connection?: PoolConnection,
 ): Promise<T> {
   const executor = connection ?? db();
+  const startedAt = performance.now();
   try {
     const [rows] = await executor.execute<T>({ sql, timeout: queryTimeoutMs }, params as any);
     return rows;
@@ -74,6 +75,8 @@ export async function query<T extends RowDataPacket[] = RowDataPacket[]>(
     logMySqlError(error, 'query');
     monitorDatabaseError(error);
     throw error;
+  } finally {
+    recordLatencyMetric('mysql_query_duration', 'select', performance.now() - startedAt);
   }
 }
 
@@ -83,6 +86,7 @@ export async function execute(
   connection?: PoolConnection,
 ) {
   const executor = connection ?? db();
+  const startedAt = performance.now();
   try {
     const [result] = await executor.execute({ sql, timeout: queryTimeoutMs }, params as any);
     return result;
@@ -90,6 +94,8 @@ export async function execute(
     logMySqlError(error, 'execute');
     monitorDatabaseError(error);
     throw error;
+  } finally {
+    recordLatencyMetric('mysql_query_duration', 'write', performance.now() - startedAt);
   }
 }
 

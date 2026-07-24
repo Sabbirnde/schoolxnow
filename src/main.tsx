@@ -5,6 +5,7 @@ import { ErrorTelemetryProvider } from './contexts/ErrorTelemetryContext';
 import EnvironmentConfigError from './components/EnvironmentConfigError';
 import SecureConfig from './lib/secure-config';
 import { queryClient } from './lib/query-client';
+import { startPerformanceMonitoring } from './lib/performance-monitoring';
 import './index.css';
 import '@fontsource-variable/outfit';
 
@@ -57,6 +58,7 @@ if (!validation.isValid) {
     </ThemeProvider>
   );
 } else {
+  startPerformanceMonitoring(queryClient);
   void import('./App.tsx').then(({ default: App }) => {
     registerServiceWorker();
 

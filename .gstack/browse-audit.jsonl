@@ -1,0 +1,22 @@
+{"ts":"2026-07-24T01:37:29.075Z","cmd":"status","args":"","origin":"about:blank","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:37:33.627Z","cmd":"goto","args":"https://schoolxnow.vercel.app","origin":"https://schoolxnow.vercel.app/","durationMs":4346,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:37:36.217Z","cmd":"wait","args":"--networkidle","origin":"https://schoolxnow.vercel.app/","durationMs":2301,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:37:38.467Z","cmd":"snapshot","args":"-i -a -o .gstack/qa-reports/screenshots/school-admin-initial.png","origin":"https://schoolxnow.vercel.app/","durationMs":1916,"status":"error","hasCookies":false,"mode":"launched","error":"Could not load the \"sharp\" module using the win32-x64 runtime\nPossible solutions:\n- Ensure optional dependencies can be installed:\n    npm install --include=optional sharp\n- Ensure your package manager supports multi-platform installation:\n    See https://sharp.pixelplumbing.com/install#cross-platfo…"}
+{"ts":"2026-07-24T01:37:38.766Z","cmd":"console","args":"--errors","origin":"https://schoolxnow.vercel.app/","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:37:39.019Z","cmd":"url","args":"","origin":"https://schoolxnow.vercel.app/","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:06.709Z","cmd":"snapshot","args":"-i -a -o .gstack/qa-reports/screenshots/school-admin-initial.png","origin":"https://schoolxnow.vercel.app/","durationMs":1558,"status":"error","hasCookies":false,"mode":"launched","error":"sharp is not a function"}
+{"ts":"2026-07-24T01:38:07.002Z","cmd":"links","args":"","origin":"https://schoolxnow.vercel.app/","durationMs":7,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:07.307Z","cmd":"console","args":"--errors","origin":"https://schoolxnow.vercel.app/","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:17.515Z","cmd":"screenshot","args":".gstack/qa-reports/screenshots/school-admin-initial.png","origin":"https://schoolxnow.vercel.app/","durationMs":524,"status":"error","hasCookies":false,"mode":"launched","error":"sharp is not a function"}
+{"ts":"2026-07-24T01:38:26.310Z","cmd":"goto","args":"https://schoolxnow.vercel.app/auth","origin":"https://schoolxnow.vercel.app/auth","durationMs":651,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:27.039Z","cmd":"wait","args":"--networkidle","origin":"https://schoolxnow.vercel.app/auth","durationMs":447,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:27.395Z","cmd":"snapshot","args":"-i","origin":"https://schoolxnow.vercel.app/auth","durationMs":68,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:27.622Z","cmd":"console","args":"--errors","origin":"https://schoolxnow.vercel.app/auth","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:44.675Z","cmd":"cookie-import-browser","args":"chrome --domain schoolxnow.vercel.app","origin":"https://schoolxnow.vercel.app/auth","durationMs":987,"status":"error","hasCookies":false,"mode":"launched","error":"DPAPI decryption failed: "}
+{"ts":"2026-07-24T01:38:45.232Z","cmd":"reload","args":"","origin":"https://schoolxnow.vercel.app/auth","durationMs":268,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:46.038Z","cmd":"wait","args":"--networkidle","origin":"https://schoolxnow.vercel.app/auth","durationMs":555,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:46.263Z","cmd":"url","args":"","origin":"https://schoolxnow.vercel.app/auth","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T01:38:46.543Z","cmd":"snapshot","args":"-i","origin":"https://schoolxnow.vercel.app/auth","durationMs":64,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T02:22:04.069Z","cmd":"goto","args":"http://localhost:8082/","origin":"http://localhost:8082/","durationMs":567,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T02:22:05.251Z","cmd":"snapshot","args":"-c","origin":"http://localhost:8082/","durationMs":165,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-07-24T02:22:05.923Z","cmd":"console","args":"--errors","origin":"http://localhost:8082/","durationMs":5,"status":"ok","hasCookies":false,"mode":"launched"}

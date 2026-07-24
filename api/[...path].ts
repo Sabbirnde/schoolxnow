@@ -27,7 +27,11 @@ import {
   sanitizedError,
   setRequestUserRole,
   withRequestContext,
+  recordLatencyMetric,
 } from './_lib/monitoring.js';
+
+const serverlessStartedAt = Date.now();
+let invocationCount = 0;
 
 type LoginUser = ApiUser & RowDataPacket & { password_hash: string };
 
@@ -787,6 +791,9 @@ function pathSegments(req: VercelRequest) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const requestStartedAt = performance.now();
+  invocationCount += 1;
+  const coldStart = invocationCount === 1;
   const suppliedRequestId = String(req.headers['x-request-id'] || '');
   const requestId = /^[a-zA-Z0-9._-]{8,128}$/.test(suppliedRequestId)
     ? suppliedRequestId
@@ -829,6 +836,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST' && path === '/telemetry/errors') return await receiveErrorTelemetry(req, res);
+    if (req.method === 'POST' && path === '/telemetry/performance') {
+      const body = readJsonBody(req);
+      console.info(JSON.stringify({
+        event: 'browser_performance',
+        metrics: body.metrics,
+        page: String(body.page || '').slice(0, 200),
+        request_id: requestId,
+        timestamp: new Date().toISOString(),
+      }));
+      return sendData(res, { accepted: true }, 202);
+    }
     if (req.method === 'POST' && path === '/auth/login') return await login(req, res);
     if (req.method === 'POST' && path === '/auth/register') return await register(req, res);
     if (req.method === 'POST' && path === '/auth/register-school') return await registerSchool(req, res);
@@ -875,6 +893,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       recordAlertSignal('http_500', { status });
     }
     return sendError(res, error);
+  } finally {
+    recordLatencyMetric('api_latency', `${req.method || 'UNKNOWN'} ${path}`, performance.now() - requestStartedAt, {
+      status: res.statusCode,
+      cold_start: coldStart,
+      instance_age_ms: Date.now() - serverlessStartedAt,
+    });
   }
   });
 }

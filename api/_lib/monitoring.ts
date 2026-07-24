@@ -11,6 +11,7 @@ type AlertType = 'login_failure' | 'http_500' | 'database_connection_failure' | 
 
 const requestStorage = new AsyncLocalStorage<RequestContext>();
 const signalWindows = new Map<AlertType, number[]>();
+const latencySamples = new Map<string, number[]>();
 
 const ALERT_POLICIES: Record<AlertType, { threshold: number; windowMs: number }> = {
   login_failure: { threshold: 5, windowMs: 5 * 60_000 },
@@ -80,6 +81,36 @@ export function monitorDatabaseError(error: unknown) {
   if (isDatabaseConnectionFailure(error)) {
     recordAlertSignal('database_connection_failure', { error: sanitizedError(error) });
   }
+}
+
+const percentile = (values: number[], value: number) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(Math.ceil((value / 100) * sorted.length) - 1, sorted.length - 1)];
+};
+
+export function recordLatencyMetric(
+  metric: 'api_latency' | 'mysql_query_duration',
+  name: string,
+  durationMs: number,
+  details: Record<string, unknown> = {},
+) {
+  const key = `${metric}:${name}`;
+  const samples = [...(latencySamples.get(key) || []), Math.round(durationMs)].slice(-200);
+  latencySamples.set(key, samples);
+  console.info(JSON.stringify({
+    event: 'performance_metric',
+    metric,
+    name,
+    duration_ms: Math.round(durationMs),
+    sample_count: samples.length,
+    p50_ms: percentile(samples, 50),
+    p95_ms: percentile(samples, 95),
+    p99_ms: percentile(samples, 99),
+    request_id: requestContext()?.requestId,
+    ...details,
+    timestamp: new Date().toISOString(),
+  }));
 }
 
 export function recordAlertSignal(type: AlertType, details: Record<string, unknown> = {}) {
