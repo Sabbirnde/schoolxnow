@@ -28,6 +28,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useModuleAccess } from "@/hooks/useModuleAccess";
 import { BrandLogo } from "@/components/BrandLogo";
+import { preloadDashboardModule } from "@/lib/dashboardModuleLoaders";
 
 interface AppSidebarProps {
   activeModule: string;
@@ -119,6 +120,8 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
                 <SidebarMenuItem key={module.id}>
                   <SidebarMenuButton
                     onClick={() => setActiveModule(module.id)}
+                    onMouseEnter={() => preloadDashboardModule(module.id, profile?.role)}
+                    onFocus={() => preloadDashboardModule(module.id, profile?.role)}
                     isActive={activeModule === module.id}
                     className="h-10 w-full justify-start rounded-md px-3 text-sm font-medium text-sidebar-foreground/72 transition-all duration-200 hover:translate-x-0.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:font-semibold data-[active=true]:text-sidebar-primary-foreground"
                   >
@@ -138,6 +141,8 @@ export function AppSidebar({ activeModule, setActiveModule }: AppSidebarProps) {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={() => setActiveModule(settingsModule.id)}
+                  onMouseEnter={() => preloadDashboardModule(settingsModule.id, profile?.role)}
+                  onFocus={() => preloadDashboardModule(settingsModule.id, profile?.role)}
                   isActive={activeModule === "settings"}
                   className="h-10 px-3 text-sm"
                 >

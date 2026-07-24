@@ -8,61 +8,62 @@ import { AccessDeniedFallback, ModuleLoadingSkeleton } from "@/components/Access
 import SuperAdminDashboard from "@/components/SuperAdminDashboard";
 import SchoolAdminDashboard from "@/components/SchoolAdminDashboard";
 import TeacherDashboard from "@/components/TeacherDashboard";
+import { dashboardModuleLoaders } from "@/lib/dashboardModuleLoaders";
 
 const StudentManagement = lazy(() =>
-  import("@/components/StudentManagement").then((module) => ({
+  dashboardModuleLoaders.students().then((module) => ({
     default: module.StudentManagement,
   })),
 );
 const ClassManagement = lazy(() =>
-  import("@/components/ClassManagement").then((module) => ({
+  dashboardModuleLoaders.classes().then((module) => ({
     default: module.ClassManagement,
   })),
 );
 const SubjectManagement = lazy(() =>
-  import("@/components/SubjectManagement").then((module) => ({
+  dashboardModuleLoaders.subjects().then((module) => ({
     default: module.SubjectManagement,
   })),
 );
 const AttendanceManagement = lazy(() =>
-  import("@/components/AttendanceManagement").then((module) => ({
+  dashboardModuleLoaders.attendance().then((module) => ({
     default: module.AttendanceManagement,
   })),
 );
 const ExamManagement = lazy(() =>
-  import("@/components/ExamManagement").then((module) => ({
+  dashboardModuleLoaders.exams().then((module) => ({
     default: module.ExamManagement,
   })),
 );
 const TimetableManagement = lazy(() =>
-  import("@/components/TimetableManagement").then((module) => ({
+  dashboardModuleLoaders.timetable().then((module) => ({
     default: module.TimetableManagement,
   })),
 );
-const SchoolAdminManagement = lazy(() => import("@/components/SchoolAdminManagement"));
-const TeacherManagement = lazy(() => import("@/components/TeacherManagement"));
-const SchoolManagement = lazy(() => import("@/components/SchoolManagement"));
-const Settings = lazy(() => import("@/components/Settings"));
+const SchoolAdminManagement = lazy(dashboardModuleLoaders.schoolAdmins);
+const TeacherManagement = lazy(dashboardModuleLoaders.teachers);
+const SchoolManagement = lazy(dashboardModuleLoaders.schools);
+const Settings = lazy(dashboardModuleLoaders.settings);
 const ExamMarksEntry = lazy(() =>
-  import("@/components/ExamMarksEntry").then((module) => ({
+  dashboardModuleLoaders.examMarks().then((module) => ({
     default: module.ExamMarksEntry,
   })),
 );
-const SchoolAdminReportsDashboard = lazy(() => import("@/components/SchoolAdminReportsDashboard"));
-const SuperAdminReportsDashboard = lazy(() => import("@/components/SuperAdminReportsDashboard"));
-const TeacherPerformanceReports = lazy(() => import("@/components/TeacherPerformanceReports"));
+const SchoolAdminReportsDashboard = lazy(dashboardModuleLoaders.schoolAdminReports);
+const SuperAdminReportsDashboard = lazy(dashboardModuleLoaders.superAdminReports);
+const TeacherPerformanceReports = lazy(dashboardModuleLoaders.teacherReports);
 const ClassAssignment = lazy(() =>
-  import("@/components/ClassAssignment").then((module) => ({
+  dashboardModuleLoaders.classAssignment().then((module) => ({
     default: module.ClassAssignment,
   })),
 );
 const AcademicOperations = lazy(() =>
-  import("@/components/AcademicOperations").then((module) => ({
+  dashboardModuleLoaders.academicOperations().then((module) => ({
     default: module.AcademicOperations,
   })),
 );
 const BillingManagement = lazy(() =>
-  import("@/components/BillingManagement").then((module) => ({
+  dashboardModuleLoaders.billing().then((module) => ({
     default: module.BillingManagement,
   })),
 );
