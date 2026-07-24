@@ -186,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Create throttled version for realtime-triggered fetches (1 second window)
   const [throttledFetchProfile] = useThrottledFetch(
-    (userId: string) => fetchProfile(userId),
+    fetchProfile,
     1000
   );
 
