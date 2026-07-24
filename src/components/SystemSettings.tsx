@@ -103,7 +103,6 @@ const SystemSettings = () => {
     activeSchools: 0,
     pendingApplications: 0,
   });
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [auditLogs, setAuditLogs] = useState<AuditLogView[]>([]);
   const [systemConfig, setSystemConfig] = useState<SystemConfigState>(getDefaultSystemConfig());
@@ -115,9 +114,7 @@ const SystemSettings = () => {
     }
 
     const load = async () => {
-      setLoading(true);
       await Promise.all([fetchSystemStats(), fetchAuditLogs(), fetchSystemConfig()]);
-      setLoading(false);
     };
 
     load();
@@ -733,10 +730,6 @@ const SystemSettings = () => {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <p className="sr-only" role="status" aria-live="polite">
-        {loading ? 'Refreshing live system data' : 'System data is current'}
-      </p>
     </div>
   );
 };

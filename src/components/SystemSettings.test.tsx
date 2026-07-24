@@ -49,8 +49,7 @@ describe('SystemSettings refresh stability', () => {
     });
 
     expect(tableApi.count).toHaveBeenCalledTimes(6);
-    expect(screen.getByRole('status')).toHaveClass('sr-only');
-    expect(screen.getByRole('status')).toHaveTextContent('System data is current');
+    expect(screen.queryByText(/Refreshing live system data/i)).not.toBeInTheDocument();
 
     authState.profile = { ...authState.profile };
     rerender(<SystemSettings />);
@@ -60,6 +59,6 @@ describe('SystemSettings refresh stability', () => {
     });
 
     expect(tableApi.count).toHaveBeenCalledTimes(6);
-    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(screen.queryByText(/Refreshing live system data/i)).not.toBeInTheDocument();
   });
 });
