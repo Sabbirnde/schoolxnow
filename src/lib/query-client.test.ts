@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   invalidateSchoolAdminTableMutation,
+  optimisticallyUpdateStudentCounts,
   queryClient,
   schoolAdminQueryKeys,
 } from '@/lib/query-client';
@@ -30,7 +31,7 @@ describe('school-admin query caching', () => {
     ]);
   });
 
-  it('invalidates only the affected school resource and dashboard', async () => {
+  it('invalidates only the affected school resource without refreshing dashboards', async () => {
     const schoolOneDashboard = schoolAdminQueryKeys.dashboard('school-1');
     const schoolTwoDashboard = schoolAdminQueryKeys.dashboard('school-2');
     const schoolOneStudents = schoolAdminQueryKeys.students('school-1', { page: 1 });
@@ -43,10 +44,48 @@ describe('school-admin query caching', () => {
 
     await invalidateSchoolAdminTableMutation('students', { school_id: 'school-1' });
 
-    expect(queryClient.getQueryState(schoolOneDashboard)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(schoolOneDashboard)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(schoolOneStudents)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(schoolTwoDashboard)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(schoolOneAttendance)?.isInvalidated).toBe(false);
+  });
+
+  it('updates student counts optimistically and can roll back a failed request', () => {
+    const dashboard = schoolAdminQueryKeys.dashboard('school-1');
+    queryClient.setQueryData(dashboard, {
+      stats: { totalStudents: 10, activeStudents: 8, totalTeachers: 3 },
+    });
+
+    const rollback = optimisticallyUpdateStudentCounts('create', {
+      school_id: 'school-1',
+      status: 'active',
+    });
+
+    expect(queryClient.getQueryData(dashboard)).toEqual({
+      stats: { totalStudents: 11, activeStudents: 9, totalTeachers: 3 },
+    });
+
+    rollback();
+    expect(queryClient.getQueryData(dashboard)).toEqual({
+      stats: { totalStudents: 10, activeStudents: 8, totalTeachers: 3 },
+    });
+  });
+
+  it('reconciles active counts from previous and next student status', () => {
+    const dashboard = schoolAdminQueryKeys.dashboard('school-1');
+    queryClient.setQueryData(dashboard, {
+      stats: { totalStudents: 10, activeStudents: 8 },
+    });
+
+    optimisticallyUpdateStudentCounts(
+      'update',
+      { status: 'inactive' },
+      { school_id: 'school-1', status: 'active' },
+    );
+
+    expect(queryClient.getQueryData(dashboard)).toEqual({
+      stats: { totalStudents: 10, activeStudents: 7 },
+    });
   });
 
   it('does not invalidate the dashboard for an unrelated small mutation', async () => {

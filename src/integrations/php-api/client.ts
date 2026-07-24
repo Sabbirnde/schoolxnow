@@ -1,4 +1,7 @@
-import { invalidateSchoolAdminTableMutation } from '@/lib/query-client';
+import {
+  invalidateSchoolAdminTableMutation,
+  optimisticallyUpdateStudentCounts,
+} from '@/lib/query-client';
 
 type ApiErrorBody = {
   error?: {
@@ -450,29 +453,53 @@ export const phpApi = {
       },
 
       async create(input: Partial<T>) {
-        const result = await request<T>(`/tables/${encodeURIComponent(table)}`, {
-          method: 'POST',
-          body: JSON.stringify(input),
-        });
-        await invalidateSchoolAdminTableMutation(table, result, input);
-        return result;
+        const rollback = table === 'students'
+          ? optimisticallyUpdateStudentCounts('create', input)
+          : undefined;
+        try {
+          const result = await request<T>(`/tables/${encodeURIComponent(table)}`, {
+            method: 'POST',
+            body: JSON.stringify(input),
+          });
+          await invalidateSchoolAdminTableMutation(table, result, input);
+          return result;
+        } catch (error) {
+          rollback?.();
+          throw error;
+        }
       },
 
-      async update(id: string, input: Partial<T>) {
-        const result = await request<T>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
-          method: 'PATCH',
-          body: JSON.stringify(input),
-        });
-        await invalidateSchoolAdminTableMutation(table, result, input);
-        return result;
+      async update(id: string, input: Partial<T>, previous?: Partial<T>) {
+        const rollback = table === 'students'
+          ? optimisticallyUpdateStudentCounts('update', input, previous)
+          : undefined;
+        try {
+          const result = await request<T>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(input),
+          });
+          await invalidateSchoolAdminTableMutation(table, result, input, previous);
+          return result;
+        } catch (error) {
+          rollback?.();
+          throw error;
+        }
       },
 
-      async delete(id: string) {
-        const result = await request<void>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
-          method: 'DELETE',
-        });
-        await invalidateSchoolAdminTableMutation(table);
-        return result;
+      async delete(id: string, previous?: Partial<T>) {
+        const rollback = table === 'students'
+          ? optimisticallyUpdateStudentCounts('delete', undefined, previous)
+          : undefined;
+        try {
+          const result = await request<void>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+          });
+          await invalidateSchoolAdminTableMutation(table, previous);
+          return result;
+        } catch (error) {
+          rollback?.();
+          throw error;
+        }
       },
     };
   },

@@ -93,6 +93,7 @@ export const schoolAdminQueryKeys = {
   all: ['school-admin'] as const,
   school: (schoolId: string) => ['school-admin', schoolId] as const,
   dashboard: (schoolId: string) => ['school-admin', schoolId, 'dashboard'] as const,
+  studentsRoot: (schoolId: string) => ['school-admin', schoolId, 'students'] as const,
   students: (schoolId: string, filters: SchoolAdminFilters = {}) =>
     ['school-admin', schoolId, 'students', stableFilters(filters)] as const,
   attendance: (schoolId: string, date: string) =>
@@ -100,17 +101,6 @@ export const schoolAdminQueryKeys = {
   resource: (schoolId: string, resource: string) =>
     ['school-admin', schoolId, resource] as const,
 };
-
-const dashboardAffectingTables = new Set([
-  'students',
-  'teachers',
-  'classes',
-  'subjects',
-  'attendance',
-  'exams',
-  'admission_applications',
-  'audit_logs',
-]);
 
 const inferSchoolId = (...values: unknown[]) => {
   for (const value of values) {
@@ -127,26 +117,68 @@ export async function invalidateSchoolAdminTableMutation(
   ...records: unknown[]
 ) {
   const schoolId = inferSchoolId(...records);
-  const matches = (queryKey: readonly unknown[], resource: string) =>
-    queryKey[0] === 'school-admin' &&
-    (!schoolId || queryKey[1] === schoolId) &&
-    queryKey[2] === resource;
+  await queryClient.invalidateQueries({
+    queryKey: schoolId
+      ? schoolAdminQueryKeys.resource(schoolId, table)
+      : schoolAdminQueryKeys.all,
+    predicate: schoolId
+      ? undefined
+      : (query) => query.queryKey[0] === 'school-admin' && query.queryKey[2] === table,
+  });
+}
 
-  const invalidations = [
-    queryClient.invalidateQueries({
-      predicate: (query) => matches(query.queryKey, table),
-    }),
-  ];
+type StudentMutation = 'create' | 'update' | 'delete';
+type StudentLike = {
+  school_id?: unknown;
+  status?: unknown;
+};
+type DashboardLike = {
+  stats?: {
+    totalStudents?: number;
+    activeStudents?: number;
+  };
+};
 
-  if (dashboardAffectingTables.has(table)) {
-    invalidations.push(
-      queryClient.invalidateQueries({
-        predicate: (query) => matches(query.queryKey, 'dashboard'),
-      }),
-    );
+export function optimisticallyUpdateStudentCounts(
+  operation: StudentMutation,
+  next?: StudentLike,
+  previous?: StudentLike,
+) {
+  const schoolId = inferSchoolId(next, previous);
+  const snapshots: Array<{ queryKey: readonly unknown[]; data: unknown }> = [];
+  const dashboards = queryClient.getQueriesData<DashboardLike>({
+    predicate: (query) =>
+      query.queryKey[0] === 'school-admin' &&
+      query.queryKey[2] === 'dashboard' &&
+      (!schoolId || query.queryKey[1] === schoolId),
+  });
+
+  const activeDelta =
+    operation === 'create'
+      ? (next?.status === 'active' ? 1 : 0)
+      : operation === 'delete'
+        ? (previous?.status === 'active' ? -1 : 0)
+        : Number(next?.status === 'active') - Number(previous?.status === 'active');
+  const totalDelta = operation === 'create' ? 1 : operation === 'delete' ? -1 : 0;
+
+  for (const [queryKey, data] of dashboards) {
+    if (!data?.stats) continue;
+    snapshots.push({ queryKey, data });
+    queryClient.setQueryData<DashboardLike>(queryKey, {
+      ...data,
+      stats: {
+        ...data.stats,
+        totalStudents: Math.max(0, Number(data.stats.totalStudents || 0) + totalDelta),
+        activeStudents: Math.max(0, Number(data.stats.activeStudents || 0) + activeDelta),
+      },
+    });
   }
 
-  await Promise.all(invalidations);
+  return () => {
+    for (const snapshot of snapshots) {
+      queryClient.setQueryData(snapshot.queryKey, snapshot.data);
+    }
+  };
 }
 
 // Cache time presets for different data types

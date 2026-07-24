@@ -621,7 +621,11 @@ export function StudentManagement() {
       };
 
       if (isPhpBackend) {
-        await phpApi.table<Student>('students').update(editingStudent.id, studentUpdate as Partial<Student>);
+        await phpApi.table<Student>('students').update(
+          editingStudent.id,
+          studentUpdate as Partial<Student>,
+          editingStudent,
+        );
 
         toast({
           title: "Success",
@@ -705,7 +709,7 @@ export function StudentManagement() {
       }
 
       if (isPhpBackend) {
-        await phpApi.table<Student>('students').delete(studentId);
+        await phpApi.table<Student>('students').delete(studentId, student);
 
         toast({
           title: "Success",
