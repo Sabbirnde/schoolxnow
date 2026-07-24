@@ -1,8 +1,8 @@
+import { useRef } from 'react';
 import { useCachedQuery } from '@/hooks/useCachedQuery';
 import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { queryKeys } from '@/lib/query-client';
 import type { Database } from '@/integrations/database/types';
 import { dashboardRefreshIntervals } from '@/lib/dashboard-refresh';
 
@@ -77,6 +77,8 @@ export const defaultSuperAdminDashboardData: SuperAdminDashboardData = {
   schoolTypeStats: defaultSuperAdminSchoolTypeStats,
   recentActivity: [],
 };
+
+const superAdminDashboardQueryKey = ['analytics', 'super-admin-dashboard'] as const;
 
 const readCount = (response: CountResponse): number => {
   if (response.error) throw response.error;
@@ -255,22 +257,28 @@ export async function fetchSuperAdminDashboardData(): Promise<SuperAdminDashboar
 }
 
 export function useSuperAdminDashboardData() {
+  const lastSuccessfulData = useRef<SuperAdminDashboardData | null>(null);
   const query = useCachedQuery(
     'realtime',
-    [...queryKeys.analytics('super-admin-dashboard', {})],
+    superAdminDashboardQueryKey,
     fetchSuperAdminDashboardData,
     {
       retry: 2,
       refetchInterval: dashboardRefreshIntervals.superAdmin,
       refetchIntervalInBackground: false,
+      placeholderData: (previousData) => previousData,
     }
   );
 
-  const data = query.data || defaultSuperAdminDashboardData;
+  if (query.data) {
+    lastSuccessfulData.current = query.data;
+  }
+
+  const data = query.data || lastSuccessfulData.current || defaultSuperAdminDashboardData;
 
   return {
     ...data,
-    loading: query.isLoading,
+    loading: query.isLoading && !lastSuccessfulData.current,
     fetching: query.isFetching,
     error: query.error,
     refetch: query.refetch,
