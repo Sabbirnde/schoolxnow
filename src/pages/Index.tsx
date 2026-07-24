@@ -22,6 +22,7 @@ import TeacherDashboard from "@/components/TeacherDashboard";
 import { ExamMarksEntry } from "@/components/ExamMarksEntry";
 import { ReportsAnalytics } from "@/components/ReportsAnalytics";
 import SchoolAdminReportsDashboard from "@/components/SchoolAdminReportsDashboard";
+import SuperAdminReportsDashboard from "@/components/SuperAdminReportsDashboard";
 import AcademicReports from "@/components/AcademicReports";
 import TeacherPerformanceReports from "@/components/TeacherPerformanceReports";
 import { ClassAssignment } from "@/components/ClassAssignment";
@@ -94,7 +95,7 @@ const Index = () => {
         case 'students': return <StudentManagement />;
         case 'schools': return <SchoolManagement />;
         case 'users': return <SchoolAdminManagement />; // Super admin manages school admins
-        case 'reports': return <SchoolAdminReportsDashboard />;
+        case 'reports': return <SuperAdminReportsDashboard />;
         case 'settings': return <Settings />;
         case 'dashboard':
         default: return <SuperAdminDashboard />;

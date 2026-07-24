@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 type MockAuthState = {
@@ -38,8 +38,17 @@ vi.mock('@/hooks/useModuleAccess', () => ({
 }));
 
 vi.mock('@/components/Layout', () => ({
-  Layout: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="layout">{children}</div>
+  Layout: ({
+    children,
+    setActiveModule,
+  }: {
+    children: React.ReactNode;
+    setActiveModule: (moduleId: string) => void;
+  }) => (
+    <div data-testid="layout">
+      <button onClick={() => setActiveModule('reports')}>Open reports</button>
+      {children}
+    </div>
   ),
 }));
 
@@ -104,6 +113,10 @@ vi.mock('@/components/SchoolAdminDashboard', () => ({
   default: () => <div data-testid="school-admin-dashboard">School Admin Dashboard</div>,
 }));
 
+vi.mock('@/components/SuperAdminReportsDashboard', () => ({
+  default: () => <div data-testid="super-admin-reports">Super Admin Reports</div>,
+}));
+
 vi.mock('@/components/TeacherDashboard', () => ({
   default: () => <div data-testid="teacher-dashboard">Teacher Dashboard</div>,
 }));
@@ -162,6 +175,22 @@ describe('Index routing regression', () => {
     renderIndex();
 
     expect(screen.getByTestId('school-admin-dashboard')).toBeInTheDocument();
+  });
+
+  it('routes super admins to platform reports instead of school-scoped reports', () => {
+    mockAuthState = {
+      ...mockAuthState,
+      profile: {
+        ...mockAuthState.profile!,
+        role: 'super_admin',
+        school_id: null,
+      },
+    };
+    renderIndex();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open reports' }));
+
+    expect(screen.getByTestId('super-admin-reports')).toBeInTheDocument();
   });
 
   it('shows loading skeleton while profile is still resolving for authenticated user', () => {
