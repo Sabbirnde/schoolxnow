@@ -45,6 +45,21 @@ function checkFile(file) {
   return exists;
 }
 
+function checkVercelConfig() {
+  try {
+    const configPath = path.join(root, 'vercel.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const hasSpaFallback = Array.isArray(config.rewrites) && config.rewrites.some(
+      (rewrite) => rewrite?.source === '/(.*)' && rewrite?.destination === '/index.html',
+    );
+    console.log(`${hasSpaFallback ? 'OK  ' : 'MISS'} vercel.json SPA fallback rewrite`);
+    return hasSpaFallback;
+  } catch (error) {
+    console.log(`MISS vercel.json is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
 function checkEnv(env) {
   if (!env) {
     console.log(`MISS ${envPath}`);
@@ -85,6 +100,7 @@ function checkEnv(env) {
 
 console.log('SchoolXNow Vercel deployment check\n');
 let ok = requiredFiles.every(checkFile);
+ok = checkVercelConfig() && ok;
 
 console.log('\nEnvironment');
 ok = checkEnv(readEnvFile(path.resolve(root, envPath))) && ok;
