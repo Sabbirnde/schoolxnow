@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,10 +34,13 @@ import {
   type SuperAdminSchool as School,
 } from '@/hooks/useSuperAdminDashboardData';
 import { handleApiError } from '@/lib/api-error-handler';
-import SchoolAdminManagement from '@/components/SchoolAdminManagement';
-import SchoolManagement from '@/components/SchoolManagement';
-import SystemSettings from '@/components/SystemSettings';
-import AuditLogViewer from '@/components/AuditLogViewer';
+
+const SchoolAdminManagement = lazy(() => import('@/components/SchoolAdminManagement'));
+const SchoolManagement = lazy(() => import('@/components/SchoolManagement'));
+const SystemSettings = lazy(() => import('@/components/SystemSettings'));
+const AuditLogViewer = lazy(() => import('@/components/AuditLogViewer'));
+
+const AdminModuleFallback = () => <DashboardSkeleton />;
 
 const SuperAdminDashboard = () => {
   const {
@@ -573,19 +576,27 @@ const SuperAdminDashboard = () => {
         </TabsContent>
 
         <TabsContent value="schools">
-          <SchoolManagement />
+          <Suspense fallback={<AdminModuleFallback />}>
+            <SchoolManagement />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="users">
-          <SchoolAdminManagement />
+          <Suspense fallback={<AdminModuleFallback />}>
+            <SchoolAdminManagement />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="audit">
-          <AuditLogViewer />
+          <Suspense fallback={<AdminModuleFallback />}>
+            <AuditLogViewer />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="settings">
-          <SystemSettings />
+          <Suspense fallback={<AdminModuleFallback />}>
+            <SystemSettings />
+          </Suspense>
         </TabsContent>
       </Tabs>
 

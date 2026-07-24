@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ExamMarksEntry } from '@/components/ExamMarksEntry';
 import { QuickAttendanceSheet } from '@/components/QuickAttendanceSheet';
 import { ClassPerformanceAnalytics } from '@/components/ClassPerformanceAnalytics';
 import { PendingAssignmentCard } from '@/components/PendingAssignmentCard';
@@ -36,6 +35,12 @@ import { useToast } from '@/hooks/use-toast';
 import { useTeacherDashboardData, type TodayClass } from '@/hooks/useTeacherDashboardData';
 import { DashboardRefreshStatus } from '@/components/DashboardRefreshStatus';
 import { handleApiError } from '@/lib/api-error-handler';
+
+const ExamMarksEntry = lazy(() =>
+  import('@/components/ExamMarksEntry').then((module) => ({
+    default: module.ExamMarksEntry,
+  })),
+);
 
 // Swipeable Class Card Component
 const SwipeableClassCard = ({ classItem, onSwipe, getClassStatusIcon, onTakeAttendance }: { 
@@ -1001,7 +1006,9 @@ const TeacherDashboard = ({ setActiveModule }: TeacherDashboardProps) => {
             </DialogTitle>
           </DialogHeader>
           <div className="p-4 md:p-6">
-            <ExamMarksEntry onComplete={() => setExamMarksDialogOpen(false)} />
+            <Suspense fallback={<p className="py-8 text-center text-sm text-muted-foreground">Loading marks entry...</p>}>
+              <ExamMarksEntry onComplete={() => setExamMarksDialogOpen(false)} />
+            </Suspense>
           </div>
         </DialogContent>
       </Dialog>

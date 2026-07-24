@@ -177,7 +177,7 @@ describe('Index routing regression', () => {
     expect(screen.getByTestId('school-admin-dashboard')).toBeInTheDocument();
   });
 
-  it('routes super admins to platform reports instead of school-scoped reports', () => {
+  it('routes super admins to platform reports instead of school-scoped reports', async () => {
     mockAuthState = {
       ...mockAuthState,
       profile: {
@@ -190,7 +190,7 @@ describe('Index routing regression', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open reports' }));
 
-    expect(screen.getByTestId('super-admin-reports')).toBeInTheDocument();
+    expect(await screen.findByTestId('super-admin-reports')).toBeInTheDocument();
   });
 
   it('shows loading skeleton while profile is still resolving for authenticated user', () => {

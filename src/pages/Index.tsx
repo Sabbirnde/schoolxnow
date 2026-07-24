@@ -5,28 +5,25 @@ import { useModuleAccess } from "@/hooks/useModuleAccess";
 import { Layout } from "@/components/Layout";
 import { Dashboard } from "@/components/Dashboard";
 import { AccessDeniedFallback, ModuleLoadingSkeleton } from "@/components/AccessDeniedFallback";
-import { StudentManagement } from "@/components/StudentManagement";
-import { ClassManagement } from "@/components/ClassManagement";
-import { SubjectManagement } from "@/components/SubjectManagement";
-import { TimetableManagement } from "@/components/TimetableManagement";
-import UserManagement from "@/components/UserManagement";
-import SchoolAdminManagement from "@/components/SchoolAdminManagement";
-import TeacherManagement from "@/components/TeacherManagement";
-import SchoolManagement from "@/components/SchoolManagement";
-import Settings from "@/components/Settings";
 import SuperAdminDashboard from "@/components/SuperAdminDashboard";
 import SchoolAdminDashboard from "@/components/SchoolAdminDashboard";
 import TeacherDashboard from "@/components/TeacherDashboard";
-import { ExamMarksEntry } from "@/components/ExamMarksEntry";
-import { ReportsAnalytics } from "@/components/ReportsAnalytics";
-import SchoolAdminReportsDashboard from "@/components/SchoolAdminReportsDashboard";
-import SuperAdminReportsDashboard from "@/components/SuperAdminReportsDashboard";
-import AcademicReports from "@/components/AcademicReports";
-import TeacherPerformanceReports from "@/components/TeacherPerformanceReports";
-import { ClassAssignment } from "@/components/ClassAssignment";
-import { AcademicOperations } from "@/components/AcademicOperations";
-import { BillingManagement } from "@/components/BillingManagement";
 
+const StudentManagement = lazy(() =>
+  import("@/components/StudentManagement").then((module) => ({
+    default: module.StudentManagement,
+  })),
+);
+const ClassManagement = lazy(() =>
+  import("@/components/ClassManagement").then((module) => ({
+    default: module.ClassManagement,
+  })),
+);
+const SubjectManagement = lazy(() =>
+  import("@/components/SubjectManagement").then((module) => ({
+    default: module.SubjectManagement,
+  })),
+);
 const AttendanceManagement = lazy(() =>
   import("@/components/AttendanceManagement").then((module) => ({
     default: module.AttendanceManagement,
@@ -35,6 +32,38 @@ const AttendanceManagement = lazy(() =>
 const ExamManagement = lazy(() =>
   import("@/components/ExamManagement").then((module) => ({
     default: module.ExamManagement,
+  })),
+);
+const TimetableManagement = lazy(() =>
+  import("@/components/TimetableManagement").then((module) => ({
+    default: module.TimetableManagement,
+  })),
+);
+const SchoolAdminManagement = lazy(() => import("@/components/SchoolAdminManagement"));
+const TeacherManagement = lazy(() => import("@/components/TeacherManagement"));
+const SchoolManagement = lazy(() => import("@/components/SchoolManagement"));
+const Settings = lazy(() => import("@/components/Settings"));
+const ExamMarksEntry = lazy(() =>
+  import("@/components/ExamMarksEntry").then((module) => ({
+    default: module.ExamMarksEntry,
+  })),
+);
+const SchoolAdminReportsDashboard = lazy(() => import("@/components/SchoolAdminReportsDashboard"));
+const SuperAdminReportsDashboard = lazy(() => import("@/components/SuperAdminReportsDashboard"));
+const TeacherPerformanceReports = lazy(() => import("@/components/TeacherPerformanceReports"));
+const ClassAssignment = lazy(() =>
+  import("@/components/ClassAssignment").then((module) => ({
+    default: module.ClassAssignment,
+  })),
+);
+const AcademicOperations = lazy(() =>
+  import("@/components/AcademicOperations").then((module) => ({
+    default: module.AcademicOperations,
+  })),
+);
+const BillingManagement = lazy(() =>
+  import("@/components/BillingManagement").then((module) => ({
+    default: module.BillingManagement,
   })),
 );
 

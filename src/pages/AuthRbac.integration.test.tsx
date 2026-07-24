@@ -272,7 +272,7 @@ describe('Auth/RBAC integration', () => {
     }));
   });
 
-  it('renders the super admin dashboard and routes users module to school admin management', () => {
+  it('renders the super admin dashboard and routes users module to school admin management', async () => {
     mockAuthState = authStateFor('super_admin');
 
     renderDashboard();
@@ -281,11 +281,11 @@ describe('Auth/RBAC integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Users' }));
 
-    expect(screen.getByTestId('school-admin-management')).toBeInTheDocument();
+    expect(await screen.findByTestId('school-admin-management')).toBeInTheDocument();
     expect(screen.queryByTestId('teacher-management')).not.toBeInTheDocument();
   });
 
-  it('renders the school admin dashboard and routes users module to teacher management', () => {
+  it('renders the school admin dashboard and routes users module to teacher management', async () => {
     mockAuthState = authStateFor('school_admin');
 
     renderDashboard();
@@ -294,21 +294,21 @@ describe('Auth/RBAC integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Users' }));
 
-    expect(screen.getByTestId('teacher-management')).toBeInTheDocument();
+    expect(await screen.findByTestId('teacher-management')).toBeInTheDocument();
     expect(screen.queryByTestId('school-admin-management')).not.toBeInTheDocument();
   });
 
-  it('routes school administrators to the academic operations workspace', () => {
+  it('routes school administrators to the academic operations workspace', async () => {
     mockAuthState = authStateFor('school_admin');
     renderDashboard();
 
     fireEvent.click(screen.getByRole('button', { name: 'Academic Operations' }));
 
-    expect(screen.getByTestId('academic-operations')).toBeInTheDocument();
+    expect(await screen.findByTestId('academic-operations')).toBeInTheDocument();
     expect(mockCanAccessModule).toHaveBeenCalledWith('academic-operations');
   });
 
-  it('renders the teacher dashboard and routes exam marks to marks entry', () => {
+  it('renders the teacher dashboard and routes exam marks to marks entry', async () => {
     mockAuthState = authStateFor('teacher');
 
     renderDashboard();
@@ -317,7 +317,7 @@ describe('Auth/RBAC integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Exam Marks' }));
 
-    expect(screen.getByTestId('exam-marks-entry')).toBeInTheDocument();
+    expect(await screen.findByTestId('exam-marks-entry')).toBeInTheDocument();
   });
 
   it('redirects unauthenticated dashboard users to the landing page', () => {
