@@ -4,8 +4,8 @@ import { useSchoolStats, type SchoolStats } from '@/hooks/useSchoolStats';
 import { apiClient } from '@/integrations/php-api/api-client';
 import { isPhpBackend } from '@/integrations/backend/provider';
 import { phpApi } from '@/integrations/php-api/client';
-import { queryKeys } from '@/lib/query-client';
-import { dashboardRefreshIntervals } from '@/lib/dashboard-refresh';
+import { schoolAdminQueryKeys } from '@/lib/query-client';
+import { dashboardRefreshIntervals, pollOnlyWhenVisible } from '@/lib/dashboard-refresh';
 
 export interface SchoolAdminSchoolInfo {
   name: string;
@@ -128,13 +128,15 @@ export function useSchoolAdminDashboardData(schoolId?: string | null) {
   }, [fetchSchoolStats, schoolId]);
 
   const query = useCachedQuery(
-    'realtime',
-    [...queryKeys.analytics('school-admin-dashboard', { schoolId })],
+    'dashboard',
+    schoolAdminQueryKeys.dashboard(schoolId || 'unresolved'),
     queryFn,
     {
       enabled: Boolean(schoolId),
       retry: 2,
-      refetchInterval: dashboardRefreshIntervals.schoolAdmin,
+      placeholderData: (previousData, previousQuery) =>
+        previousQuery?.queryKey[1] === schoolId ? previousData : undefined,
+      refetchInterval: pollOnlyWhenVisible(dashboardRefreshIntervals.schoolAdmin),
       refetchIntervalInBackground: false,
     }
   );

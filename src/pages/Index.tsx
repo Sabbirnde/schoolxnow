@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useModuleAccess } from "@/hooks/useModuleAccess";
@@ -8,7 +8,7 @@ import { AccessDeniedFallback, ModuleLoadingSkeleton } from "@/components/Access
 import SuperAdminDashboard from "@/components/SuperAdminDashboard";
 import SchoolAdminDashboard from "@/components/SchoolAdminDashboard";
 import TeacherDashboard from "@/components/TeacherDashboard";
-import { dashboardModuleLoaders } from "@/lib/dashboardModuleLoaders";
+import { dashboardModuleLoaders, prefetchSchoolAdminModulesWhenIdle } from "@/lib/dashboardModuleLoaders";
 
 const StudentManagement = lazy(() =>
   dashboardModuleLoaders.students().then((module) => ({
@@ -74,6 +74,11 @@ const Index = () => {
   const [activeModule, setActiveModule] = useState('dashboard');
   const [accessDenied, setAccessDenied] = useState(false);
   const [deniedModule, setDeniedModule] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile?.role !== "school_admin" || activeModule !== "dashboard") return;
+    return prefetchSchoolAdminModulesWhenIdle();
+  }, [activeModule, profile?.role]);
 
   // Handle module access validation
   const handleSetActiveModule = useCallback(

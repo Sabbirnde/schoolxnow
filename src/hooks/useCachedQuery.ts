@@ -6,7 +6,7 @@ import { cacheConfig } from '@/lib/query-client';
  * Usage: const { data } = useCachedQuery('static', ['key'], fetchFn);
  */
 export function useCachedQuery<TData = unknown, TError = Error>(
-  cacheType: 'static' | 'semiStatic' | 'dynamic' | 'realtime',
+  cacheType: 'dashboard' | 'static' | 'semiStatic' | 'dynamic' | 'realtime',
   queryKey: QueryKey,
   queryFn: () => Promise<TData>,
   options?: Omit<UseQueryOptions<TData, TError>, 'queryKey' | 'queryFn'>

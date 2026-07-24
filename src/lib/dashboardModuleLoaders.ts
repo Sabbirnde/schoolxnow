@@ -53,3 +53,21 @@ export const preloadDashboardModule = (moduleId: string, role: UserRole) => {
     // Navigation remains the retry path if an intent-based preload fails.
   });
 };
+
+export const prefetchSchoolAdminModulesWhenIdle = () => {
+  if (typeof window === "undefined") return () => undefined;
+
+  const prefetch = () => {
+    ["students", "attendance", "classes"].forEach((moduleId) =>
+      preloadDashboardModule(moduleId, "school_admin"),
+    );
+  };
+
+  if ("requestIdleCallback" in window) {
+    const idleId = window.requestIdleCallback(prefetch, { timeout: 3_000 });
+    return () => window.cancelIdleCallback(idleId);
+  }
+
+  const timeoutId = window.setTimeout(prefetch, 1_500);
+  return () => window.clearTimeout(timeoutId);
+};

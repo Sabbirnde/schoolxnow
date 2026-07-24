@@ -1,4 +1,4 @@
-import { queryClient } from '@/lib/query-client';
+import { invalidateSchoolAdminTableMutation } from '@/lib/query-client';
 
 type ApiErrorBody = {
   error?: {
@@ -168,14 +168,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     throw new Error(body.error?.message || `API request failed with status ${response.status}`);
-  }
-
-  const method = String(options.method || 'GET').toUpperCase();
-  const changesDashboardData =
-    ['POST', 'PATCH', 'DELETE'].includes(method) &&
-    (path.startsWith('/tables/') || path === '/auth/profile');
-  if (changesDashboardData) {
-    await queryClient.invalidateQueries({ queryKey: ['analytics'] });
   }
 
   return body.data;
@@ -457,24 +449,30 @@ export const phpApi = {
         return request<T>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`);
       },
 
-      create(input: Partial<T>) {
-        return request<T>(`/tables/${encodeURIComponent(table)}`, {
+      async create(input: Partial<T>) {
+        const result = await request<T>(`/tables/${encodeURIComponent(table)}`, {
           method: 'POST',
           body: JSON.stringify(input),
         });
+        await invalidateSchoolAdminTableMutation(table, result, input);
+        return result;
       },
 
-      update(id: string, input: Partial<T>) {
-        return request<T>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+      async update(id: string, input: Partial<T>) {
+        const result = await request<T>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
           method: 'PATCH',
           body: JSON.stringify(input),
         });
+        await invalidateSchoolAdminTableMutation(table, result, input);
+        return result;
       },
 
-      delete(id: string) {
-        return request<void>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
+      async delete(id: string) {
+        const result = await request<void>(`/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`, {
           method: 'DELETE',
         });
+        await invalidateSchoolAdminTableMutation(table);
+        return result;
       },
     };
   },
