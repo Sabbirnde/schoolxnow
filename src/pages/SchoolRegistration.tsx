@@ -12,7 +12,7 @@ import { phpApi } from "@/integrations/php-api/client";
 import type { Database } from "@/integrations/database/types";
 import { ArrowLeft } from "lucide-react";
 import { z } from "zod";
-import logo from "@/assets/logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const schoolRegistrationSchema = z.object({
   schoolName: z.string().min(2, "School name must be at least 2 characters"),
@@ -382,7 +382,11 @@ const SchoolRegistration = () => {
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-xl sm:rounded-2xl blur-md sm:blur-lg group-hover:blur-xl transition-all duration-300" />
             <div className="relative bg-gradient-to-br from-primary/10 to-accent/10 p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 border-primary/30 group-hover:border-primary/50 transition-all duration-300 shadow-elegant group-hover:scale-105">
-              <img src={logo} alt="SchoolXNow Logo" className="h-12 w-12 sm:h-14 sm:w-14 object-contain drop-shadow-xl" />
+              <BrandLogo
+                alt="SchoolXNow Logo"
+                className="h-12 w-12 drop-shadow-xl sm:h-14 sm:w-14"
+                sizes="(min-width: 640px) 56px, 48px"
+              />
             </div>
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-foreground text-center sm:text-left">

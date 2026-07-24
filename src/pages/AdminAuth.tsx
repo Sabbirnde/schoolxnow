@@ -12,7 +12,7 @@ import { PasswordStrengthInput, validatePassword } from "@/components/PasswordSt
 import { apiClient } from "@/integrations/php-api/api-client";
 import { isPhpBackend } from "@/integrations/backend/provider";
 import { phpApi } from "@/integrations/php-api/client";
-import logo from "@/assets/logo.png";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const AdminAuth = () => {
   const navigate = useNavigate();
@@ -206,7 +206,11 @@ const AdminAuth = () => {
             <div className="relative group">
               <div className="absolute inset-0 bg-gradient-to-br from-red-400 to-red-600 rounded-2xl blur-xl opacity-40 group-hover:opacity-60 transition-opacity duration-300" />
               <div className="relative bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 p-4 rounded-2xl border-2 border-red-300 dark:border-red-700 shadow-elegant group-hover:scale-105 transition-transform duration-300">
-                <img src={logo} alt="SchoolXNow Logo" className="h-14 w-14 object-contain drop-shadow-xl" />
+                <BrandLogo
+                  alt="SchoolXNow Logo"
+                  className="h-14 w-14 drop-shadow-xl"
+                  sizes="56px"
+                />
               </div>
             </div>
           </div>

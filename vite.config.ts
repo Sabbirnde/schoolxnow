@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => ({
     outDir: "dist",
     sourcemap: false,
     minify: "terser",
+    assetsInlineLimit: 0,
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
