@@ -6,14 +6,24 @@ import {
 import type { SchoolStats } from './useSchoolStats';
 
 const fromMock = vi.hoisted(() => vi.fn());
+const dashboardMock = vi.hoisted(() => vi.fn());
+const backendMode = vi.hoisted(() => ({ mysql: false }));
 
 vi.mock('@/integrations/backend/provider', () => ({
-  isPhpBackend: false,
+  get isPhpBackend() {
+    return backendMode.mysql;
+  },
 }));
 
 vi.mock('@/integrations/php-api/api-client', () => ({
   apiClient: {
     from: fromMock,
+  },
+}));
+
+vi.mock('@/integrations/php-api/client', () => ({
+  phpApi: {
+    schoolAdminDashboard: dashboardMock,
   },
 }));
 
@@ -28,6 +38,7 @@ function deferred<T>() {
 describe('fetchSchoolAdminDashboardData optimization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    backendMode.mysql = false;
   });
 
   it('starts school, statistics, and recent-student requests concurrently', async () => {
@@ -91,7 +102,48 @@ describe('fetchSchoolAdminDashboardData optimization', () => {
     await expect(resultPromise).resolves.toMatchObject({
       schoolInfo: { name: 'Test School' },
       stats: { totalStudents: 100 },
-      recentActivities: [],
+      recentAdmissions: [],
     });
+  });
+
+  it('uses one consolidated request for MySQL school-admin dashboards', async () => {
+    backendMode.mysql = true;
+    dashboardMock.mockResolvedValue({
+      school: {
+        id: 'school-1',
+        name: 'Test School',
+        name_bangla: null,
+        school_type: 'english_medium',
+      },
+      stats: {
+        totalStudents: 100,
+        activeStudents: 95,
+        totalTeachers: 10,
+        totalClasses: 5,
+        totalSubjects: 8,
+        recentAdmissions: 4,
+      },
+      recentAdmissions: [],
+      tasks: {
+        pendingAttendance: 2,
+        scheduledExams: 1,
+        newAdmissions: 3,
+        pendingApplications: 4,
+      },
+      recentActivity: [],
+    });
+    const fetchSchoolStats = vi.fn();
+
+    await expect(
+      fetchSchoolAdminDashboardData('school-1', fetchSchoolStats),
+    ).resolves.toMatchObject({
+      schoolInfo: { name: 'Test School' },
+      tasks: { pendingAttendance: 2 },
+    });
+
+    expect(dashboardMock).toHaveBeenCalledTimes(1);
+    expect(dashboardMock).toHaveBeenCalledWith('school-1');
+    expect(fetchSchoolStats).not.toHaveBeenCalled();
+    expect(fromMock).not.toHaveBeenCalled();
   });
 });

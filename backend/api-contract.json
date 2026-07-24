@@ -1,5 +1,5 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "primaryBackend": "node",
   "basePath": "/api",
   "requestIdHeader": "X-Request-ID",
@@ -25,6 +25,7 @@
     { "path": "/bootstrap/status", "methods": ["GET"], "auth": false, "envelope": "success" },
     { "path": "/bootstrap/create-super-admin", "methods": ["POST"], "auth": false, "envelope": "success" },
     { "path": "/public/schools", "methods": ["GET"], "auth": false, "envelope": "success" },
+    { "path": "/dashboard/school-admin", "methods": ["GET"], "auth": true, "envelope": "success" },
     { "path": "/tables/{table}", "methods": ["GET", "POST"], "auth": true, "envelope": "success" },
     { "path": "/tables/{table}/count", "methods": ["GET"], "auth": true, "envelope": "success" },
     { "path": "/tables/{table}/{id}", "methods": ["GET", "PATCH", "DELETE"], "auth": true, "envelope": "success" },

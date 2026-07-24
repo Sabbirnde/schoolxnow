@@ -25,7 +25,24 @@ export interface SchoolAdminRecentActivity {
 export interface SchoolAdminDashboardData {
   stats: SchoolStats;
   schoolInfo: SchoolAdminSchoolInfo | null;
-  recentActivities: SchoolAdminRecentActivity[];
+  recentAdmissions: SchoolAdminRecentActivity[];
+  tasks: {
+    pendingAttendance: number;
+    scheduledExams: number;
+    newAdmissions: number;
+    pendingApplications: number;
+  };
+  recentActivity: Array<{
+    id: string;
+    action: string;
+    entity_type: string;
+    entity_id: string | null;
+    timestamp: string;
+    success: boolean;
+    error_message?: string | null;
+    user_id: string;
+    metadata?: unknown;
+  }>;
 }
 
 type FetchSchoolStats = (schoolId: string | null) => Promise<SchoolStats>;
@@ -42,7 +59,14 @@ export const defaultSchoolAdminStats: SchoolStats = {
 export const defaultSchoolAdminDashboardData: SchoolAdminDashboardData = {
   stats: defaultSchoolAdminStats,
   schoolInfo: null,
-  recentActivities: [],
+  recentAdmissions: [],
+  tasks: {
+    pendingAttendance: 0,
+    scheduledExams: 0,
+    newAdmissions: 0,
+    pendingApplications: 0,
+  },
+  recentActivity: [],
 };
 
 export async function fetchSchoolAdminDashboardData(
@@ -50,31 +74,16 @@ export async function fetchSchoolAdminDashboardData(
   fetchSchoolStats: FetchSchoolStats
 ): Promise<SchoolAdminDashboardData> {
   if (isPhpBackend) {
-    const [school, stats, recentStudents, classes] = await Promise.all([
-      phpApi.table<SchoolAdminSchoolInfo & { id: string }>('schools').get(schoolId),
-      fetchSchoolStats(schoolId),
-      phpApi.table<SchoolAdminRecentActivity>('students').list({
-        school_id: schoolId,
-        sort: 'admission_date',
-        order: 'desc',
-        limit: 5,
-      }),
-      phpApi.table<{ id: string; name: string }>('classes').list({
-        school_id: schoolId,
-        limit: 200,
-      }),
-    ]);
-
-    const classById = new Map(classes.map((classItem) => [classItem.id, classItem]));
-    const recentActivities = recentStudents.map((student) => ({
-      ...student,
-      classes: student.class_id ? classById.get(student.class_id) || null : null,
-    }));
-
+    const dashboard = await phpApi.schoolAdminDashboard(schoolId);
     return {
-      stats,
-      schoolInfo: school,
-      recentActivities,
+      stats: dashboard.stats,
+      schoolInfo: dashboard.school,
+      recentAdmissions: dashboard.recentAdmissions,
+      tasks: dashboard.tasks,
+      recentActivity: dashboard.recentActivity.map((entry) => ({
+        ...entry,
+        success: entry.success === true || entry.success === 1,
+      })),
     };
   }
 
@@ -102,7 +111,9 @@ export async function fetchSchoolAdminDashboardData(
   return {
     stats,
     schoolInfo: school,
-    recentActivities: (recentStudents || []) as unknown as SchoolAdminRecentActivity[],
+    recentAdmissions: (recentStudents || []) as unknown as SchoolAdminRecentActivity[],
+    tasks: defaultSchoolAdminDashboardData.tasks,
+    recentActivity: defaultSchoolAdminDashboardData.recentActivity,
   };
 }
 

@@ -1,12 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { apiClient } from "@/integrations/php-api/api-client";
-import { isPhpBackend } from "@/integrations/backend/provider";
-import { phpApi } from "@/integrations/php-api/client";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
 import {
   AlertCircle,
   Calendar,
@@ -14,10 +8,9 @@ import {
   CheckSquare,
   BookOpen,
   ChevronRight,
-  Loader2,
 } from "lucide-react";
 
-interface TodaysTasks {
+export interface TodaysTasks {
   pendingAttendance: number;
   scheduledExams: number;
   newAdmissions: number;
@@ -26,124 +19,10 @@ interface TodaysTasks {
 
 interface TodaysTasksCardProps {
   onNavigate?: (module: string) => void;
+  tasks: TodaysTasks;
 }
 
-export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
-  const { profile } = useAuth();
-  const { toast } = useToast();
-  const [tasks, setTasks] = useState<TodaysTasks>({
-    pendingAttendance: 0,
-    scheduledExams: 0,
-    newAdmissions: 0,
-    pendingApplications: 0,
-  });
-  const [loading, setLoading] = useState(true);
-
-  const fetchTodaysTasks = useCallback(async () => {
-    if (!profile?.school_id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().split('T')[0];
-      const weekLaterStr = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0];
-
-      if (isPhpBackend) {
-        const [classesCount, examsCount, admissionsCount, applicationsCount] = await Promise.all([
-          phpApi.table('classes').count({
-            school_id: profile.school_id,
-            is_active: 1,
-          }),
-          phpApi.table('exams').count({
-            school_id: profile.school_id,
-            is_active: 1,
-            exam_date__gte: todayStr,
-            exam_date__lte: weekLaterStr,
-          }),
-          phpApi.table('students').count({
-            school_id: profile.school_id,
-            status: 'active',
-            admission_date__gte: todayStr,
-          }),
-          phpApi.table('teacher_applications').count({
-            school_id: profile.school_id,
-            status: 'pending',
-          }),
-        ]);
-
-        setTasks({
-          pendingAttendance: classesCount.count,
-          scheduledExams: examsCount.count,
-          newAdmissions: admissionsCount.count,
-          pendingApplications: applicationsCount.count,
-        });
-        return;
-      }
-
-      // Get pending attendance records (classes without attendance marked today)
-      const attendanceData = await apiClient
-        .from('classes')
-        .select('id')
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true);
-      const pendingAttendanceCount = (attendanceData.data?.length || 0);
-
-      // Get scheduled exams for today and this week
-      const examsData = await apiClient
-        .from('exams')
-        .select('id')
-        .eq('school_id', profile.school_id)
-        .eq('is_active', true)
-        .gte('exam_date', todayStr)
-        .lte('exam_date', weekLaterStr);
-      const examsCount = (examsData.data?.length || 0);
-
-      // Get new admissions today
-      const admissionsData = await apiClient
-        .from('students')
-        .select('id')
-        .eq('school_id', profile.school_id)
-        .eq('status', 'active')
-        .gte('admission_date', todayStr);
-      const admissionsCount = (admissionsData.data?.length || 0);
-
-      // Get pending teacher applications
-      const applicationsResp = await apiClient
-        .from('teacher_applications')
-        .select('id');
-      const applicationsData = applicationsResp;
-      const applicationsCount = (applicationsData.data?.length || 0);
-
-      setTasks({
-        pendingAttendance: pendingAttendanceCount,
-        scheduledExams: examsCount,
-        newAdmissions: admissionsCount,
-        pendingApplications: applicationsCount,
-      });
-    } catch (error: unknown) {
-      console.error('Error fetching today\'s tasks:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load today\'s tasks',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [profile?.school_id, toast]);
-
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchTodaysTasks();
-    }
-  }, [profile?.school_id, fetchTodaysTasks]);
-
+export function TodaysTasksOverview({ onNavigate, tasks }: TodaysTasksCardProps) {
   const taskItems = [
     {
       id: 'attendance',
@@ -220,12 +99,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
       </CardHeader>
 
       <CardContent className="pt-6">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {taskItems.map(item => {
               const Icon = item.icon;
               const isUrgent = item.urgency === 'high' && item.count > 0;
@@ -267,12 +141,10 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
                 </Button>
               );
             })}
-          </div>
-        )}
+        </div>
 
         {/* Summary Stats at Bottom */}
-        {!loading && (
-          <div className="mt-6 p-4 bg-muted/30 rounded-lg flex items-center justify-between text-sm">
+        <div className="mt-6 p-4 bg-muted/30 rounded-lg flex items-center justify-between text-sm">
             <div className="text-muted-foreground">
               Total Tasks:
               <span className="ml-2 font-semibold text-foreground">
@@ -285,8 +157,7 @@ export function TodaysTasksOverview({ onNavigate }: TodaysTasksCardProps) {
                 {urgentTasks.reduce((sum, item) => sum + item.count, 0)} 
               </span>
             </div>
-          </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

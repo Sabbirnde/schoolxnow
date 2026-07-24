@@ -422,6 +422,55 @@ suite('Vercel API + MySQL integration', () => {
     expect([expiredNode.statusCode, expiredPhp.statusCode]).toEqual([401, 401]);
   });
 
+  it('returns one authorized school-admin dashboard snapshot in both backends', async () => {
+    const nodeDashboard = await invoke(handler, 'GET', '/api/dashboard/school-admin', {
+      query: { path: ['dashboard', 'school-admin'], school_id: ids.schoolA },
+      token: adminAToken,
+    });
+    const phpDashboard = await phpRequest(
+      phpBase,
+      'GET',
+      `/dashboard/school-admin?school_id=${ids.schoolA}`,
+      { token: phpAdminToken },
+    );
+
+    for (const result of [nodeDashboard, phpDashboard]) {
+      expect(result.statusCode).toBe(200);
+      expect(result.body.data).toEqual(expect.objectContaining({
+        school: expect.objectContaining({ id: ids.schoolA, name: 'Alpha School' }),
+        stats: expect.objectContaining({
+          totalStudents: 3,
+          activeStudents: 2,
+          totalClasses: 1,
+        }),
+        recentAdmissions: expect.any(Array),
+        tasks: expect.objectContaining({
+          pendingAttendance: expect.any(Number),
+          scheduledExams: expect.any(Number),
+          newAdmissions: expect.any(Number),
+          pendingApplications: expect.any(Number),
+        }),
+        recentActivity: expect.any(Array),
+      }));
+      expect(result.body.data.recentAdmissions.every(
+        (student: { classes?: { name: string } | null }) =>
+          !student.classes || student.classes.name === 'Class 6 A',
+      )).toBe(true);
+    }
+
+    const crossSchool = await invoke(handler, 'GET', '/api/dashboard/school-admin', {
+      query: { path: ['dashboard', 'school-admin'], school_id: ids.schoolB },
+      token: adminAToken,
+    });
+    const teacherDenied = await invoke(handler, 'GET', '/api/dashboard/school-admin', {
+      query: { path: ['dashboard', 'school-admin'], school_id: ids.schoolA },
+      token: teacherAToken,
+    });
+
+    expect(crossSchool.statusCode).toBe(403);
+    expect(teacherDenied.statusCode).toBe(403);
+  });
+
   it('keeps table authorization and school isolation aligned across Node and PHP', async () => {
     const nodeStudents = await invoke(handler, 'GET', '/api/tables/students?limit=20', {
       token: adminAToken,

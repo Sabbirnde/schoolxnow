@@ -7,6 +7,13 @@ Both implementations load authorization and table metadata from this file:
 - Node: `api/_lib/contract.ts`
 - PHP: `backend/src/Core/ApiContract.php`
 
+## Consolidated dashboards
+
+`GET /dashboard/school-admin?school_id={id}` returns one school-scoped snapshot
+containing `school`, `stats`, `recentAdmissions`, `tasks`, and `recentActivity`.
+Both backends authorize the caller once, enforce that the requested school
+matches the authenticated school administrator, and calculate counts in MySQL.
+
 ## Changing the API
 
 1. Update `api-contract.json` and increment its semantic version when public behavior changes.

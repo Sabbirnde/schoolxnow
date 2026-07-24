@@ -1,18 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { isPhpBackend } from "@/integrations/backend/provider";
-import { phpApi } from "@/integrations/php-api/client";
-import { apiClient } from "@/integrations/php-api/api-client";
-import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/useAuth";
-import type { Json } from "@/integrations/database/types";
 import {
   Calendar,
   UserPlus,
-  MoreVertical,
-  Loader2,
   AlertCircle,
   CheckCircle2,
   XCircle,
@@ -21,27 +13,20 @@ import {
   Clock,
 } from "lucide-react";
 
-interface AuditLogEntry {
+export interface AuditLogEntry {
   id: string;
   action: string;
   entity_type: string;
-  entity_id: string;
+  entity_id: string | null;
   timestamp: string;
   success: boolean;
   error_message?: string | null;
   user_id: string;
-  metadata?: Json | null;
+  metadata?: unknown;
 }
 
-interface ActivityFeed {
+interface EnhancedActivityFeedProps {
   entries: AuditLogEntry[];
-  filtered: AuditLogEntry[];
-  selectedFilter: string | null;
-}
-
-interface AuditLogPhpRow extends Omit<AuditLogEntry, 'success' | 'metadata'> {
-  success: boolean | number;
-  metadata?: string | Json | null;
 }
 
 const ActionIcons: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
@@ -110,32 +95,8 @@ const groupByDate = (entries: AuditLogEntry[]): Record<string, AuditLogEntry[]> 
   return groups;
 };
 
-const parseJsonField = (value: string | Json | null | undefined): Json | null => {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'string') return value;
-
-  try {
-    return JSON.parse(value) as Json;
-  } catch {
-    return value;
-  }
-};
-
-const normalizeAuditLog = (log: AuditLogPhpRow): AuditLogEntry => ({
-  ...log,
-  success: log.success === true || log.success === 1,
-  metadata: parseJsonField(log.metadata),
-});
-
-export function EnhancedActivityFeed() {
-  const { profile } = useAuth();
-  const { toast } = useToast();
-  const [activityFeed, setActivityFeed] = useState<ActivityFeed>({
-    entries: [],
-    filtered: [],
-    selectedFilter: null,
-  });
-  const [loading, setLoading] = useState(true);
+export function EnhancedActivityFeed({ entries }: EnhancedActivityFeedProps) {
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
   const [filterOptions] = useState([
     { value: null, label: 'All' },
     { value: 'students', label: 'Students' },
@@ -146,90 +107,15 @@ export function EnhancedActivityFeed() {
     { value: 'exam_marks', label: 'Marks' },
   ]);
 
-  const fetchActivityFeed = useCallback(async () => {
-    if (!profile?.school_id) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const trackedEntities = ['students', 'teachers', 'classes', 'exams', 'attendance', 'exam_marks', 'timetable', 'subjects'];
-
-      if (isPhpBackend) {
-        const data = await phpApi.table<AuditLogPhpRow>('audit_logs').list({
-          sort: 'timestamp',
-          order: 'desc',
-          limit: 100,
-        });
-        const filtered = data
-          .map(normalizeAuditLog)
-          .filter(entry => trackedEntities.includes(entry.entity_type))
-          .slice(0, 15);
-
-        setActivityFeed({
-          entries: filtered,
-          filtered,
-          selectedFilter: null,
-        });
-        return;
-      }
-
-      // Fetch audit logs for school
-      const { data, error } = await apiClient
-        .from('audit_logs')
-        .select(`
-          id,
-          action,
-          entity_type,
-          entity_id,
-          timestamp,
-          success,
-          error_message,
-          user_id,
-          metadata
-        `)
-        .in('entity_type', trackedEntities)
-        .order('timestamp', { ascending: false })
-        .limit(15);
-
-      if (error) throw error;
-
-      setActivityFeed({
-        entries: data || [],
-        filtered: data || [],
-        selectedFilter: null,
-      });
-    } catch (error: unknown) {
-      console.error('Error fetching activity feed:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load activity feed',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [profile?.school_id, toast]);
-
-  useEffect(() => {
-    if (profile?.school_id) {
-      fetchActivityFeed();
-    }
-  }, [profile?.school_id, fetchActivityFeed]);
-
   const handleFilter = (filterValue: string | null) => {
-    setActivityFeed(prev => ({
-      ...prev,
-      selectedFilter: filterValue,
-      filtered: filterValue 
-        ? prev.entries.filter(e => e.entity_type === filterValue)
-        : prev.entries,
-    }));
+    setSelectedFilter(filterValue);
   };
 
-  const groupedActivities = groupByDate(activityFeed.filtered);
-  const hasActivities = activityFeed.filtered.length > 0;
+  const filteredEntries = selectedFilter
+    ? entries.filter((entry) => entry.entity_type === selectedFilter)
+    : entries;
+  const groupedActivities = groupByDate(filteredEntries);
+  const hasActivities = filteredEntries.length > 0;
 
   return (
     <Card className="border-primary/10 shadow-sm">
@@ -251,10 +137,10 @@ export function EnhancedActivityFeed() {
             <Button
               key={option.value || 'all'}
               onClick={() => handleFilter(option.value as string | null)}
-              variant={activityFeed.selectedFilter === (option.value as string | null) ? 'default' : 'outline'}
+              variant={selectedFilter === (option.value as string | null) ? 'default' : 'outline'}
               size="sm"
               className={`whitespace-nowrap ${
-                activityFeed.selectedFilter === (option.value as string | null)
+                selectedFilter === (option.value as string | null)
                   ? 'bg-primary text-primary-foreground'
                   : 'hover:bg-muted/50'
               }`}
@@ -264,18 +150,14 @@ export function EnhancedActivityFeed() {
           ))}
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : !hasActivities ? (
+        {!hasActivities ? (
           <div className="text-center py-12 text-muted-foreground">
             <div className="p-4 bg-muted/30 rounded-full w-fit mx-auto mb-4">
               <Calendar className="h-12 w-12 opacity-50" />
             </div>
             <p className="text-lg font-medium mb-1">No Activity Yet</p>
             <p className="text-sm">
-              {activityFeed.selectedFilter 
+              {selectedFilter
                 ? 'No activity for this category'
                 : 'Activity log will appear here'}
             </p>

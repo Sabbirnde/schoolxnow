@@ -7,6 +7,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 use SchoolXNow\Api\AuthController;
 use SchoolXNow\Api\AcademicController;
 use SchoolXNow\Api\BillingController;
+use SchoolXNow\Api\DashboardController;
 use SchoolXNow\Api\TableController;
 use SchoolXNow\Api\UploadController;
 use SchoolXNow\Core\Response;
@@ -59,6 +60,7 @@ $router->post('/academic/accept-guardian-invitation', [AcademicController::class
 $router->post('/billing/invoices/generate', [BillingController::class, 'generateInvoices']);
 $router->post('/billing/invoices/{id}/adjustments', [BillingController::class, 'addAdjustment']);
 $router->post('/billing/payments', [BillingController::class, 'recordPayment']);
+$router->get('/dashboard/school-admin', [DashboardController::class, 'schoolAdmin']);
 
 $router->get('/tables/{table}', [TableController::class, 'index']);
 $router->get('/tables/{table}/count', [TableController::class, 'count']);

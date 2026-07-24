@@ -101,6 +101,47 @@ export type PhpPublicSchool = {
   school_type: string;
 };
 
+export type SchoolAdminDashboardResponse = {
+  school: {
+    id: string;
+    name: string;
+    name_bangla: string | null;
+    school_type: string;
+  };
+  stats: {
+    totalStudents: number;
+    activeStudents: number;
+    totalTeachers: number;
+    totalClasses: number;
+    totalSubjects: number;
+    recentAdmissions: number;
+  };
+  recentAdmissions: Array<{
+    id: string;
+    full_name: string;
+    admission_date: string;
+    class_id: string | null;
+    classes: { name: string } | null;
+  }>;
+  tasks: {
+    pendingAttendance: number;
+    scheduledExams: number;
+    newAdmissions: number;
+    pendingApplications: number;
+  };
+  recentActivity: Array<{
+    id: string;
+    action: string;
+    entity_type: string;
+    entity_id: string | null;
+    timestamp: string;
+    success: boolean | number;
+    error_message?: string | null;
+    user_id: string;
+    metadata?: unknown;
+  }>;
+};
+
 const API_TOKEN_KEY = 'schoolxnow-php-api-token';
 
 function getBaseUrl() {
@@ -184,6 +225,12 @@ export const phpApi = {
 
   async listPublicSchools() {
     return request<PhpPublicSchool[]>('/public/schools');
+  },
+
+  async schoolAdminDashboard(schoolId: string) {
+    return request<SchoolAdminDashboardResponse>(
+      `/dashboard/school-admin?school_id=${encodeURIComponent(schoolId)}`,
+    );
   },
 
   async submitTeacherApplication(input: {

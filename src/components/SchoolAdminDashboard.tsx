@@ -65,6 +65,8 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
   const {
     stats,
     schoolInfo,
+    tasks,
+    recentActivity,
     loading,
     fetching,
     refetch,
@@ -396,7 +398,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
 
         <TabsContent value="overview" className="space-y-6">
           {/* Today's Tasks Overview */}
-          <TodaysTasksOverview onNavigate={setActiveModule} />
+          <TodaysTasksOverview tasks={tasks} onNavigate={setActiveModule} />
 
           {/* Statistics Cards with Trends and Drill-Down */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -469,7 +471,7 @@ const SchoolAdminDashboard = ({ setActiveModule }: SchoolAdminDashboardProps) =>
           </div>
 
           {/* Enhanced Activity Feed */}
-          <EnhancedActivityFeed />
+          <EnhancedActivityFeed entries={recentActivity} />
         </TabsContent>
 
         <TabsContent value="attendance">

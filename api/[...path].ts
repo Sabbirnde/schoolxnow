@@ -20,6 +20,7 @@ import {
 import { handleTable } from './_lib/tables.js';
 import { handleAcademic } from './_lib/academic.js';
 import { handleBilling } from './_lib/billing.js';
+import { handleDashboard } from './_lib/dashboard.js';
 import { enforceRateLimit } from './_lib/rate-limit.js';
 import {
   recordAlertSignal,
@@ -855,6 +856,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (segments[0] === 'tables') return await handleTable(req, res, segments);
     if (segments[0] === 'academic') return await handleAcademic(req, res, segments);
     if (segments[0] === 'billing') return await handleBilling(req, res, segments);
+    if (segments[0] === 'dashboard') return await handleDashboard(req, res, segments);
     if (req.method === 'POST' && segments[0] === 'uploads' && segments[1]) return await upload(req, res, segments[1]);
 
     throw new ApiError(404, 'Route not found');
