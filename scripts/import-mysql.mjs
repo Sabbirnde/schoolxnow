@@ -4,6 +4,7 @@ import process from 'node:process';
 import bcrypt from 'bcryptjs';
 import mysql from 'mysql2/promise';
 import { envValue, isPlaceholder, readEnvFile } from './lib/env-file.mjs';
+import { ensureMigrationTable, listMigrations } from './lib/migrations.mjs';
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -101,6 +102,18 @@ try {
   await connection.query(readSql(schemaPath));
   console.log(`OK imported ${schemaPath}`);
 
+  await ensureMigrationTable(connection);
+  const migrations = listMigrations(root);
+  for (const migration of migrations) {
+    await connection.execute(
+      `INSERT INTO schema_migrations (version, name, checksum, applied_at, execution_ms, applied_by)
+       VALUES (?, ?, ?, NOW(), 0, ?)
+       ON DUPLICATE KEY UPDATE checksum = VALUES(checksum), name = VALUES(name)`,
+      [migration.version, migration.name, migration.checksum, 'import-mysql:schema'],
+    );
+  }
+  console.log(`OK recorded ${migrations.length} migrations in schema_migrations.`);
+
   if (includeSeed) {
     await connection.query(await readSeedSql(seedPath));
     console.log(`OK imported ${seedPath}`);
@@ -108,3 +121,4 @@ try {
 } finally {
   await connection.end();
 }
+
