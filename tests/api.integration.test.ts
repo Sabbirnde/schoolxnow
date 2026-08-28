@@ -371,7 +371,7 @@ suite('Vercel API + MySQL integration', () => {
     expect(rows[0].version).toMatch(/^8\./);
     expect(rows[0].sql_mode).toContain('STRICT_TRANS_TABLES');
     const status = await migrationStatus(connection);
-    expect(status.applied).toHaveLength(5);
+    expect(status.applied).toHaveLength(6);
     expect(status.pending).toHaveLength(0);
   });
 
@@ -514,7 +514,7 @@ suite('Vercel API + MySQL integration', () => {
       await legacy.query(readFileSync('backend/database/migrations/0001_baseline_schema.mysql.sql', 'utf8'));
       const status = await applyMigrations(legacy, { appliedBy: 'legacy-adoption-test' });
       expect(status.pending).toHaveLength(0);
-      expect(status.applied).toHaveLength(5);
+      expect(status.applied).toHaveLength(6);
       expect(status.applied[0].applied_by).toBe('legacy-adoption-test:baseline');
       const [rateTables] = await legacy.query<any[]>(
         "SELECT COUNT(*) AS count FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'api_rate_limits'",
