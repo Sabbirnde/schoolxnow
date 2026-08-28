@@ -25,7 +25,7 @@
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
-    "start": "vite",
+    "start": "vite preview",
     "clean": "rimraf node_modules .vite dist",
     "test": "vitest",
     "test:api-integration": "node scripts/run-api-integration-tests.mjs",

@@ -16,8 +16,8 @@ export default defineConfig(({ mode }) => ({
     },
   },
   preview: {
-    port: 4173,
-    host: "localhost",
+    port: Number(process.env.PORT) || 4173,
+    host: "0.0.0.0",
   },
   optimizeDeps: {
     rolldownOptions: {
